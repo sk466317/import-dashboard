@@ -223,12 +223,27 @@
                                 <input type="text" id="railDateDisplay" placeholder="Rail Date" readonly class="bg-slate-100 border border-slate-200 text-[10px] font-bold rounded-lg px-2 py-1.5 w-32 outline-none text-slate-700">
                             </div>
 
-                            <div class="h-6 w-px bg-slate-200"></div>
-                            <input type="text" id="arrivedDateInput" placeholder="Arrival Date (dd-mm-yy hh:mm)" class="bg-blue-50 border border-blue-200 text-[10px] font-bold rounded-lg px-2 py-1.5 w-48 outline-none focus:ring-1 focus:ring-blue-500">
-                            <button id="updateArrivedBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-bold text-[9px] uppercase transition-all shadow-sm flex items-center gap-1">
-                                <i data-lucide="check-circle" class="w-3 h-3"></i>
-                                Update Arrived
-                            </button>
+                            <div class="h-6 w-px bg-slate-200 mx-1"></div>
+                            
+                            <!-- Arrival Date Box -->
+                            <div class="flex items-center gap-1.5">
+                                <input type="text" id="arrivedDateInput" placeholder="Arrival Date (dd-mm-yy hh:mm)" class="bg-blue-50 border border-blue-200 text-[10px] font-bold rounded-lg px-2 py-1.5 w-44 outline-none focus:ring-1 focus:ring-blue-500">
+                                <button id="updateArrivedBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-bold text-[9px] uppercase transition-all shadow-sm flex items-center gap-1">
+                                    <i data-lucide="check-circle" class="w-3 h-3"></i>
+                                    Update Arrived
+                                </button>
+                            </div>
+
+                            <div class="h-6 w-px bg-slate-200 mx-1"></div>
+
+                            <!-- Remarks Update Box (Updated with Larger Width) -->
+                            <div class="flex items-center gap-1.5">
+                                <input type="text" id="customRemarksInput" placeholder="Edit Remarks for selected Rake..." class="bg-amber-50 border border-amber-200 text-[10px] font-bold rounded-lg px-2 py-1.5 w-96 outline-none focus:ring-1 focus:ring-amber-500">
+                                <button id="updateCustomRemarksBtn" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg font-bold text-[9px] uppercase transition-all shadow-sm flex items-center gap-1">
+                                    <i data-lucide="edit-3" class="w-3 h-3"></i>
+                                    Update Remarks
+                                </button>
+                            </div>
                         </div>
 
                         <div class="flex items-center gap-2 pl-1">
@@ -356,7 +371,8 @@
 
             <!-- Dashboard Content -->
             <div id="reportContainer" class="hidden space-y-5 max-w-[1300px] mx-auto p-4 bg-slate-200">
-                <div id="overallStats" class="grid grid-cols-4 gap-3 font-arial-black text-center"></div>
+                <!-- Statistics Section -->
+                <div id="overallStats" class="grid grid-cols-6 gap-3 font-arial-black text-center"></div>
 
                 <div class="report-box print:border-none print:shadow-none bg-white">
                     <div class="px-5 py-2 bg-white border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
@@ -407,7 +423,7 @@
                         <div class="bg-emerald-600 px-4 py-1.5 flex justify-between items-center">
                             <div class="flex items-center gap-2 text-white animate-status-icon">
                                 <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>
-                                <h3 class="font-bold uppercase tracking-widest text-[9px]">Railed Out Shipments</h3>
+                                <h3 id="railedShipmentsHeading" class="font-bold uppercase tracking-widest text-[9px]">Railed Out Shipments</h3>
                             </div>
                         </div>
                         <div class="overflow-x-auto">
@@ -501,12 +517,15 @@
         const railDateDisplay = document.getElementById('railDateDisplay');
         const arrivedDateInput = document.getElementById('arrivedDateInput');
         const updateArrivedBtn = document.getElementById('updateArrivedBtn');
+        const customRemarksInput = document.getElementById('customRemarksInput');
+        const updateCustomRemarksBtn = document.getElementById('updateCustomRemarksBtn');
 
         let rawSheets = { shipper: [], smtp: [], website: [] };
         let selectedShipper = null;
         let currentSheetInView = null;
         let trainDateRemarksMap = {}; 
         let currentShipperAllGroups = []; 
+        let isInTransitFilterActive = false; // New global filter state
 
         lucide.createIcons();
 
@@ -553,6 +572,12 @@
             document.getElementById('updateModal').classList.add('hidden');
         };
 
+        // Toggle logic for In Transit filter
+        window.toggleInTransitFilter = function() {
+            isInTransitFilterActive = !isInTransitFilterActive;
+            applyFilters(); // Re-renders all tables using existing filter chain
+        };
+
         // ------------------------------------------
         // 2. RENDERING LOGIC
         // ------------------------------------------
@@ -575,6 +600,18 @@
             const r40 = groups.reduce((acc, b) => acc + b.stats.r40, 0);
             const p20 = groups.reduce((acc, b) => acc + b.stats.p20, 0);
             const p40 = groups.reduce((acc, b) => acc + b.stats.p40, 0);
+            
+            let totalArrived = 0;
+            groups.forEach(bl => {
+                bl.railedDetails.forEach(d => {
+                    if (/TRAIN ARRIVED/i.test(d.remark)) {
+                        totalArrived += d.count;
+                    }
+                });
+            });
+            const totalRailed = r20 + r40;
+            const totalInTransit = totalRailed - totalArrived;
+
             const formatSubCount = (c20, c40, colorClass) => {
                 let parts = [];
                 if (c20 > 0) parts.push(`<span class="${colorClass}">(${c20} <span class="text-[8px]">x</span> 20")</span>`);
@@ -582,7 +619,38 @@
                 return parts.join(' ');
             };
             const subColor = "text-blue-900 font-bold text-[12px]";
-            document.getElementById('overallStats').innerHTML = `<div class="bg-white p-2 rounded-xl border-b-4 border-b-orange-500 border border-slate-400 shadow-sm flex flex-col items-center"><span class="text-[7px] font-bold text-slate-400 uppercase tracking-widest">Total Containers</span><span class="text-lg font-bold text-slate-900">${t20 + t40}</span><div class="mt-0.5">${formatSubCount(t20, t40, subColor)}</div></div><div class="bg-emerald-50 p-2 rounded-xl border-b-4 border-b-emerald-500 border border-slate-400 shadow-sm flex flex-col items-center"><span class="text-[7px] font-bold text-emerald-600 uppercase tracking-widest">Railout Done</span><span class="text-lg font-bold text-emerald-700">${r20 + r40}</span><div class="mt-0.5">${formatSubCount(r20, r40, subColor)}</div></div><div class="bg-rose-50 p-2 rounded-xl border-b-4 border-b-rose-500 border border-slate-400 shadow-sm flex flex-col items-center"><span class="text-[7px] font-bold text-rose-600 uppercase tracking-widest">Pending</span><span class="text-lg font-bold text-rose-700">${p20 + p40}</span><div class="mt-0.5">${formatSubCount(p20, p40, subColor)}</div></div><div class="bg-white p-2 rounded-xl border-b-4 border-b-blue-600 border border-slate-400 shadow-sm flex flex-col items-center"><span class="text-[7px] font-bold text-blue-500 uppercase tracking-widest">Total B/L</span><span class="text-xl font-bold text-blue-600 mt-0.5 leading-none">${groups.length}</span></div>`;
+            
+            // Note: Added border-blue-600 and ring logic for active filter state on In Transit box
+            document.getElementById('overallStats').innerHTML = `
+                <div class="bg-white p-2 rounded-xl border-b-4 border-b-orange-500 border border-slate-400 shadow-sm flex flex-col items-center">
+                    <span class="text-[7px] font-bold text-slate-400 uppercase tracking-widest">Total Containers</span>
+                    <span class="text-lg font-bold text-slate-900">${t20 + t40}</span>
+                    <div class="mt-0.5">${formatSubCount(t20, t40, subColor)}</div>
+                </div>
+                <div class="bg-emerald-50 p-2 rounded-xl border-b-4 border-b-emerald-500 border border-slate-400 shadow-sm flex flex-col items-center">
+                    <span class="text-[7px] font-bold text-emerald-600 uppercase tracking-widest">Railout Done</span>
+                    <span class="text-lg font-bold text-emerald-700">${totalRailed}</span>
+                    <div class="mt-0.5">${formatSubCount(r20, r40, subColor)}</div>
+                </div>
+                <div class="bg-blue-50 p-2 rounded-xl border-b-4 border-b-blue-600 border border-slate-400 shadow-sm flex flex-col items-center">
+                    <span class="text-[7px] font-bold text-blue-600 uppercase tracking-widest">Arrived</span>
+                    <span class="text-lg font-bold text-blue-700">${totalArrived}</span>
+                    <span class="text-[8px] font-bold text-slate-400 mt-1 uppercase">Units Received</span>
+                </div>
+                <div onclick="window.toggleInTransitFilter()" class="cursor-pointer bg-amber-50 p-2 rounded-xl border-b-4 border-b-amber-500 border border-slate-400 shadow-sm flex flex-col items-center transition-all hover:bg-amber-100 ${isInTransitFilterActive ? 'ring-4 ring-blue-500 ring-opacity-50 border-blue-500' : ''}">
+                    <span class="text-[7px] font-bold text-amber-600 uppercase tracking-widest">${isInTransitFilterActive ? 'Filtering Mundra...' : 'In Transit'}</span>
+                    <span class="text-lg font-bold text-amber-700">${totalInTransit}</span>
+                    <span class="text-[8px] font-bold text-slate-400 mt-1 uppercase">Click to Filter</span>
+                </div>
+                <div class="bg-rose-50 p-2 rounded-xl border-b-4 border-b-rose-500 border border-slate-400 shadow-sm flex flex-col items-center">
+                    <span class="text-[7px] font-bold text-rose-600 uppercase tracking-widest">Pending</span>
+                    <span class="text-lg font-bold text-rose-700">${p20 + p40}</span>
+                    <div class="mt-0.5">${formatSubCount(p20, p40, subColor)}</div>
+                </div>
+                <div class="bg-white p-2 rounded-xl border-b-4 border-b-blue-600 border border-slate-400 shadow-sm flex flex-col items-center">
+                    <span class="text-[7px] font-bold text-blue-500 uppercase tracking-widest">Total B/L</span>
+                    <span class="text-xl font-bold text-blue-600 mt-0.5 leading-none">${groups.length}</span>
+                </div>`;
         }
 
         function renderMainTable(groups) {
@@ -627,24 +695,42 @@
             const railedGroups = groups.filter(g => g.stats.railed > 0);
             const pendingGroups = groups.filter(g => g.stats.pending > 0);
             let totalRailedUnits = 0, totalPendingUnits = 0;
+
+            // Header Update for Railed Shipments when filter is active
+            const headingEl = document.getElementById('railedShipmentsHeading');
+            if (headingEl) {
+                headingEl.innerText = isInTransitFilterActive ? "Railed Out Shipments (Filtered: Mundra Railout)" : "Railed Out Shipments";
+            }
+
             if (railedGroups.length === 0) document.getElementById('railedBreakdownContainer').classList.add('hidden');
             else {
                 document.getElementById('railedBreakdownContainer').classList.remove('hidden');
                 let rHtml = '';
                 railedGroups.forEach(bl => {
-                    bl.railedDetails.forEach((detail, idx) => {
-                        totalRailedUnits += detail.count;
-                        const isArrived = /TRAIN ARRIVED/i.test(detail.remark);
-                        const remarkClass = isArrived ? 'bg-yellow-100 text-slate-900' : 'text-slate-500';
-                        rHtml += `<tr class="border-b border-slate-200 hover:bg-emerald-50/30">`;
-                        if (idx === 0) rHtml += `<td rowspan="${bl.railedDetails.length}" class="px-3 py-1 font-bold text-slate-900 border-r border-slate-300 align-top">${bl.blNo} <span class="text-blue-500 text-[8px] uppercase font-bold">(${bl.stats.total} / ${bl.line})</span></td>`;
-                        rHtml += `<td class="px-3 py-1 text-center font-bold text-emerald-700 bg-emerald-50 border-r border-slate-300">${detail.count}</td><td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${detail.train}</td><td class="px-3 py-1 text-center text-blue-600 font-bold border-r border-slate-300 uppercase whitespace-nowrap">${detail.date}</td><td class="px-3 py-1 ${remarkClass} text-[9px] font-bold">${detail.remark}</td></tr>`;
-                    });
-                    rHtml += `<tr class="bg-blue-100/60 font-bold border-b border-blue-200"><td class="px-3 py-1 text-blue-800 uppercase text-[8px]">Total</td><td class="px-3 py-1 text-center text-blue-900 border-r border-blue-200">${bl.stats.railed}</td><td colspan="3"></td></tr>`;
+                    // Logic to filter rows by RAILOUT FROM MUNDRA if active
+                    let detailsToShow = bl.railedDetails;
+                    if (isInTransitFilterActive) {
+                        detailsToShow = detailsToShow.filter(d => /RAILOUT FROM MUNDRA/i.test(d.remark));
+                    }
+
+                    if (detailsToShow.length > 0) {
+                        let blTotal = 0;
+                        detailsToShow.forEach((detail, idx) => {
+                            totalRailedUnits += detail.count;
+                            blTotal += detail.count;
+                            const isArrived = /TRAIN ARRIVED/i.test(detail.remark);
+                            const remarkClass = isArrived ? 'bg-yellow-100 text-slate-900' : 'text-slate-500';
+                            rHtml += `<tr class="border-b border-slate-200 hover:bg-emerald-50/30">`;
+                            if (idx === 0) rHtml += `<td rowspan="${detailsToShow.length}" class="px-3 py-1 font-bold text-slate-900 border-r border-slate-300 align-top">${bl.blNo} <span class="text-blue-500 text-[8px] uppercase font-bold">(${bl.stats.total} / ${bl.line})</span></td>`;
+                            rHtml += `<td class="px-3 py-1 text-center font-bold text-emerald-700 bg-emerald-50 border-r border-slate-300">${detail.count}</td><td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${detail.train}</td><td class="px-3 py-1 text-center text-blue-600 font-bold border-r border-slate-300 uppercase whitespace-nowrap">${detail.date}</td><td class="px-3 py-1 ${remarkClass} text-[9px] font-bold">${detail.remark}</td></tr>`;
+                        });
+                        rHtml += `<tr class="bg-blue-100/60 font-bold border-b border-blue-200"><td class="px-3 py-1 text-blue-800 uppercase text-[8px]">Group Total</td><td class="px-3 py-1 text-center text-blue-900 border-r border-blue-200">${blTotal}</td><td colspan="3"></td></tr>`;
+                    }
                 });
                 document.getElementById('railedDetailRows').innerHTML = rHtml;
-                document.getElementById('railedDetailFooter').innerHTML = `<tr class="bg-emerald-50 text-emerald-800 font-bold"><td class="px-3 py-1.5 text-right uppercase text-[9px]">Total Railed Units</td><td class="px-3 py-1.5 text-center text-[11px] border-r border-emerald-200">${totalRailedUnits}</td><td colspan="3"></td></tr>`;
+                document.getElementById('railedDetailFooter').innerHTML = `<tr class="bg-emerald-50 text-emerald-800 font-bold"><td class="px-3 py-1.5 text-right uppercase text-[9px]">Grand Total (Viewed)</td><td class="px-3 py-1.5 text-center text-[11px] border-r border-emerald-200">${totalRailedUnits}</td><td colspan="3"></td></tr>`;
             }
+
             if (pendingGroups.length === 0) document.getElementById('pendingBreakdownContainer').classList.add('hidden');
             else {
                 document.getElementById('pendingBreakdownContainer').classList.remove('hidden');
@@ -751,6 +837,7 @@
             if(activeNameEl) activeNameEl.innerText = name;
             vesselFilter.value = "ALL";
             blFilter.value = "ALL";
+            isInTransitFilterActive = false; // Reset filter on shipper change
             const uniqueShippers = [...new Set(rawSheets.shipper.slice(1).map(row => row[consIndex]))].filter(Boolean).sort();
             renderShipperList(uniqueShippers, consIndex);
             processAndRenderReport(consIndex, true); 
@@ -898,8 +985,20 @@
 
         rakeSelect.addEventListener('change', () => {
             const selected = rakeSelect.selectedOptions[0];
+            const rakeVal = rakeSelect.value;
             const rawVal = selected ? (selected.dataset.raildate || '') : '';
             railDateDisplay.value = rawVal ? formatToDDMMYY_HHMM(rawVal) : '';
+            
+            // Auto-load existing remark for this rake to show in box
+            if (rakeVal) {
+                const matchingRow = rawSheets.website.find(row => 
+                    String(row[4]).trim() === rakeVal && 
+                    String(row[9] || '').toUpperCase().includes("RAILOUT FROM")
+                );
+                customRemarksInput.value = matchingRow ? matchingRow[9] : '';
+            } else {
+                customRemarksInput.value = '';
+            }
         });
 
         updateArrivedBtn.addEventListener('click', () => {
@@ -942,6 +1041,50 @@
             } else {
                 const box = document.createElement('div');
                 box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">No matching containers found.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 3000);
+            }
+        });
+
+        updateCustomRemarksBtn.addEventListener('click', () => {
+            const rake = rakeSelect.value;
+            const newRemark = customRemarksInput.value.trim();
+            if (!rake) { 
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Please select a Rake No first.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 3000);
+                return; 
+            }
+            if (!newRemark) { 
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Please enter new Remarks.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 3000);
+                return; 
+            }
+
+            let updateCount = 0;
+            rawSheets.website.slice(1).forEach((row) => {
+                const currentRemark = String(row[9] || '').toUpperCase();
+                // Logic: Only update if RAKE_NO matches AND remark contains "RAILOUT FROM"
+                if (String(row[4]).trim() === rake && currentRemark.includes("RAILOUT FROM")) {
+                    row[9] = newRemark;
+                    updateCount++;
+                }
+            });
+
+            if (updateCount > 0) {
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-amber-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Remarks updated for ${updateCount} containers in Rake ${rake}.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 3000);
+                saveToCloud();
+                processCloudData();
+                window.viewSheetData('website'); 
+            } else {
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">No matching 'RAILOUT' containers found for this rake.</div>`;
                 document.body.appendChild(box);
                 setTimeout(() => box.remove(), 3000);
             }
@@ -1274,11 +1417,6 @@
                 
                 if (jsonData.length < 2) return;
 
-                // Identification based strictly on requested Column positions:
-                // A = Index 0 (CONT_Nos.)
-                // B = Index 1 (Size)
-                // C = Index 2 (BL_No.)
-                // D = Index 3 (Consignee)
                 const contIdx = 0;
                 const sizeIdx = 1;
                 const blIdx = 2;
@@ -1290,8 +1428,7 @@
                     return;
                 }
 
-                // Map where to put imported data in internal sheet based on internal headers
-                const internalContIdx = 0; // CONT is always first
+                const internalContIdx = 0; 
                 const internalSizeIdx = internalHeaders.findIndex(h => /SIZE/i.test(String(h)));
                 const internalBlIdx = internalHeaders.findIndex(h => /BL/i.test(String(h)));
                 const internalConsIdx = internalHeaders.findIndex(h => /CONSIGNEE/i.test(String(h)));
@@ -1303,7 +1440,6 @@
                     const contNo = String(exRow[contIdx] || '').trim();
                     if (!contNo) return;
 
-                    // Duplicate check
                     const alreadyExists = rawSheets.shipper.some(s => String(s[internalContIdx] || '').trim() === contNo);
                     if (!alreadyExists) {
                         let newRow = new Array(internalHeaders.length).fill("");
@@ -1347,22 +1483,18 @@
                 
                 if (jsonData.length < 2) return;
 
-                // Identify SMTP headers to find container index
                 const smtpHeaders = rawSheets.smtp[0];
                 const sContIdx = smtpHeaders ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
 
                 let addedCount = 0;
                 let skipCount = 0;
 
-                // Start from index 1 (skip header)
                 jsonData.slice(1).forEach(exRow => {
                     const contNo = String(exRow[sContIdx] || '').trim();
                     // Cell L is index 11 (12th column: A=0, B=1, ..., L=11)
                     const cellLValue = String(exRow[11] || '').toUpperCase(); 
 
-                    // Rule: Only copy if Cell L contains KILARAIPUR or LUDHIANA
                     if (contNo && (cellLValue.includes("KILARAIPUR") || cellLValue.includes("LUDHIANA"))) {
-                        // Duplicate Check
                         const alreadyExists = rawSheets.smtp.some(s => String(s[sContIdx] || '').trim() === contNo);
                         
                         if (!alreadyExists) {
