@@ -7,13 +7,16 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Screenshot logic -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
     <!-- Firebase Libraries -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Global Firebase state
+        // Global Firebase state attachment to window
         window.fb = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, getDoc, onSnapshot };
     </script>
 
@@ -46,7 +49,7 @@
         }
 
         table { border-collapse: collapse; width: 100%; table-layout: auto; border: 1px solid #1e3a8a33; }
-        th, td { border: 1px solid #1e3a8a33; word-wrap: break-word; line-height: 1.1; }
+        th, td { border: 1px solid #1e3a8a33; word-wrap: break-word; line-height: 1.2; padding: 4px 6px; }
         
         .report-box {
             border: 1px solid #94a3b8; 
@@ -58,7 +61,7 @@
 
         .font-bold { font-weight: 700; }
         .compact-header { padding-top: 0.4rem; padding-bottom: 0.4rem; }
-        .row-compact td { padding-top: 0.15rem; padding-bottom: 0.15rem; }
+        .row-compact td { padding-top: 0.25rem; padding-bottom: 0.25rem; }
 
         .filter-select {
             background-color: #eff6ff; 
@@ -78,9 +81,144 @@
             border-color: #1e40af;
             box-shadow: 0 0 0 2px rgba(30, 64, 175, 0.1);
         }
+
+        /* Login Screen Styles */
+        #loginScreen {
+            position: fixed;
+            inset: 0;
+            background-color: #0f172a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease;
+        }
+        #loginScreen.hidden {
+            display: none !important;
+            pointer-events: none;
+        }
+
+        /* Update Data Modal Styles */
+        #updateModal {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0,0,0,0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9998;
+            padding: 20px;
+        }
+        #updateModal.hidden {
+            display: none !important;
+        }
+        
+        .editable-cell:focus {
+            background-color: #fef9c3;
+            outline: 2px solid #eab308;
+            border-radius: 2px;
+        }
     </style>
 </head>
 <body class="text-slate-900 h-screen flex flex-col overflow-hidden">
+
+    <!-- Login Screen Overlay -->
+    <div id="loginScreen">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm border border-slate-200">
+            <div class="flex flex-col items-center mb-6">
+                <div class="bg-blue-700 p-3 rounded-2xl text-white shadow-lg mb-4">
+                    <i data-lucide="lock" class="w-8 h-8"></i>
+                </div>
+                <h2 class="text-xl font-bold text-slate-800 uppercase tracking-tight">Secured Access</h2>
+                <p class="text-slate-500 text-xs font-semibold">Enter password to continue</p>
+            </div>
+            <div class="space-y-4">
+                <input type="password" id="loginPassword" placeholder="••••••••" class="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl font-bold text-center tracking-widest focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+                <button id="authBtn" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 rounded-xl shadow-lg transition-all transform active:scale-95">
+                    AUTHENTICATE
+                </button>
+                <div id="loginError" class="text-rose-600 text-[10px] font-bold text-center hidden uppercase">Invalid Password! Please try again.</div>
+            </div>
+            <div class="mt-8 text-center">
+                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Logistics Pro Dashboard v2.0</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Update Data Modal -->
+    <div id="updateModal" class="hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-[98vw] h-[95vh] flex flex-col border border-slate-300 overflow-hidden">
+            <div class="bg-slate-900 p-4 flex justify-between items-center shrink-0">
+                <div class="flex items-center gap-3 text-white">
+                    <i data-lucide="database" class="w-5 h-5 text-red-500"></i>
+                    <h2 class="font-bold uppercase tracking-tight text-sm">Update & View Source Data</h2>
+                </div>
+                <button id="closeModalBtn" class="text-slate-400 hover:text-white transition-colors">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            
+            <div class="p-3 bg-slate-100 border-b border-slate-200 flex flex-col gap-3 shrink-0">
+                <div class="flex items-center justify-between flex-wrap gap-4">
+                    <div class="flex gap-2">
+                        <button id="tabShipper" class="sheet-tab-btn px-4 py-2 bg-white border border-slate-300 rounded-lg font-bold text-[10px] uppercase hover:bg-blue-50 transition-all" data-sheet="shipper">SHIPPER</button>
+                        <button id="tabSmtp" class="sheet-tab-btn px-4 py-2 bg-white border border-slate-300 rounded-lg font-bold text-[10px] uppercase hover:bg-blue-50 transition-all" data-sheet="smtp">SMTP</button>
+                        <button id="tabWebsite" class="sheet-tab-btn px-4 py-2 bg-white border border-slate-300 rounded-lg font-bold text-[10px] uppercase hover:bg-blue-50 transition-all" data-sheet="website">WEBSITE</button>
+                    </div>
+
+                    <div id="websiteUpdateSection" class="hidden items-center gap-3 bg-white p-2 rounded-xl border border-slate-300 shadow-sm flex-wrap">
+                        <div class="flex items-center gap-2 border-r border-slate-200 pr-3">
+                            <select id="rakeSelect" class="bg-slate-50 border border-slate-300 text-[10px] font-bold rounded-lg px-2 py-1.5 outline-none w-44">
+                                <option value="">Select Rake No</option>
+                            </select>
+                            
+                            <!-- Modified section for RAILING_DATE label -->
+                            <div class="flex flex-col">
+                                <span class="text-[7px] font-bold text-blue-700 uppercase ml-1 mb-0.5 tracking-tighter">RAILING_DATE</span>
+                                <input type="text" id="railDateDisplay" placeholder="Rail Date" readonly class="bg-slate-100 border border-slate-200 text-[10px] font-bold rounded-lg px-2 py-1.5 w-32 outline-none text-slate-700">
+                            </div>
+
+                            <div class="h-6 w-px bg-slate-200"></div>
+                            <input type="text" id="arrivedDateInput" placeholder="Arrival Date (dd-mm-yy hh:mm)" class="bg-blue-50 border border-blue-200 text-[10px] font-bold rounded-lg px-2 py-1.5 w-48 outline-none focus:ring-1 focus:ring-blue-500">
+                            <button id="updateArrivedBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-bold text-[9px] uppercase transition-all shadow-sm flex items-center gap-1">
+                                <i data-lucide="check-circle" class="w-3 h-3"></i>
+                                Update Arrived
+                            </button>
+                        </div>
+
+                        <div class="flex items-center gap-2 pl-1">
+                            <button id="addSmtpBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] transition-all flex items-center gap-2 uppercase">
+                                <i data-lucide="list-plus" class="w-3.5 h-3.5"></i>
+                                Add SMTP
+                            </button>
+                            <label class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm">
+                                <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
+                                UPDATE EXCEL
+                                <input type="file" id="websiteExcelInput" class="hidden" accept=".xlsx, .xls">
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-auto p-4 custom-scrollbar bg-slate-50">
+                <div id="sheetDataContainer" class="bg-white rounded-lg border border-slate-200 min-w-full overflow-x-auto">
+                    <div class="p-20 text-center text-slate-400 flex flex-col items-center">
+                        <i data-lucide="table" class="w-12 h-12 mb-2 opacity-20"></i>
+                        <p class="font-bold text-xs uppercase tracking-widest">Select a sheet to view its contents</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="p-3 bg-white border-t border-slate-200 flex justify-between items-center shrink-0">
+                <p class="text-[9px] font-bold text-slate-400 uppercase italic">Changes are local until "Save Changes" is clicked.</p>
+                <div class="flex gap-2">
+                    <button id="saveLocalChangesBtn" class="px-6 py-2 bg-blue-700 text-white rounded-lg font-bold text-[10px] uppercase hover:bg-blue-800 shadow-md transition-all">Save Changes</button>
+                    <button id="closeModalBtnFooter" class="px-6 py-2 bg-slate-200 text-slate-700 rounded-lg font-bold text-[10px] uppercase hover:bg-slate-300 transition-all">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Header -->
     <header class="bg-white border-b border-slate-400 px-6 compact-header flex justify-between items-center shadow-sm shrink-0 no-print">
@@ -99,6 +237,19 @@
                 <span id="cloudIndicator" class="w-2 h-2 rounded-full bg-slate-300"></span>
                 <span id="cloudLabel">Connecting...</span>
             </div>
+
+            <!-- Update Data Button -->
+            <button id="openUpdateModalBtn" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-md font-bold text-[10px] transition-all flex items-center gap-1.5 shadow-sm">
+                <i data-lucide="database" class="w-3 h-3"></i>
+                UPDATE DATA
+            </button>
+            
+            <!-- Image Save Button -->
+            <button id="saveImageBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-md font-bold text-[10px] transition-all flex items-center gap-1.5 shadow-sm">
+                <i data-lucide="image" class="w-3 h-3"></i>
+                SAVE PNG
+            </button>
+
             <button id="refreshBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md font-bold text-[10px] transition-all flex items-center gap-1.5 shadow-sm">
                 <i data-lucide="refresh-cw" class="w-3 h-3" id="refreshIcon"></i>
                 REFRESH
@@ -129,30 +280,31 @@
             <div id="shipperList" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1"></div>
         </aside>
 
-        <section class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 print:p-0">
+        <section id="mainSectionArea" class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 print:p-0 bg-slate-200">
             <div id="emptyState" class="h-full flex flex-col items-center justify-center text-center p-12 bg-white rounded-2xl border border-slate-400 shadow-lg no-print mx-auto max-w-lg mt-20">
                 <i data-lucide="file-spreadsheet" class="w-12 h-12 text-slate-300 mb-3"></i>
                 <h2 class="text-lg font-bold text-slate-800 uppercase tracking-tight">System Ready</h2>
                 <p class="text-slate-500 text-xs font-bold">Please upload a file or wait for cloud sync.</p>
             </div>
 
-            <div id="reportContainer" class="hidden space-y-5 max-w-[1300px] mx-auto">
-                <div id="overallStats" class="grid grid-cols-4 gap-3 no-print font-arial-black text-center"></div>
+            <!-- Dashboard Content -->
+            <div id="reportContainer" class="hidden space-y-5 max-w-[1300px] mx-auto p-4 bg-slate-200">
+                <div id="overallStats" class="grid grid-cols-4 gap-3 font-arial-black text-center"></div>
 
-                <div class="report-box print:border-none print:shadow-none">
+                <div class="report-box print:border-none print:shadow-none bg-white">
                     <div class="px-5 py-2 bg-white border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                         <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full">
                             <h2 id="activeShipperName" class="text-sm font-bold text-slate-900 tracking-tight uppercase shrink-0"></h2>
                             <div class="flex items-center gap-4 no-print">
                                 <div class="flex items-center gap-2">
                                     <label class="text-[9px] font-extrabold text-blue-700 uppercase tracking-tight">Vessel Wise:</label>
-                                    <select id="vesselFilter" class="filter-select" onchange="applyFilters()">
+                                    <select id="vesselFilter" class="filter-select">
                                         <option value="ALL">All Vessels</option>
                                     </select>
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <label class="text-[9px] font-extrabold text-blue-700 uppercase tracking-tight">BL Wise:</label>
-                                    <select id="blFilter" class="filter-select" onchange="applyFilters()">
+                                    <select id="blFilter" class="filter-select">
                                         <option value="ALL">All BLs</option>
                                     </select>
                                 </div>
@@ -165,15 +317,15 @@
                         <table class="w-full text-left text-[10px]">
                             <thead>
                                 <tr class="bg-slate-900 text-white font-bold uppercase tracking-wider">
-                                    <th class="px-2 py-1.5">BL NO</th>
-                                    <th class="px-2 py-1.5 w-20">LINE</th>
-                                    <th class="px-2 py-1.5">Disch_Vsl_Name</th>
-                                    <th class="px-2 py-1.5 text-center w-28 uppercase">Handover Date</th>
-                                    <th class="px-1.5 py-1.5 text-center bg-slate-800 w-10">20</th>
-                                    <th class="px-1.5 py-1.5 text-center bg-slate-800 w-10">40</th>
-                                    <th class="px-1.5 py-1.5 text-center bg-emerald-700 w-24 whitespace-normal uppercase">Railout Done</th>
-                                    <th class="px-1.5 py-1.5 text-center bg-blue-600 w-20 whitespace-normal uppercase">Arrived</th>
-                                    <th class="px-1.5 py-1.5 text-center bg-rose-700 w-24 whitespace-normal uppercase">Pending Containers</th>
+                                    <th class="px-2 py-2">BL NO</th>
+                                    <th class="px-2 py-2 w-20">LINE</th>
+                                    <th class="px-2 py-2">Disch_Vsl_Name</th>
+                                    <th class="px-2 py-2 text-center w-28 uppercase">Handover Date</th>
+                                    <th class="px-1.5 py-2 text-center bg-slate-800 w-10">20</th>
+                                    <th class="px-1.5 py-2 text-center bg-slate-800 w-10">40</th>
+                                    <th class="px-1.5 py-2 text-center bg-emerald-700 w-24 whitespace-normal uppercase">Railout Done</th>
+                                    <th class="px-1.5 py-2 text-center bg-blue-600 w-20 whitespace-normal uppercase">Arrived</th>
+                                    <th class="px-1.5 py-2 text-center bg-rose-700 w-24 whitespace-normal uppercase">Pending Containers</th>
                                 </tr>
                             </thead>
                             <tbody id="reportRows" class="font-bold text-slate-700 row-compact"></tbody>
@@ -183,7 +335,7 @@
                 </div>
 
                 <div class="grid grid-cols-1 gap-5 pb-10">
-                    <div id="railedBreakdownContainer" class="report-box">
+                    <div id="railedBreakdownContainer" class="report-box bg-white">
                         <div class="bg-emerald-600 px-4 py-1.5 flex justify-between items-center">
                             <div class="flex items-center gap-2 text-white animate-status-icon">
                                 <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>
@@ -194,11 +346,11 @@
                             <table class="w-full text-left text-[9px]">
                                 <thead class="bg-emerald-50 text-emerald-900 font-bold uppercase">
                                     <tr>
-                                        <th class="px-3 py-1">BL (Containers/Line)</th>
-                                        <th class="px-3 py-1 text-center w-24 whitespace-normal uppercase">Railout Done</th>
-                                        <th class="px-3 py-1">Train No / Rake</th>
-                                        <th class="px-3 py-1 text-center w-28">Railout Date</th>
-                                        <th class="px-3 py-1 uppercase">Current Train Location and ETA</th>
+                                        <th class="px-3 py-2">BL (Containers/Line)</th>
+                                        <th class="px-3 py-2 text-center w-24 whitespace-normal uppercase">Railout Done</th>
+                                        <th class="px-3 py-2">Train No / Rake</th>
+                                        <th class="px-3 py-2 text-center w-28">Railout Date</th>
+                                        <th class="px-3 py-2 uppercase">Current Train Location and ETA</th>
                                     </tr>
                                 </thead>
                                 <tbody id="railedDetailRows" class="font-bold text-slate-600 row-compact"></tbody>
@@ -207,7 +359,7 @@
                         </div>
                     </div>
 
-                    <div id="pendingBreakdownContainer" class="report-box">
+                    <div id="pendingBreakdownContainer" class="report-box bg-white">
                         <div class="bg-rose-600 px-4 py-1.5 flex justify-between items-center text-white">
                             <div class="flex items-center gap-2 animate-status-icon">
                                 <i data-lucide="clock" class="w-3.5 h-3.5"></i>
@@ -218,12 +370,12 @@
                             <table class="w-full text-left text-[9px]">
                                 <thead class="bg-rose-50 text-rose-900 font-bold uppercase">
                                     <tr>
-                                        <th class="px-3 py-1">BL (Containers/Line)</th>
-                                        <th class="px-3 py-1">Remarks (SMTP B)</th>
-                                        <th class="px-3 py-1 text-center w-24">PENDING</th>
-                                        <th class="px-3 py-1 uppercase">Vessel</th>
-                                        <th class="px-3 py-1 text-center w-28 uppercase">Handover Date</th>
-                                        <th class="px-3 py-1 uppercase">Current Status</th>
+                                        <th class="px-3 py-2">BL (Containers/Line)</th>
+                                        <th class="px-3 py-2">Remarks (SMTP B)</th>
+                                        <th class="px-3 py-2 text-center w-24">PENDING</th>
+                                        <th class="px-3 py-2 uppercase">Vessel</th>
+                                        <th class="px-3 py-2 text-center w-28 uppercase">Handover Date</th>
+                                        <th class="px-3 py-2 uppercase">Current Status</th>
                                     </tr>
                                 </thead>
                                 <tbody id="pendingDetailRows" class="font-bold text-slate-600 row-compact"></tbody>
@@ -238,7 +390,7 @@
 
     <script type="module">
         // ==========================================
-        // Firebase Configuration
+        // Firebase Configuration (Consolidated)
         // ==========================================
         const MY_CUSTOM_CONFIG = {
             apiKey: "AIzaSyBo1ZvNlwQN_s3k7XmyaD_-q0ikydEijFs",
@@ -252,245 +404,92 @@
 
         const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, getDoc, onSnapshot } = window.fb;
         
-        let db, auth, appId;
-        let isCloudEnabled = false;
-        let isCustomConfigUsed = false;
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : MY_CUSTOM_CONFIG;
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : "logistic-c6a6a-dashboard";
+        let isCloudEnabled = true;
 
+        // UI & State References
         const cloudIndicator = document.getElementById('cloudIndicator');
         const cloudLabel = document.getElementById('cloudLabel');
         const refreshBtn = document.getElementById('refreshBtn');
         const refreshIcon = document.getElementById('refreshIcon');
+        const saveImageBtn = document.getElementById('saveImageBtn');
+        const openUpdateModalBtn = document.getElementById('openUpdateModalBtn');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const closeModalBtnFooter = document.getElementById('closeModalBtnFooter');
+        const saveLocalChangesBtn = document.getElementById('saveLocalChangesBtn');
+        const authBtn = document.getElementById('authBtn');
+        const loginScreen = document.getElementById('loginScreen');
+        const vesselFilter = document.getElementById('vesselFilter');
+        const blFilter = document.getElementById('blFilter');
+        const shipperSearch = document.getElementById('shipperSearch');
+        const fileInput = document.getElementById('fileInput');
 
-        // Setup Logic
-        if (MY_CUSTOM_CONFIG.apiKey !== "") {
-            const app = initializeApp(MY_CUSTOM_CONFIG);
-            auth = getAuth(app);
-            db = getFirestore(app);
-            appId = "logistic-c6a6a-dashboard";
-            isCloudEnabled = true;
-            isCustomConfigUsed = true;
-        } else if (typeof __firebase_config !== 'undefined') {
-            const firebaseConfig = JSON.parse(__firebase_config);
-            const app = initializeApp(firebaseConfig);
-            auth = getAuth(app);
-            db = getFirestore(app);
-            appId = typeof __app_id !== 'undefined' ? __app_id : 'logistics-pro-report';
-            isCloudEnabled = true;
-        } else {
-            cloudLabel.innerText = "Offline Mode";
-            cloudIndicator.className = "w-2 h-2 rounded-full bg-orange-400";
-        }
+        // Website Tools
+        const rakeSelect = document.getElementById('rakeSelect');
+        const railDateDisplay = document.getElementById('railDateDisplay');
+        const arrivedDateInput = document.getElementById('arrivedDateInput');
+        const updateArrivedBtn = document.getElementById('updateArrivedBtn');
 
         let rawSheets = { shipper: [], smtp: [], website: [] };
         let selectedShipper = null;
+        let currentSheetInView = null;
         let trainDateRemarksMap = {}; 
         let currentShipperAllGroups = []; 
 
         lucide.createIcons();
 
-        // UI element references
-        const fileInput = document.getElementById('fileInput');
-        const emptyState = document.getElementById('emptyState');
-        const reportContainer = document.getElementById('reportContainer');
-        const shipperList = document.getElementById('shipperList');
-        const reportRows = document.getElementById('reportRows');
-        const railedDetailRows = document.getElementById('railedDetailRows');
-        const railedDetailFooter = document.getElementById('railedDetailFooter');
-        const pendingDetailRows = document.getElementById('pendingDetailRows');
-        const pendingDetailFooter = document.getElementById('pendingDetailFooter');
-        const railedBreakdownContainer = document.getElementById('railedBreakdownContainer');
-        const pendingBreakdownContainer = document.getElementById('pendingBreakdownContainer');
-        const reportFooter = document.getElementById('reportFooter');
-        const activeShipperName = document.getElementById('activeShipperName');
-        const overallStats = document.getElementById('overallStats');
-        const resetBtn = document.getElementById('resetBtn');
-        const downloadBtn = document.getElementById('downloadBtn');
-        const shipperSearch = document.getElementById('shipperSearch');
-        const currentTime = document.getElementById('currentTime');
-        const vesselFilter = document.getElementById('vesselFilter');
-        const blFilter = document.getElementById('blFilter');
-
-        currentTime.innerText = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-
-        // Authentication logic
-        async function initAuth() {
-            if (!isCloudEnabled) return;
-            try {
-                if (isCustomConfigUsed) {
-                    await signInAnonymously(auth);
-                } else if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-            } catch (error) {
-                console.error("Firebase Auth Error:", error.code, error.message);
-                cloudLabel.innerText = "Auth Error (Fix in Console)";
-                cloudIndicator.className = "w-2 h-2 rounded-full bg-red-500";
-            }
-        }
-
-        if (isCloudEnabled) {
-            onAuthStateChanged(auth, (user) => {
-                if (user) {
-                    cloudIndicator.className = "w-2 h-2 rounded-full bg-emerald-500";
-                    cloudLabel.innerText = "Online";
-                    // Initial load on login
-                    loadFromCloud();
-                }
-            });
-        }
-
-        // Firestore storage with chunking
-        async function saveToCloud() {
-            if (!isCloudEnabled || !auth.currentUser) return;
-            cloudLabel.innerText = "Saving...";
-            cloudIndicator.classList.add('animate-pulse');
-            try {
-                const str = JSON.stringify(rawSheets);
-                const chunkSize = 800000; 
-                const chunkCount = Math.ceil(str.length / chunkSize);
-                
-                for (let i = 0; i < chunkCount; i++) {
-                    const chunk = str.substring(i * chunkSize, (i + 1) * chunkSize);
-                    const chunkRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_chunks', `chunk_${i}`);
-                    await setDoc(chunkRef, { data: chunk });
-                }
-                
-                const metaRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_meta', 'latest');
-                await setDoc(metaRef, { chunkCount, updatedAt: new Date().toISOString() });
-                
-                cloudLabel.innerText = "Online";
-                cloudIndicator.classList.remove('animate-pulse');
-            } catch (e) {
-                cloudLabel.innerText = "Save Error";
-                console.error("Save Error:", e);
-            }
-        }
-
-        async function loadFromCloud() {
-            if (!isCloudEnabled || !auth.currentUser) return;
-            cloudLabel.innerText = "Loading...";
-            refreshIcon.classList.add('animate-spin');
-            try {
-                const metaRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_meta', 'latest');
-                const metaSnap = await getDoc(metaRef);
-                if (metaSnap.exists()) {
-                    const { chunkCount } = metaSnap.data();
-                    if (chunkCount === 0) {
-                        cloudLabel.innerText = "Online";
-                        refreshIcon.classList.remove('animate-spin');
-                        return;
-                    }
-                    
-                    let fullStr = "";
-                    for (let i = 0; i < chunkCount; i++) {
-                        const chunkRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_chunks', `chunk_${i}`);
-                        const chunkSnap = await getDoc(chunkRef);
-                        if (chunkSnap.exists()) fullStr += chunkSnap.data().data;
-                    }
-                    if (fullStr) {
-                        rawSheets = JSON.parse(fullStr);
-                        processCloudData();
-                    }
-                }
-                cloudLabel.innerText = "Online";
-            } catch (e) { 
-                console.error("Cloud Load Error:", e); 
-                cloudLabel.innerText = "Load Error";
-            } finally {
-                refreshIcon.classList.remove('animate-spin');
-            }
-        }
-
-        function processCloudData() {
-            trainDateRemarksMap = {};
-            if (rawSheets.website && rawSheets.website.length > 1) {
-                rawSheets.website.slice(1).forEach(row => {
-                    const train = String(row[4] || '').trim(); 
-                    const railDateRaw = row[8]; 
-                    const railDate = String(railDateRaw || '').trim(); 
-                    const remark = String(row[9] || '').trim(); 
-                    if (train && railDate && remark && remark !== '-') {
-                        trainDateRemarksMap[`${train}_${railDate}`] = remark;
-                    }
-                });
-            }
-            if (rawSheets.shipper && rawSheets.shipper.length) {
-                initDashboard();
-            }
-        }
-
-        // Business Logic for Rendering
+        // ------------------------------------------
+        // 1. DATE & HOISTED FUNCTIONS
+        // ------------------------------------------
         function formatToDDMMYYYY(val) {
             if (!val || val === '-' || val === 'N/A' || val === '') return val;
             let date;
-            if (typeof val === 'number') date = new Date(Math.round((val - 25569) * 86400 * 1000));
-            else date = new Date(val);
+            const numVal = parseFloat(val);
+            const looksNumeric = !isNaN(numVal) && isFinite(val) && !String(val).includes('-') && !String(val).includes('/');
+            
+            if (looksNumeric && numVal > 40000) {
+                date = new Date(Math.round((numVal - 25569) * 86400 * 1000));
+            } else if (typeof val === 'number') {
+                date = new Date(Math.round((val - 25569) * 86400 * 1000));
+            } else {
+                date = new Date(val);
+                if (isNaN(date.getTime()) && String(val).includes('-')) {
+                    const parts = String(val).split('-');
+                    if (parts.length === 3) {
+                        if (parts[0].length === 4) date = new Date(parts[0], parts[1]-1, parts[2]);
+                        else date = new Date(parts[2], parts[1]-1, parts[0]);
+                    }
+                }
+            }
             if (isNaN(date.getTime())) return val;
             const day = String(date.getDate()).padStart(2, '0');
             const month = String(date.getMonth() + 1).padStart(2, '0');
             const year = date.getFullYear();
-            return `${day}-${month}-${year}`;
+            const hh = String(date.getHours()).padStart(2, '0');
+            const mm = String(date.getMinutes()).padStart(2, '0');
+            return `${day}-${month}-${year} ${hh}:${mm}`;
         }
 
-        fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                const bstr = evt.target.result;
-                const wb = XLSX.read(bstr, { type: 'binary' });
-                const findSheet = (name) => wb.SheetNames.find(s => s.toUpperCase() === name.toUpperCase());
-                rawSheets = {
-                    shipper: XLSX.utils.sheet_to_json(wb.Sheets[findSheet('SHIPPER')], {header: 1}),
-                    smtp: XLSX.utils.sheet_to_json(wb.Sheets[findSheet('SMTP')], {header: 1}),
-                    website: XLSX.utils.sheet_to_json(wb.Sheets[findSheet('WEBSITE')], {header: 1})
-                };
-                if (isCloudEnabled) saveToCloud();
-                processCloudData();
-            };
-            reader.readAsBinaryString(file);
-        });
-
-        function initDashboard() {
-            emptyState.classList.add('hidden');
-            reportContainer.classList.remove('hidden');
-            resetBtn.classList.remove('hidden');
-            downloadBtn.classList.remove('hidden');
-            const headers = rawSheets.shipper[0];
-            const consIndex = headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE'));
-            const uniqueShippers = [...new Set(rawSheets.shipper.slice(1).map(row => row[consIndex]))].filter(Boolean).sort();
-            renderShipperList(uniqueShippers, consIndex);
-            if (uniqueShippers.length > 0) window.selectShipper(uniqueShippers[0], consIndex);
+        function formatToDDMMYY_HHMM(val) {
+            const f = formatToDDMMYYYY(val);
+            if (!f || !f.includes('-') || f.length < 10) return f;
+            // Example: "21-12-2025 15:30" -> substring(0,6) is "21-12-", substring(8) is "25 15:30"
+            return f.substring(0, 6) + f.substring(8);
         }
 
-        function renderShipperList(shippers, consIndex) {
-            const filter = shipperSearch.value.toLowerCase();
-            shipperList.innerHTML = shippers
-                .filter(s => String(s).toLowerCase().includes(filter))
-                .map(name => `
-                    <button onclick="window.selectShipper('${name.replace(/'/g, "\\'")}', ${consIndex})" class="shipper-btn w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold uppercase transition-all flex items-center justify-between group ${selectedShipper === name ? 'bg-blue-700 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}" data-name="${name}">
-                        <span class="truncate">${name}</span>
-                        <i data-lucide="chevron-right" class="w-3 h-3 ${selectedShipper === name ? 'opacity-100' : 'opacity-0'}"></i>
-                    </button>
-                `).join('');
-            lucide.createIcons();
-        }
-
-        window.selectShipper = function(name, consIndex) {
-            selectedShipper = name;
-            activeShipperName.innerText = name;
-            vesselFilter.value = "ALL";
-            blFilter.value = "ALL";
-            document.querySelectorAll('.shipper-btn').forEach(btn => {
-                const isActive = btn.getAttribute('data-name') === name;
-                btn.className = `shipper-btn w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold uppercase transition-all flex items-center justify-between group ${isActive ? 'bg-blue-700 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}`;
-            });
-            processAndRenderReport(consIndex, true); 
+        // Globalized helper to close modal
+        window.hideModal = function() {
+            document.getElementById('updateModal').classList.add('hidden');
         };
 
-        window.applyFilters = function() {
+        // ------------------------------------------
+        // 2. RENDERING LOGIC
+        // ------------------------------------------
+        function applyFilters() {
             if (!currentShipperAllGroups.length) return;
             let filtered = [...currentShipperAllGroups];
             const vVal = vesselFilter.value;
@@ -500,14 +499,106 @@
             renderStats(filtered);
             renderMainTable(filtered);
             renderDetailedBreakdown(filtered);
-        };
+        }
+
+        function renderStats(groups) {
+            const t20 = groups.reduce((acc, b) => acc + b.stats.s20, 0);
+            const t40 = groups.reduce((acc, b) => acc + b.stats.s40, 0);
+            const r20 = groups.reduce((acc, b) => acc + b.stats.r20, 0);
+            const r40 = groups.reduce((acc, b) => acc + b.stats.r40, 0);
+            const p20 = groups.reduce((acc, b) => acc + b.stats.p20, 0);
+            const p40 = groups.reduce((acc, b) => acc + b.stats.p40, 0);
+            const formatSubCount = (c20, c40, colorClass) => {
+                let parts = [];
+                if (c20 > 0) parts.push(`<span class="${colorClass}">(${c20} <span class="text-[8px]">x</span> 20")</span>`);
+                if (c40 > 0) parts.push(`<span class="${colorClass}">(${c40} <span class="text-[8px]">x</span> 40")</span>`);
+                return parts.join(' ');
+            };
+            const subColor = "text-blue-900 font-bold text-[12px]";
+            document.getElementById('overallStats').innerHTML = `<div class="bg-white p-2 rounded-xl border-b-4 border-b-orange-500 border border-slate-400 shadow-sm flex flex-col items-center"><span class="text-[7px] font-bold text-slate-400 uppercase tracking-widest">Total Containers</span><span class="text-lg font-bold text-slate-900">${t20 + t40}</span><div class="mt-0.5">${formatSubCount(t20, t40, subColor)}</div></div><div class="bg-emerald-50 p-2 rounded-xl border-b-4 border-b-emerald-500 border border-slate-400 shadow-sm flex flex-col items-center"><span class="text-[7px] font-bold text-emerald-600 uppercase tracking-widest">Railout Done</span><span class="text-lg font-bold text-emerald-700">${r20 + r40}</span><div class="mt-0.5">${formatSubCount(r20, r40, subColor)}</div></div><div class="bg-rose-50 p-2 rounded-xl border-b-4 border-b-rose-500 border border-slate-400 shadow-sm flex flex-col items-center"><span class="text-[7px] font-bold text-rose-600 uppercase tracking-widest">Pending</span><span class="text-lg font-bold text-rose-700">${p20 + p40}</span><div class="mt-0.5">${formatSubCount(p20, p40, subColor)}</div></div><div class="bg-white p-2 rounded-xl border-b-4 border-b-blue-600 border border-slate-400 shadow-sm flex flex-col items-center"><span class="text-[7px] font-bold text-blue-500 uppercase tracking-widest">Total B/L</span><span class="text-xl font-bold text-blue-600 mt-0.5 leading-none">${groups.length}</span></div>`;
+        }
+
+        function renderMainTable(groups) {
+            let g20 = 0, g40 = 0, gR = 0, gA = 0, gP = 0;
+            document.getElementById('reportRows').innerHTML = groups.map(bl => {
+                g20 += bl.stats.s20; g40 += bl.stats.s40; gR += bl.stats.railed; gP += bl.stats.pending;
+                const arrivedCount = bl.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
+                gA += arrivedCount;
+                const sizeLabel = `(${bl.stats.total}X${bl.stats.s40 > 0 ? '40' : '20'})`;
+                const vesselDisplay = (!bl.isAnySmtp && bl.stats.railed === 0) ? '<span class="text-rose-600 font-bold italic">NOT Handover</span>' : bl.vessel;
+                return `
+                    <tr class="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+                        <td class="px-2 py-1 font-bold text-slate-900 border-r border-slate-300 truncate">${bl.blNo} <span class="text-blue-600 font-bold ml-1 text-[8px] uppercase">${sizeLabel}</span></td>
+                        <td class="px-2 py-1 text-slate-600 border-r border-slate-300 font-bold uppercase truncate">${bl.line}</td>
+                        <td class="px-2 py-1 text-slate-700 border-r border-slate-300 font-bold uppercase truncate">${vesselDisplay}</td>
+                        <td class="px-2 py-1 text-slate-500 border-r border-slate-300 text-center font-bold uppercase text-[9px]">${bl.handoverDt}</td>
+                        <td class="px-1 py-1 text-center border-r border-slate-300 bg-slate-50/50 ${bl.stats.s20 > 0 ? 'text-slate-800' : 'text-slate-200'}">${bl.stats.s20 || '-'}</td>
+                        <td class="px-1 py-1 text-center border-r border-slate-300 bg-slate-50/50 ${bl.stats.s40 > 0 ? 'text-slate-800' : 'text-slate-200'}">${bl.stats.s40 || '-'}</td>
+                        <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-emerald-50 text-emerald-700">${bl.stats.railed || '-'}</td>
+                        <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-blue-50 text-blue-700">${arrivedCount || '-'}</td>
+                        <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-rose-50 text-rose-700">${bl.stats.pending || '-'}</td>
+                    </tr>
+                `;
+            }).join('');
+            document.getElementById('reportFooter').innerHTML = `
+                <tr class="bg-slate-100 text-slate-900">
+                    <td colspan="4" class="px-2 py-1.5 text-right uppercase font-bold text-slate-500 text-[9px]">Grand Totals</td>
+                    <td class="px-1 py-1.5 text-center text-xs font-bold border-r border-slate-300">${g20}</td>
+                    <td class="px-1 py-1.5 text-center text-xs font-bold border-r border-slate-300">${g40}</td>
+                    <td class="px-1.5 py-1.5 text-center text-xs font-bold text-emerald-700 border-r border-slate-300">${gR}</td>
+                    <td class="px-1.5 py-1.5 text-center text-xs font-bold text-blue-700 border-r border-slate-300">${gA}</td>
+                    <td class="px-1.5 py-1.5 text-center text-xs font-bold text-rose-700">${gP}</td>
+                </tr>
+            `;
+        }
+
+        function renderDetailedBreakdown(groups) {
+            const railedGroups = groups.filter(g => g.stats.railed > 0);
+            const pendingGroups = groups.filter(g => g.stats.pending > 0);
+            let totalRailedUnits = 0, totalPendingUnits = 0;
+            if (railedGroups.length === 0) document.getElementById('railedBreakdownContainer').classList.add('hidden');
+            else {
+                document.getElementById('railedBreakdownContainer').classList.remove('hidden');
+                let rHtml = '';
+                railedGroups.forEach(bl => {
+                    bl.railedDetails.forEach((detail, idx) => {
+                        totalRailedUnits += detail.count;
+                        const isArrived = /TRAIN ARRIVED/i.test(detail.remark);
+                        const remarkClass = isArrived ? 'bg-yellow-100 text-slate-900' : 'text-slate-500';
+                        rHtml += `<tr class="border-b border-slate-200 hover:bg-emerald-50/30">`;
+                        if (idx === 0) rHtml += `<td rowspan="${bl.railedDetails.length}" class="px-3 py-1 font-bold text-slate-900 border-r border-slate-300 align-top">${bl.blNo} <span class="text-blue-500 text-[8px] uppercase font-bold">(${bl.stats.total} / ${bl.line})</span></td>`;
+                        rHtml += `<td class="px-3 py-1 text-center font-bold text-emerald-700 bg-emerald-50 border-r border-slate-300">${detail.count}</td><td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${detail.train}</td><td class="px-3 py-1 text-center text-blue-600 font-bold border-r border-slate-300 uppercase whitespace-nowrap">${detail.date}</td><td class="px-3 py-1 ${remarkClass} text-[9px] font-bold">${detail.remark}</td></tr>`;
+                    });
+                    rHtml += `<tr class="bg-blue-100/60 font-bold border-b border-blue-200"><td class="px-3 py-1 text-blue-800 uppercase text-[8px]">Total</td><td class="px-3 py-1 text-center text-blue-900 border-r border-blue-200">${bl.stats.railed}</td><td colspan="3"></td></tr>`;
+                });
+                document.getElementById('railedDetailRows').innerHTML = rHtml;
+                document.getElementById('railedDetailFooter').innerHTML = `<tr class="bg-emerald-50 text-emerald-800 font-bold"><td class="px-3 py-1.5 text-right uppercase text-[9px]">Total Railed Units</td><td class="px-3 py-1.5 text-center text-[11px] border-r border-emerald-200">${totalRailedUnits}</td><td colspan="3"></td></tr>`;
+            }
+            if (pendingGroups.length === 0) document.getElementById('pendingBreakdownContainer').classList.add('hidden');
+            else {
+                document.getElementById('pendingBreakdownContainer').classList.remove('hidden');
+                let pHtml = '';
+                pendingGroups.forEach(bl => {
+                    totalPendingUnits += bl.stats.pending;
+                    const statusLabel = bl.isAnySmtp ? `<span class="text-blue-600 uppercase font-bold text-[9px]">${bl.handoverDt}</span>` : '<span class="text-rose-600 uppercase font-bold text-[9px]">Pending Handover</span>';
+                    const bRem = bl.smtpBRemarks.join(' | ');
+                    const isUrgent = /scan|scanning|damage/i.test(bRem);
+                    pHtml += `<tr class="border-b border-slate-200 hover:bg-rose-50/30"><td class="px-3 py-1 font-bold text-slate-900 border-r border-slate-300">${bl.blNo} <span class="text-blue-500 text-[8px] uppercase font-bold">(${bl.stats.total} / ${bl.line})</span></td><td class="px-3 py-1 text-slate-600 font-bold border-r border-slate-300 text-[8px] uppercase ${isUrgent ? 'text-rose-700 font-bold' : ''}">${bRem || '-'}</td><td class="px-3 py-1 text-center font-bold text-rose-700 bg-rose-50/50 border-r border-slate-300">${bl.stats.pending}</td><td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${bl.vessel}</td><td class="px-3 py-1 text-center font-bold uppercase border-r border-slate-300">${statusLabel}</td><td class="px-3 py-1 text-slate-500 text-[9px] font-bold">${bl.pendingRemarks.join(' | ') || 'Awaiting dispatch'}</td></tr>`;
+                });
+                document.getElementById('pendingDetailRows').innerHTML = pHtml;
+                document.getElementById('pendingDetailFooter').innerHTML = `<tr class="bg-rose-50 text-rose-800 font-bold"><td colspan="2" class="px-3 py-1.5 text-right uppercase text-[9px]">Total Pending Units</td><td class="px-3 py-1.5 text-center text-[11px] border-r border-rose-200">${totalPendingUnits}</td><td colspan="3"></td></tr>`;
+            }
+            lucide.createIcons();
+        }
 
         function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
             const headers = rawSheets.shipper[0];
+            if (!headers) return;
             const sizeIndex = headers.findIndex(h => String(h).toUpperCase().includes('SIZE'));
             const relevantRows = rawSheets.shipper.slice(1).filter(row => row[consIndex] === selectedShipper);
             const blGroups = {};
             const excludedTerms = ['CT3', 'CT4', 'MICT', 'SPRH', 'T2'];
+            
             relevantRows.forEach(row => {
                 const contNo = String(row[0] || '').trim(); 
                 const blNo = String(row[2] || 'N/A').trim(); 
@@ -538,7 +629,8 @@
                 if (isRailed) {
                     const trainNo = String(webRow[4] || '').trim();
                     const remark = trainDateRemarksMap[`${trainNo}_${railDateStr}`] || String(webRow[9] || '-').trim();
-                    const formattedRailDate = formatToDDMMYYYY(railDateRaw);
+                    const formattedRailDate = formatToDDMMYY_HHMM(railDateRaw);
+                    
                     let existingDetail = blGroups[blNo].railedDetails.find(d => d.train === trainNo && d.date === formattedRailDate);
                     if (existingDetail) existingDetail.count++;
                     else blGroups[blNo].railedDetails.push({ train: trainNo || 'Railed', date: formattedRailDate, remark: remark, count: 1 });
@@ -559,135 +651,436 @@
                 vesselFilter.innerHTML = '<option value="ALL">All Vessels</option>' + uniqueVessels.map(v => `<option value="${v}">${v}</option>`).join('');
                 blFilter.innerHTML = '<option value="ALL">All BLs</option>' + uniqueBLs.map(b => `<option value="${b}">${b}</option>`).join('');
             }
-            window.applyFilters();
+            applyFilters();
         }
 
-        function renderMainTable(groups) {
-            let g20 = 0, g40 = 0, gR = 0, gA = 0, gP = 0;
-            reportRows.innerHTML = groups.map(bl => {
-                g20 += bl.stats.s20; g40 += bl.stats.s40; gR += bl.stats.railed; gP += bl.stats.pending;
-                const arrivedCount = bl.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
-                gA += arrivedCount;
-                const sizeLabel = `(${bl.stats.total}X${bl.stats.s40 > 0 ? '40' : '20'})`;
-                const vesselDisplay = (!bl.isAnySmtp && bl.stats.railed === 0) ? '<span class="text-rose-600 font-bold italic">NOT Handover</span>' : bl.vessel;
-                return `
-                    <tr class="border-b border-slate-200 hover:bg-slate-50 transition-colors">
-                        <td class="px-2 py-1 font-bold text-slate-900 border-r border-slate-300 truncate">${bl.blNo} <span class="text-blue-600 font-bold ml-1 text-[8px] uppercase">${sizeLabel}</span></td>
-                        <td class="px-2 py-1 text-slate-600 border-r border-slate-300 font-bold uppercase truncate">${bl.line}</td>
-                        <td class="px-2 py-1 text-slate-700 border-r border-slate-300 font-bold uppercase truncate">${vesselDisplay}</td>
-                        <td class="px-2 py-1 text-slate-500 border-r border-slate-300 text-center font-bold uppercase text-[9px]">${bl.handoverDt}</td>
-                        <td class="px-1 py-1 text-center border-r border-slate-300 bg-slate-50/50 ${bl.stats.s20 > 0 ? 'text-slate-800' : 'text-slate-200'}">${bl.stats.s20 || '-'}</td>
-                        <td class="px-1 py-1 text-center border-r border-slate-300 bg-slate-50/50 ${bl.stats.s40 > 0 ? 'text-slate-800' : 'text-slate-200'}">${bl.stats.s40 || '-'}</td>
-                        <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-emerald-50 text-emerald-700">${bl.stats.railed || '-'}</td>
-                        <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-blue-50 text-blue-700">${arrivedCount || '-'}</td>
-                        <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-rose-50 text-rose-700">${bl.stats.pending || '-'}</td>
-                    </tr>
-                `;
-            }).join('');
-            reportFooter.innerHTML = `
-                <tr class="bg-slate-100 text-slate-900">
-                    <td colspan="4" class="px-2 py-1.5 text-right uppercase font-bold text-slate-500 text-[9px]">Grand Totals</td>
-                    <td class="px-1 py-1.5 text-center text-xs font-bold border-r border-slate-300">${g20}</td>
-                    <td class="px-1 py-1.5 text-center text-xs font-bold border-r border-slate-300">${g40}</td>
-                    <td class="px-1.5 py-1.5 text-center text-xs font-bold text-emerald-700 border-r border-slate-300">${gR}</td>
-                    <td class="px-1.5 py-1.5 text-center text-xs font-bold text-blue-700 border-r border-slate-300">${gA}</td>
-                    <td class="px-1.5 py-1.5 text-center text-xs font-bold text-rose-700">${gP}</td>
-                </tr>
-            `;
-        }
-
-        function renderDetailedBreakdown(groups) {
-            const railedGroups = groups.filter(g => g.stats.railed > 0);
-            const pendingGroups = groups.filter(g => g.stats.pending > 0);
-            let totalRailedUnits = 0, totalPendingUnits = 0;
-            if (railedGroups.length === 0) railedBreakdownContainer.classList.add('hidden');
-            else {
-                railedBreakdownContainer.classList.remove('hidden');
-                let rHtml = '';
-                railedGroups.forEach(bl => {
-                    bl.railedDetails.forEach((detail, idx) => {
-                        totalRailedUnits += detail.count;
-                        const isArrived = /TRAIN ARRIVED/i.test(detail.remark);
-                        const remarkClass = isArrived ? 'bg-yellow-100 text-slate-900' : 'text-slate-500';
-                        rHtml += `<tr class="border-b border-slate-200 hover:bg-emerald-50/30">`;
-                        if (idx === 0) rHtml += `<td rowspan="${bl.railedDetails.length}" class="px-3 py-1 font-bold text-slate-900 border-r border-slate-300 align-top">${bl.blNo} <span class="text-blue-500 text-[8px] uppercase font-bold">(${bl.stats.total} / ${bl.line})</span></td>`;
-                        rHtml += `<td class="px-3 py-1 text-center font-bold text-emerald-700 bg-emerald-50 border-r border-slate-300">${detail.count}</td><td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${detail.train}</td><td class="px-3 py-1 text-center text-blue-600 font-bold border-r border-slate-300 uppercase whitespace-nowrap">${detail.date}</td><td class="px-3 py-1 ${remarkClass} text-[9px] font-bold">${detail.remark}</td></tr>`;
-                    });
-                    rHtml += `<tr class="bg-blue-100/60 font-bold border-b border-blue-200"><td class="px-3 py-1 text-blue-800 uppercase text-[8px]">Total</td><td class="px-3 py-1 text-center text-blue-900 border-r border-blue-200">${bl.stats.railed}</td><td colspan="3"></td></tr>`;
-                });
-                railedDetailRows.innerHTML = rHtml;
-                railedDetailFooter.innerHTML = `<tr class="bg-emerald-50 text-emerald-800 font-bold"><td class="px-3 py-1.5 text-right uppercase text-[9px]">Total Railed Units</td><td class="px-3 py-1.5 text-center text-[11px] border-r border-emerald-200">${totalRailedUnits}</td><td colspan="3"></td></tr>`;
-            }
-            if (pendingGroups.length === 0) pendingBreakdownContainer.classList.add('hidden');
-            else {
-                pendingBreakdownContainer.classList.remove('hidden');
-                let pHtml = '';
-                pendingGroups.forEach(bl => {
-                    totalPendingUnits += bl.stats.pending;
-                    const statusLabel = bl.isAnySmtp ? `<span class="text-blue-600 uppercase font-bold text-[9px]">${bl.handoverDt}</span>` : '<span class="text-rose-600 uppercase font-bold text-[9px]">Pending Handover</span>';
-                    const bRem = bl.smtpBRemarks.join(' | ');
-                    const isUrgent = /scan|scanning|damage/i.test(bRem);
-                    pHtml += `<tr class="border-b border-slate-200 hover:bg-rose-50/30"><td class="px-3 py-1 font-bold text-slate-900 border-r border-slate-300">${bl.blNo} <span class="text-blue-500 text-[8px] uppercase font-bold">(${bl.stats.total} / ${bl.line})</span></td><td class="px-3 py-1 text-slate-600 font-bold border-r border-slate-300 text-[8px] uppercase ${isUrgent ? 'text-rose-700 font-bold' : ''}">${bRem || '-'}</td><td class="px-3 py-1 text-center font-bold text-rose-700 bg-rose-50/50 border-r border-slate-300">${bl.stats.pending}</td><td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${bl.vessel}</td><td class="px-3 py-1 text-center font-bold uppercase border-r border-slate-300">${statusLabel}</td><td class="px-3 py-1 text-slate-500 text-[9px] font-bold">${bl.pendingRemarks.join(' | ') || 'Awaiting dispatch'}</td></tr>`;
-                });
-                pendingDetailRows.innerHTML = pHtml;
-                pendingDetailFooter.innerHTML = `<tr class="bg-rose-50 text-rose-800 font-bold"><td colspan="2" class="px-3 py-1.5 text-right uppercase text-[9px]">Total Pending Units</td><td class="px-3 py-1.5 text-center text-[11px] border-r border-rose-200">${totalPendingUnits}</td><td colspan="3"></td></tr>`;
-            }
+        function renderShipperList(shippers, consIndex) {
+            const listEl = document.getElementById('shipperList');
+            const filter = shipperSearch.value.toLowerCase();
+            listEl.innerHTML = shippers
+                .filter(s => String(s).toLowerCase().includes(filter))
+                .map(name => `
+                    <button class="shipper-select-btn w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold uppercase transition-all flex items-center justify-between group ${selectedShipper === name ? 'bg-blue-700 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100'}" data-name="${name.replace(/'/g, "\\'")}">
+                        <span class="truncate">${name}</span>
+                        <i data-lucide="chevron-right" class="w-3 h-3 ${selectedShipper === name ? 'opacity-100' : 'opacity-0'}"></i>
+                    </button>
+                `).join('');
             lucide.createIcons();
+            document.querySelectorAll('.shipper-select-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const name = e.currentTarget.getAttribute('data-name');
+                    window.selectShipper(name, consIndex);
+                });
+            });
         }
 
-        function renderStats(groups) {
-            const t20 = groups.reduce((acc, b) => acc + b.stats.s20, 0);
-            const t40 = groups.reduce((acc, b) => acc + b.stats.s40, 0);
-            const r20 = groups.reduce((acc, b) => acc + b.stats.r20, 0);
-            const r40 = groups.reduce((acc, b) => acc + b.stats.r40, 0);
-            const p20 = groups.reduce((acc, b) => acc + b.stats.p20, 0);
-            const p40 = groups.reduce((acc, b) => acc + b.stats.p40, 0);
-            const formatSubCount = (c20, c40, colorClass) => {
-                let parts = [];
-                if (c20 > 0) parts.push(`<span class="${colorClass}">(${c20} <span class="text-[8px]">x</span> 20")</span>`);
-                if (c40 > 0) parts.push(`<span class="${colorClass}">(${c40} <span class="text-[8px]">x</span> 40")</span>`);
-                return parts.join(' ');
-            };
-            const subColor = "text-blue-900 font-bold text-[12px]";
-            overallStats.innerHTML = `<div class="bg-white p-2 rounded-xl border-b-4 border-b-orange-500 border border-slate-400 shadow-sm flex flex-col items-center"><span class="text-[7px] font-bold text-slate-400 uppercase tracking-widest">Total Containers</span><span class="text-lg font-bold text-slate-900">${t20 + t40}</span><div class="mt-0.5">${formatSubCount(t20, t40, subColor)}</div></div><div class="bg-emerald-50 p-2 rounded-xl border-b-4 border-b-emerald-500 border border-slate-400 shadow-sm flex flex-col items-center"><span class="text-[7px] font-bold text-emerald-600 uppercase tracking-widest">Railout Done</span><span class="text-lg font-bold text-emerald-700">${r20 + r40}</span><div class="mt-0.5">${formatSubCount(r20, r40, subColor)}</div></div><div class="bg-rose-50 p-2 rounded-xl border-b-4 border-b-rose-500 border border-slate-400 shadow-sm flex flex-col items-center"><span class="text-[7px] font-bold text-rose-600 uppercase tracking-widest">Pending</span><span class="text-lg font-bold text-rose-700">${p20 + p40}</span><div class="mt-0.5">${formatSubCount(p20, p40, subColor)}</div></div><div class="bg-white p-2 rounded-xl border-b-4 border-b-blue-600 border border-slate-400 shadow-sm flex flex-col items-center"><span class="text-[7px] font-bold text-blue-500 uppercase tracking-widest">Total B/L</span><span class="text-xl font-bold text-blue-600 mt-0.5 leading-none">${groups.length}</span></div>`;
+        window.selectShipper = function(name, consIndex) {
+            selectedShipper = name;
+            const activeNameEl = document.getElementById('activeShipperName');
+            if(activeNameEl) activeNameEl.innerText = name;
+            vesselFilter.value = "ALL";
+            blFilter.value = "ALL";
+            const uniqueShippers = [...new Set(rawSheets.shipper.slice(1).map(row => row[consIndex]))].filter(Boolean).sort();
+            renderShipperList(uniqueShippers, consIndex);
+            processAndRenderReport(consIndex, true); 
+        };
+
+        function processCloudData() {
+            trainDateRemarksMap = {};
+            if (rawSheets.website && rawSheets.website.length > 1) {
+                rawSheets.website.slice(1).forEach(row => {
+                    const train = String(row[4] || '').trim(); 
+                    const railDateRaw = row[8]; 
+                    const railDate = String(railDateRaw || '').trim(); 
+                    const remark = String(row[9] || '').trim(); 
+                    if (train && railDate && remark && remark !== '-') {
+                        trainDateRemarksMap[`${train}_${railDate}`] = remark;
+                    }
+                });
+            }
+            if (rawSheets.shipper && rawSheets.shipper.length) initDashboard();
         }
 
-        downloadBtn.addEventListener('click', () => {
-            if (!selectedShipper) return;
-            let dataToExport = [...currentShipperAllGroups];
-            if (vesselFilter.value !== "ALL") dataToExport = dataToExport.filter(g => g.vessel === vesselFilter.value);
-            if (blFilter.value !== "ALL") dataToExport = dataToExport.filter(g => g.blNo === blFilter.value);
-            const wb = XLSX.utils.book_new();
-            const flat = dataToExport.map(g => ({
-                'BL Number': g.blNo, 'Line': g.line, 'Vessel': g.vessel, 'Handover Date': g.handoverDt,
-                '20ft': g.stats.s20, '40ft': g.stats.s40, 'Railout Done': g.stats.railed, 
-                'Arrived': g.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0), 
-                'Pending Containers': g.stats.pending
-            }));
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flat), "Summary");
-            XLSX.writeFile(wb, `${selectedShipper}_Logistics.xlsx`);
-        });
+        function initDashboard() {
+            const emptyState = document.getElementById('emptyState');
+            const reportContainer = document.getElementById('reportContainer');
+            emptyState.classList.add('hidden');
+            reportContainer.classList.remove('hidden');
+            if(document.getElementById('downloadBtn')) document.getElementById('downloadBtn').classList.remove('hidden');
+            if(document.getElementById('resetBtn')) document.getElementById('resetBtn').classList.remove('hidden');
 
-        refreshBtn.addEventListener('click', () => {
-            if (isCloudEnabled) loadFromCloud();
-        });
+            const headers = rawSheets.shipper[0];
+            if(!headers) return;
+            const consIndex = headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE'));
+            renderShipperList([...new Set(rawSheets.shipper.slice(1).map(row => row[consIndex]))].filter(Boolean).sort(), consIndex);
+            
+            if (!selectedShipper) {
+                 const firstShipper = [...new Set(rawSheets.shipper.slice(1).map(row => row[consIndex]))].filter(Boolean).sort()[0];
+                 if(firstShipper) window.selectShipper(firstShipper, consIndex);
+            } else {
+                 processAndRenderReport(consIndex, true);
+            }
+        }
 
-        resetBtn.addEventListener('click', async () => {
+        async function loadFromCloud() {
             if (!isCloudEnabled || !auth.currentUser) return;
-            const metaRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_meta', 'latest');
-            await setDoc(metaRef, { chunkCount: 0, updatedAt: new Date().toISOString() });
-            location.reload();
+            cloudLabel.innerText = "Loading...";
+            refreshIcon.classList.add('animate-spin');
+            try {
+                const metaRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_meta', 'latest');
+                const metaSnap = await getDoc(metaRef);
+                if (metaSnap.exists()) {
+                    const { chunkCount } = metaSnap.data();
+                    if (chunkCount === 0) {
+                        cloudLabel.innerText = "Online";
+                        refreshIcon.classList.remove('animate-spin');
+                        return;
+                    }
+                    let fullStr = "";
+                    for (let i = 0; i < chunkCount; i++) {
+                        const chunkRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_chunks', `chunk_${i}`);
+                        const chunkSnap = await getDoc(chunkRef);
+                        if (chunkSnap.exists()) fullStr += chunkSnap.data().data;
+                    }
+                    if (fullStr) {
+                        rawSheets = JSON.parse(fullStr);
+                        processCloudData();
+                    }
+                }
+                cloudLabel.innerText = "Online";
+            } catch (e) { 
+                console.error("Cloud Load Error:", e); 
+                cloudLabel.innerText = "Load Error";
+            } finally {
+                refreshIcon.classList.remove('animate-spin');
+            }
+        }
+
+        async function saveToCloud() {
+            if (!isCloudEnabled || !auth.currentUser) return;
+            cloudLabel.innerText = "Saving...";
+            cloudIndicator.classList.add('animate-pulse');
+            try {
+                const str = JSON.stringify(rawSheets);
+                const chunkSize = 800000; 
+                const chunkCount = Math.ceil(str.length / chunkSize);
+                for (let i = 0; i < chunkCount; i++) {
+                    const chunk = str.substring(i * chunkSize, (i + 1) * chunkSize);
+                    const chunkRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_chunks', `chunk_${i}`);
+                    await setDoc(chunkRef, { data: chunk });
+                }
+                const metaRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_meta', 'latest');
+                await setDoc(metaRef, { chunkCount, updatedAt: new Date().toISOString() });
+                cloudLabel.innerText = "Online";
+                cloudIndicator.classList.remove('animate-pulse');
+            } catch (e) {
+                console.error("Save Error:", e);
+                cloudLabel.innerText = "Save Error";
+            }
+        }
+
+        // ------------------------------------------
+        // 3. LOGIN & MODAL CONTROLS
+        // ------------------------------------------
+        const handleLogin = () => {
+            const passwordField = document.getElementById('loginPassword');
+            const input = passwordField.value;
+            const error = document.getElementById('loginError');
+            if (input === "16111980") {
+                sessionStorage.setItem('isLoggedIn', 'true');
+                loginScreen.style.opacity = '0';
+                setTimeout(() => {
+                    loginScreen.classList.add('hidden');
+                    lucide.createIcons();
+                }, 500);
+            } else {
+                error.classList.remove('hidden');
+                passwordField.value = '';
+                passwordField.focus();
+            }
+        };
+
+        // ------------------------------------------
+        // 4. WEBSITE RAKE & ARRIVAL LOGIC
+        // ------------------------------------------
+        function populateRakeList() {
+            if (!rawSheets.website || rawSheets.website.length <= 1) return;
+            const uniqueRakes = new Map();
+            rawSheets.website.slice(1).forEach(row => {
+                const rake = String(row[4] || '').trim();
+                const remark = String(row[9] || '').toUpperCase();
+                // Filter: Only show rakes where Remark contains "RAILOUT FROM"
+                if (rake && rake !== "-" && remark.includes("RAILOUT FROM")) {
+                    uniqueRakes.set(rake, row[8]); 
+                }
+            });
+
+            rakeSelect.innerHTML = '<option value="">Select Rake No</option>';
+            [...uniqueRakes.keys()].sort().forEach(rake => {
+                const option = document.createElement('option');
+                option.value = rake;
+                option.textContent = rake;
+                option.dataset.raildate = uniqueRakes.get(rake);
+                rakeSelect.appendChild(option);
+            });
+        }
+
+        rakeSelect.addEventListener('change', () => {
+            const selected = rakeSelect.selectedOptions[0];
+            // Added call to formatToDDMMYY_HHMM logic to display dd-mm-yy hh:mm
+            const rawVal = selected ? (selected.dataset.raildate || '') : '';
+            railDateDisplay.value = rawVal ? formatToDDMMYY_HHMM(rawVal) : '';
+        });
+
+        updateArrivedBtn.addEventListener('click', () => {
+            const rake = rakeSelect.value;
+            const arrivedDate = arrivedDateInput.value.trim();
+            if (!rake) { alert("Please select a Rake No first."); return; }
+            if (!arrivedDate) { alert("Please enter Arrival Date."); return; }
+
+            let updateCount = 0;
+            rawSheets.website.slice(1).forEach((row) => {
+                const currentRemark = String(row[9] || '').toUpperCase();
+                // Fixed Condition: Only update if Rake matches AND Remark contains "RAILOUT FROM"
+                if (String(row[4]).trim() === rake && currentRemark.includes("RAILOUT FROM")) {
+                    row[9] = `TRAIN ARRIVED ON ${arrivedDate}`;
+                    updateCount++;
+                }
+            });
+
+            if (updateCount > 0) {
+                alert(`Success! ${updateCount} containers updated for Rake ${rake}.`);
+                saveToCloud();
+                processCloudData();
+                window.viewSheetData('website'); 
+                populateRakeList(); 
+                arrivedDateInput.value = '';
+            } else {
+                alert("No matching containers with 'RAILOUT FROM' remark found for this rake.");
+            }
+        });
+
+        // ------------------------------------------
+        // 5. UPDATE MODAL VIEW LOGIC
+        // ------------------------------------------
+        window.viewSheetData = (sheetName) => {
+            currentSheetInView = sheetName;
+            const container = document.getElementById('sheetDataContainer');
+            const data = rawSheets[sheetName];
+            const section = document.getElementById('websiteUpdateSection');
+
+            if (sheetName === 'website') {
+                section.classList.remove('hidden');
+                section.classList.add('flex');
+                populateRakeList();
+            } else {
+                section.classList.add('hidden');
+                section.classList.remove('flex');
+            }
+
+            document.querySelectorAll('.sheet-tab-btn').forEach(btn => {
+                if (btn.getAttribute('data-sheet') === sheetName) {
+                    btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+                    btn.classList.remove('bg-white', 'text-slate-700');
+                } else {
+                    btn.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+                    btn.classList.add('bg-white', 'text-slate-700');
+                }
+            });
+
+            if (!data || data.length === 0) {
+                container.innerHTML = `<div class="p-10 text-center font-bold text-slate-400 uppercase text-[10px]">No data found in ${sheetName}</div>`;
+                return;
+            }
+
+            let html = `<table id="editableTable" class="min-w-full text-[9px] uppercase">`;
+            data.forEach((row, rowIndex) => {
+                const rowClass = rowIndex === 0 ? 'bg-slate-800 text-white font-bold sticky top-0' : 'border-b border-slate-200 hover:bg-slate-50';
+                html += `<tr class="${rowClass}">`;
+                const maxCols = Math.max(...data.map(r => r.length));
+                for(let colIndex = 0; colIndex < maxCols; colIndex++) {
+                    const isHeader = rowIndex === 0;
+                    const content = row[colIndex] !== undefined && row[colIndex] !== null ? row[colIndex] : '';
+                    html += `<td class="px-2 py-1.5 border-r border-slate-200 truncate max-w-[200px] ${!isHeader ? 'editable-cell' : ''}" 
+                                ${!isHeader ? 'contenteditable="true"' : ''} 
+                                data-row="${rowIndex}" data-col="${colIndex}">${content}</td>`;
+                }
+                html += `</tr>`;
+            });
+            html += `</table>`;
+            container.innerHTML = html;
+        };
+
+        // ------------------------------------------
+        // 6. MAIN APP INITIALIZATION & EVENTS
+        // ------------------------------------------
+        const initAuth = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    try { await signInWithCustomToken(auth, __initial_auth_token); } catch (e) { await signInAnonymously(auth); }
+                } else { await signInAnonymously(auth); }
+            } catch (error) {
+                cloudLabel.innerText = "Auth Error";
+                cloudIndicator.className = "w-2 h-2 rounded-full bg-red-500";
+            }
+        };
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                cloudIndicator.className = "w-2 h-2 rounded-full bg-emerald-500";
+                cloudLabel.innerText = "Online";
+                loadFromCloud();
+                const currentTimeEl = document.getElementById('currentTime');
+                if (currentTimeEl) currentTimeEl.innerText = formatToDDMMYYYY(new Date());
+            }
+        });
+
+        authBtn.addEventListener('click', handleLogin);
+        document.getElementById('loginPassword').addEventListener('keypress', (e) => { if (e.key === 'Enter') handleLogin(); });
+
+        document.getElementById('tabShipper').addEventListener('click', () => window.viewSheetData('shipper'));
+        document.getElementById('tabSmtp').addEventListener('click', () => window.viewSheetData('smtp'));
+        document.getElementById('tabWebsite').addEventListener('click', () => window.viewSheetData('website'));
+
+        openUpdateModalBtn.addEventListener('click', () => {
+            document.getElementById('updateModal').classList.remove('hidden');
+            lucide.createIcons();
+        });
+
+        closeModalBtn.addEventListener('click', window.hideModal);
+        closeModalBtnFooter.addEventListener('click', window.hideModal);
+
+        saveLocalChangesBtn.addEventListener('click', () => {
+            if (!currentSheetInView) return;
+            const cells = document.querySelectorAll('#editableTable .editable-cell');
+            cells.forEach(cell => {
+                const r = parseInt(cell.getAttribute('data-row'));
+                const c = parseInt(cell.getAttribute('data-col'));
+                if (!rawSheets[currentSheetInView][r]) rawSheets[currentSheetInView][r] = [];
+                rawSheets[currentSheetInView][r][c] = cell.innerText.trim();
+            });
+            saveToCloud(); processCloudData();
+            saveLocalChangesBtn.innerHTML = 'CHANGES SAVED!';
+            setTimeout(() => { saveLocalChangesBtn.innerHTML = 'Save Changes'; }, 2000);
+        });
+
+        const addSmtpBtn = document.getElementById('addSmtpBtn');
+        addSmtpBtn.addEventListener('click', () => {
+            if (!rawSheets.smtp || rawSheets.smtp.length <= 1) { alert("SMTP data is empty."); return; }
+            if (!rawSheets.website || rawSheets.website.length === 0) rawSheets.website = [["UID", "SR_NO", "BILL_NO", "CONTAINER_NO", "RAKE_NO", "STACK", "SOURCE", "DESTINATION", "RAILING_DATE", "REMARKS"]];
+            const smtpHeaders = rawSheets.smtp[0];
+            const sContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT'));
+            const sBlIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL'));
+            const sTpIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('TP_SUBMITTING')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('TP_SUBMITTING')) : 18;
+
+            let addedCount = 0;
+            rawSheets.smtp.slice(1).forEach(sRow => {
+                const contNo = String(sRow[sContIdx] || '').trim();
+                if (!contNo) return;
+                const alreadyExists = rawSheets.website.some(w => String(w[3] || '').trim() === contNo);
+                if (!alreadyExists) {
+                    const blNo = String(sRow[sBlIdx] || '').trim();
+                    const tpDate = formatToDDMMYYYY(sRow[sTpIdx]);
+                    rawSheets.website.push([103, rawSheets.website.length, blNo, contNo, "-", "Lower", "Mundra", "KILARAIPUR", "Pending", `CONTAINER HANDOVER TO HTPL ON ${tpDate}`]);
+                    addedCount++;
+                }
+            });
+            window.viewSheetData('website');
+            alert(`${addedCount} added.`);
+            saveToCloud(); processCloudData();
+        });
+
+        const websiteExcelInput = document.getElementById('websiteExcelInput');
+        websiteExcelInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const bstr = evt.target.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const rakeNo = ws['H7'] ? String(ws['H7'].v).trim() : '';
+                const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                if (jsonData.length < 11) return;
+                let matchCount = 0;
+                jsonData.slice(10).forEach(exRow => {
+                    const contNo = String(exRow[2] || '').trim(); 
+                    const railDateFormatted = formatToDDMMYY_HHMM(exRow[33]); 
+                    if (contNo && rawSheets.website) {
+                        const webMatchIndex = rawSheets.website.findIndex(w => String(w[3] || '').trim() === contNo);
+                        if (webMatchIndex !== -1) {
+                            rawSheets.website[webMatchIndex][4] = rakeNo;
+                            rawSheets.website[webMatchIndex][8] = railDateFormatted;
+                            rawSheets.website[webMatchIndex][9] = `RAILOUT FROM MUNDRA ON ${railDateFormatted}`;
+                            matchCount++;
+                        }
+                    }
+                });
+                window.viewSheetData('website');
+                alert(`${matchCount} updated.`);
+                saveToCloud(); processCloudData();
+            };
+            reader.readAsBinaryString(file);
+            e.target.value = '';
+        });
+
+        refreshBtn.addEventListener('click', () => { loadFromCloud(); });
+        saveImageBtn.addEventListener('click', () => {
+            if (!selectedShipper || !rawSheets.shipper.length) return;
+            const area = document.getElementById('reportContainer');
+            const btn = document.getElementById('saveImageBtn');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i> SAVING...';
+            lucide.createIcons();
+            setTimeout(() => {
+                html2canvas(area, {
+                    backgroundColor: "#e2e8f0", scale: 3, useCORS: true, allowTaint: true,
+                    onclone: (clonedDoc) => {
+                        const clonedArea = clonedDoc.getElementById('reportContainer');
+                        clonedArea.style.display = 'block';
+                        clonedArea.style.padding = '40px';
+                        const noPrints = clonedDoc.querySelectorAll('.no-print');
+                        noPrints.forEach(el => { if (el.id !== 'overallStats') el.style.display = 'none'; });
+                    }
+                }).then(canvas => {
+                    const link = document.createElement('a');
+                    link.download = `LOGISTICS_REPORT_${selectedShipper}.png`;
+                    link.href = canvas.toDataURL('image/png', 1.0);
+                    link.click();
+                    btn.innerHTML = originalHTML;
+                    lucide.createIcons();
+                });
+            }, 800);
+        });
+
+        vesselFilter.addEventListener('change', applyFilters);
+        blFilter.addEventListener('change', applyFilters);
+        shipperSearch.addEventListener('input', () => {
+            const headers = rawSheets.shipper[0];
+            if(!headers) return;
+            const consIndex = headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE'));
+            renderShipperList([...new Set(rawSheets.shipper.slice(1).map(row => row[consIndex]))].filter(Boolean).sort(), consIndex);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const bstr = evt.target.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const findSheet = (name) => wb.SheetNames.find(s => s.toUpperCase() === name.toUpperCase());
+                rawSheets = {
+                    shipper: XLSX.utils.sheet_to_json(wb.Sheets[findSheet('SHIPPER')], {header: 1}),
+                    smtp: XLSX.utils.sheet_to_json(wb.Sheets[findSheet('SMTP')], {header: 1}),
+                    website: XLSX.utils.sheet_to_json(wb.Sheets[findSheet('WEBSITE')], {header: 1})
+                };
+                saveToCloud(); processCloudData();
+            };
+            reader.readAsBinaryString(file);
         });
 
         initAuth();
-
-        shipperSearch.addEventListener('input', () => {
-            if (!rawSheets.shipper || !rawSheets.shipper.length) return;
-            const consIndex = rawSheets.shipper[0].findIndex(h => String(h).toUpperCase().includes('CONSIGNEE'));
-            const uniqueShippers = [...new Set(rawSheets.shipper.slice(1).map(row => row[consIndex]))].filter(Boolean).sort();
-            renderShipperList(uniqueShippers, consIndex);
-        });
-
     </script>
 </body>
 </html>
