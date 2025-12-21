@@ -109,7 +109,21 @@
             z-index: 9998;
             padding: 20px;
         }
-        #updateModal.hidden {
+        
+        /* Manual Date Entry Modal - Highest Priority Layering */
+        #manualDateModal {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0,0,0,0.75);
+            backdrop-filter: blur(6px); /* Blurs everything behind, including other modals */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 99999; /* Set to very high value to always be on top */
+            padding: 20px;
+        }
+        
+        #updateModal.hidden, #manualDateModal.hidden {
             display: none !important;
         }
         
@@ -117,6 +131,11 @@
             background-color: #fef9c3;
             outline: 2px solid #eab308;
             border-radius: 2px;
+        }
+
+        .delete-row-btn:hover {
+            color: #e11d48;
+            transform: scale(1.1);
         }
     </style>
 </head>
@@ -153,9 +172,15 @@
                     <i data-lucide="database" class="w-5 h-5 text-red-500"></i>
                     <h2 class="font-bold uppercase tracking-tight text-sm">Update & View Source Data</h2>
                 </div>
-                <button id="closeModalBtn" class="text-slate-400 hover:text-white transition-colors">
-                    <i data-lucide="x" class="w-6 h-6"></i>
-                </button>
+                <div class="flex items-center gap-4">
+                    <button id="deleteAllRowsBtn" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg font-bold text-[9px] uppercase transition-all flex items-center gap-1.5 shadow-sm active:scale-95">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        Complete Data Delete
+                    </button>
+                    <button id="closeModalBtn" class="text-slate-400 hover:text-white transition-colors">
+                        <i data-lucide="x" class="w-6 h-6"></i>
+                    </button>
+                </div>
             </div>
             
             <div class="p-3 bg-slate-100 border-b border-slate-200 flex flex-col gap-3 shrink-0">
@@ -166,13 +191,33 @@
                         <button id="tabWebsite" class="sheet-tab-btn px-4 py-2 bg-white border border-slate-300 rounded-lg font-bold text-[10px] uppercase hover:bg-blue-50 transition-all" data-sheet="website">WEBSITE</button>
                     </div>
 
+                    <!-- Shipper Tab Context Tools -->
+                    <div id="shipperUpdateSection" class="hidden items-center gap-3 bg-white p-2 rounded-xl border border-slate-300 shadow-sm flex-wrap">
+                        <label class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
+                            <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
+                            UPLOAD SHIPPER EXCEL
+                            <input type="file" id="shipperExcelInput" class="hidden" accept=".xlsx, .xls">
+                        </label>
+                        <p class="text-[9px] font-bold text-slate-400 italic">Expected Headers: A=CONT_Nos., B=Size, C=BL_No., D=Consignee</p>
+                    </div>
+
+                    <!-- SMTP Tab Context Tools -->
+                    <div id="smtpUpdateSection" class="hidden items-center gap-3 bg-white p-2 rounded-xl border border-slate-300 shadow-sm flex-wrap">
+                        <label class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
+                            <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
+                            UPLOAD SMTP EXCEL
+                            <input type="file" id="smtpExcelInput" class="hidden" accept=".xlsx, .xls">
+                        </label>
+                        <p class="text-[9px] font-bold text-slate-400 italic">Checks Cell L (12th Col) for "KILARAIPUR/LUDHIANA" & skips duplicates.</p>
+                    </div>
+
+                    <!-- Website Tab Context Tools -->
                     <div id="websiteUpdateSection" class="hidden items-center gap-3 bg-white p-2 rounded-xl border border-slate-300 shadow-sm flex-wrap">
                         <div class="flex items-center gap-2 border-r border-slate-200 pr-3">
                             <select id="rakeSelect" class="bg-slate-50 border border-slate-300 text-[10px] font-bold rounded-lg px-2 py-1.5 outline-none w-44">
                                 <option value="">Select Rake No</option>
                             </select>
                             
-                            <!-- Modified section for RAILING_DATE label -->
                             <div class="flex flex-col">
                                 <span class="text-[7px] font-bold text-blue-700 uppercase ml-1 mb-0.5 tracking-tighter">RAILING_DATE</span>
                                 <input type="text" id="railDateDisplay" placeholder="Rail Date" readonly class="bg-slate-100 border border-slate-200 text-[10px] font-bold rounded-lg px-2 py-1.5 w-32 outline-none text-slate-700">
@@ -193,7 +238,7 @@
                             </button>
                             <label class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm">
                                 <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
-                                UPDATE EXCEL
+                                UPDATE RAILOUT
                                 <input type="file" id="websiteExcelInput" class="hidden" accept=".xlsx, .xls">
                             </label>
                         </div>
@@ -215,6 +260,28 @@
                 <div class="flex gap-2">
                     <button id="saveLocalChangesBtn" class="px-6 py-2 bg-blue-700 text-white rounded-lg font-bold text-[10px] uppercase hover:bg-blue-800 shadow-md transition-all">Save Changes</button>
                     <button id="closeModalBtnFooter" class="px-6 py-2 bg-slate-200 text-slate-700 rounded-lg font-bold text-[10px] uppercase hover:bg-slate-300 transition-all">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual Date Entry Modal -->
+    <div id="manualDateModal" class="hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 border-4 border-blue-600 relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-1 bg-blue-600"></div>
+            <div class="flex items-center gap-3 mb-4 text-blue-700">
+                <i data-lucide="calendar-plus" class="w-6 h-6"></i>
+                <h3 class="font-bold uppercase text-sm tracking-tight">Manual Railout Date Entry</h3>
+            </div>
+            <p class="text-slate-600 text-[11px] font-bold mb-5 uppercase leading-relaxed">Excel data (Cell AH11) is empty. Please enter the Railout Date manually below to calculate ETA remarks.</p>
+            <div class="space-y-4">
+                <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <label class="text-[9px] font-black text-slate-400 uppercase mb-1.5 block">Format: dd-mm-yy hh:mm</label>
+                    <input type="text" id="manualRailDateInput" placeholder="21-12-25 03:00" class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-blue-500 shadow-inner">
+                </div>
+                <div class="flex gap-2 mt-2">
+                    <button id="submitManualDateBtn" class="flex-1 bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 rounded-lg text-[10px] uppercase shadow-lg transition-all transform active:scale-95">Update Remarks</button>
+                    <button id="cancelManualDateBtn" class="px-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3 rounded-lg text-[10px] uppercase transition-all active:scale-95">Cancel</button>
                 </div>
             </div>
         </div>
@@ -325,7 +392,8 @@
                                     <th class="px-1.5 py-2 text-center bg-slate-800 w-10">40</th>
                                     <th class="px-1.5 py-2 text-center bg-emerald-700 w-24 whitespace-normal uppercase">Railout Done</th>
                                     <th class="px-1.5 py-2 text-center bg-blue-600 w-20 whitespace-normal uppercase">Arrived</th>
-                                    <th class="px-1.5 py-2 text-center bg-rose-700 w-24 whitespace-normal uppercase">Pending Containers</th>
+                                    <th class="px-1.5 py-2 text-center bg-orange-600 w-20 whitespace-normal uppercase">In Transit</th>
+                                    <th class="px-1.5 py-2 text-center bg-rose-700 w-24 whitespace-normal uppercase">Pending Port</th>
                                 </tr>
                             </thead>
                             <tbody id="reportRows" class="font-bold text-slate-700 row-compact"></tbody>
@@ -477,7 +545,6 @@
         function formatToDDMMYY_HHMM(val) {
             const f = formatToDDMMYYYY(val);
             if (!f || !f.includes('-') || f.length < 10) return f;
-            // Example: "21-12-2025 15:30" -> substring(0,6) is "21-12-", substring(8) is "25 15:30"
             return f.substring(0, 6) + f.substring(8);
         }
 
@@ -519,11 +586,13 @@
         }
 
         function renderMainTable(groups) {
-            let g20 = 0, g40 = 0, gR = 0, gA = 0, gP = 0;
+            let g20 = 0, g40 = 0, gR = 0, gA = 0, gT = 0, gP = 0;
             document.getElementById('reportRows').innerHTML = groups.map(bl => {
                 g20 += bl.stats.s20; g40 += bl.stats.s40; gR += bl.stats.railed; gP += bl.stats.pending;
                 const arrivedCount = bl.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
+                const inTransitCount = bl.stats.railed - arrivedCount;
                 gA += arrivedCount;
+                gT += inTransitCount;
                 const sizeLabel = `(${bl.stats.total}X${bl.stats.s40 > 0 ? '40' : '20'})`;
                 const vesselDisplay = (!bl.isAnySmtp && bl.stats.railed === 0) ? '<span class="text-rose-600 font-bold italic">NOT Handover</span>' : bl.vessel;
                 return `
@@ -536,6 +605,7 @@
                         <td class="px-1 py-1 text-center border-r border-slate-300 bg-slate-50/50 ${bl.stats.s40 > 0 ? 'text-slate-800' : 'text-slate-200'}">${bl.stats.s40 || '-'}</td>
                         <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-emerald-50 text-emerald-700">${bl.stats.railed || '-'}</td>
                         <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-blue-50 text-blue-700">${arrivedCount || '-'}</td>
+                        <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-orange-50 text-orange-700">${inTransitCount || '-'}</td>
                         <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-rose-50 text-rose-700">${bl.stats.pending || '-'}</td>
                     </tr>
                 `;
@@ -547,6 +617,7 @@
                     <td class="px-1 py-1.5 text-center text-xs font-bold border-r border-slate-300">${g40}</td>
                     <td class="px-1.5 py-1.5 text-center text-xs font-bold text-emerald-700 border-r border-slate-300">${gR}</td>
                     <td class="px-1.5 py-1.5 text-center text-xs font-bold text-blue-700 border-r border-slate-300">${gA}</td>
+                    <td class="px-1.5 py-1.5 text-center text-xs font-bold text-orange-700 border-r border-slate-300">${gT}</td>
                     <td class="px-1.5 py-1.5 text-center text-xs font-bold text-rose-700">${gP}</td>
                 </tr>
             `;
@@ -827,7 +898,6 @@
 
         rakeSelect.addEventListener('change', () => {
             const selected = rakeSelect.selectedOptions[0];
-            // Added call to formatToDDMMYY_HHMM logic to display dd-mm-yy hh:mm
             const rawVal = selected ? (selected.dataset.raildate || '') : '';
             railDateDisplay.value = rawVal ? formatToDDMMYY_HHMM(rawVal) : '';
         });
@@ -835,13 +905,24 @@
         updateArrivedBtn.addEventListener('click', () => {
             const rake = rakeSelect.value;
             const arrivedDate = arrivedDateInput.value.trim();
-            if (!rake) { alert("Please select a Rake No first."); return; }
-            if (!arrivedDate) { alert("Please enter Arrival Date."); return; }
+            if (!rake) { 
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Please select a Rake No first.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 3000);
+                return; 
+            }
+            if (!arrivedDate) { 
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Please enter Arrival Date.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 3000);
+                return; 
+            }
 
             let updateCount = 0;
             rawSheets.website.slice(1).forEach((row) => {
                 const currentRemark = String(row[9] || '').toUpperCase();
-                // Fixed Condition: Only update if Rake matches AND Remark contains "RAILOUT FROM"
                 if (String(row[4]).trim() === rake && currentRemark.includes("RAILOUT FROM")) {
                     row[9] = `TRAIN ARRIVED ON ${arrivedDate}`;
                     updateCount++;
@@ -849,33 +930,103 @@
             });
 
             if (updateCount > 0) {
-                alert(`Success! ${updateCount} containers updated for Rake ${rake}.`);
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Success! ${updateCount} containers updated for Rake ${rake}.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 3000);
                 saveToCloud();
                 processCloudData();
                 window.viewSheetData('website'); 
                 populateRakeList(); 
                 arrivedDateInput.value = '';
             } else {
-                alert("No matching containers with 'RAILOUT FROM' remark found for this rake.");
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">No matching containers found.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 3000);
             }
         });
 
         // ------------------------------------------
-        // 5. UPDATE MODAL VIEW LOGIC
+        // 5. UPDATE MODAL VIEW LOGIC & DELETE ROW
         // ------------------------------------------
+        window.deleteRow = (index) => {
+            if (!currentSheetInView) return;
+            if (index === 0) return; // Prevent deleting header
+
+            if (confirm(`Are you sure you want to delete this row from ${currentSheetInView.toUpperCase()}?`)) {
+                rawSheets[currentSheetInView].splice(index, 1);
+                window.viewSheetData(currentSheetInView);
+                saveToCloud();
+                processCloudData();
+                
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000]">Row deleted.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 2000);
+            }
+        };
+
+        document.getElementById('deleteAllRowsBtn').addEventListener('click', () => {
+            if (!currentSheetInView) {
+                alert("Please select a sheet first.");
+                return;
+            }
+            if (confirm(`DANGER: Are you sure you want to delete ALL data entries from ${currentSheetInView.toUpperCase()}? Header row will be kept.`)) {
+                if (rawSheets[currentSheetInView] && rawSheets[currentSheetInView].length > 0) {
+                    const header = rawSheets[currentSheetInView][0];
+                    rawSheets[currentSheetInView] = [header];
+                    window.viewSheetData(currentSheetInView);
+                    saveToCloud();
+                    processCloudData();
+                    
+                    const box = document.createElement('div');
+                    box.innerHTML = `<div class="fixed top-20 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[100000]">All data rows in ${currentSheetInView} deleted.</div>`;
+                    document.body.appendChild(box);
+                    setTimeout(() => box.remove(), 3000);
+                }
+            }
+        });
+
         window.viewSheetData = (sheetName) => {
             currentSheetInView = sheetName;
             const container = document.getElementById('sheetDataContainer');
             const data = rawSheets[sheetName];
-            const section = document.getElementById('websiteUpdateSection');
+            
+            // Manage Tab-specific tool visibility
+            const webSection = document.getElementById('websiteUpdateSection');
+            const smtpSection = document.getElementById('smtpUpdateSection');
+            const shipperSection = document.getElementById('shipperUpdateSection');
 
             if (sheetName === 'website') {
-                section.classList.remove('hidden');
-                section.classList.add('flex');
+                webSection.classList.remove('hidden');
+                webSection.classList.add('flex');
+                smtpSection.classList.add('hidden');
+                smtpSection.classList.remove('flex');
+                shipperSection.classList.add('hidden');
+                shipperSection.classList.remove('flex');
                 populateRakeList();
+            } else if (sheetName === 'smtp') {
+                smtpSection.classList.remove('hidden');
+                smtpSection.classList.add('flex');
+                webSection.classList.add('hidden');
+                webSection.classList.remove('flex');
+                shipperSection.classList.add('hidden');
+                shipperSection.classList.remove('flex');
+            } else if (sheetName === 'shipper') {
+                shipperSection.classList.remove('hidden');
+                shipperSection.classList.add('flex');
+                webSection.classList.add('hidden');
+                webSection.classList.remove('flex');
+                smtpSection.classList.add('hidden');
+                smtpSection.classList.remove('flex');
             } else {
-                section.classList.add('hidden');
-                section.classList.remove('flex');
+                webSection.classList.add('hidden');
+                webSection.classList.remove('flex');
+                smtpSection.classList.add('hidden');
+                smtpSection.classList.remove('flex');
+                shipperSection.classList.add('hidden');
+                shipperSection.classList.remove('flex');
             }
 
             document.querySelectorAll('.sheet-tab-btn').forEach(btn => {
@@ -895,11 +1046,23 @@
 
             let html = `<table id="editableTable" class="min-w-full text-[9px] uppercase">`;
             data.forEach((row, rowIndex) => {
-                const rowClass = rowIndex === 0 ? 'bg-slate-800 text-white font-bold sticky top-0' : 'border-b border-slate-200 hover:bg-slate-50';
+                const isHeader = rowIndex === 0;
+                const rowClass = isHeader ? 'bg-slate-800 text-white font-bold sticky top-0' : 'border-b border-slate-200 hover:bg-slate-50';
                 html += `<tr class="${rowClass}">`;
+                
+                // Add Delete Action Column
+                if (isHeader) {
+                    html += `<th class="px-2 py-1.5 border-r border-slate-200 w-10 text-center">ACTION</th>`;
+                } else {
+                    html += `<td class="px-2 py-1.5 border-r border-slate-200 text-center">
+                                <button onclick="window.deleteRow(${rowIndex})" class="delete-row-btn text-rose-500 transition-all">
+                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                </button>
+                             </td>`;
+                }
+
                 const maxCols = Math.max(...data.map(r => r.length));
                 for(let colIndex = 0; colIndex < maxCols; colIndex++) {
-                    const isHeader = rowIndex === 0;
                     const content = row[colIndex] !== undefined && row[colIndex] !== null ? row[colIndex] : '';
                     html += `<td class="px-2 py-1.5 border-r border-slate-200 truncate max-w-[200px] ${!isHeader ? 'editable-cell' : ''}" 
                                 ${!isHeader ? 'contenteditable="true"' : ''} 
@@ -909,6 +1072,7 @@
             });
             html += `</table>`;
             container.innerHTML = html;
+            lucide.createIcons();
         };
 
         // ------------------------------------------
@@ -966,7 +1130,13 @@
 
         const addSmtpBtn = document.getElementById('addSmtpBtn');
         addSmtpBtn.addEventListener('click', () => {
-            if (!rawSheets.smtp || rawSheets.smtp.length <= 1) { alert("SMTP data is empty."); return; }
+            if (!rawSheets.smtp || rawSheets.smtp.length <= 1) { 
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">SMTP data is empty.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 3000);
+                return; 
+            }
             if (!rawSheets.website || rawSheets.website.length === 0) rawSheets.website = [["UID", "SR_NO", "BILL_NO", "CONTAINER_NO", "RAKE_NO", "STACK", "SOURCE", "DESTINATION", "RAILING_DATE", "REMARKS"]];
             const smtpHeaders = rawSheets.smtp[0];
             const sContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT'));
@@ -986,9 +1156,71 @@
                 }
             });
             window.viewSheetData('website');
-            alert(`${addedCount} added.`);
+            const box = document.createElement('div');
+            box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">${addedCount} containers added to Website list.</div>`;
+            document.body.appendChild(box);
+            setTimeout(() => box.remove(), 3000);
             saveToCloud(); processCloudData();
         });
+
+        // Temporary storage for excel processing
+        let pendingExcelData = null;
+        let pendingRakeNo = null;
+
+        const executeExcelUpdate = (rakeNo, railDateVal, jsonData) => {
+            let matchCount = 0;
+            jsonData.slice(10).forEach(exRow => {
+                const contNo = String(exRow[2] || '').trim(); 
+                const rawExcelDate = railDateVal || exRow[33]; 
+                const railDateFormatted = formatToDDMMYY_HHMM(rawExcelDate); 
+                
+                if (contNo && rawSheets.website) {
+                    const webMatchIndex = rawSheets.website.findIndex(w => String(w[3] || '').trim() === contNo);
+                    if (webMatchIndex !== -1) {
+                        let dateObj = null;
+                        const numVal = parseFloat(rawExcelDate);
+                        
+                        if (!isNaN(numVal) && isFinite(rawExcelDate) && numVal > 40000) {
+                            dateObj = new Date(Math.round((numVal - 25569) * 86400 * 1000));
+                        } else if (rawExcelDate) {
+                            const parts = String(rawExcelDate).split(/[-/ :]/);
+                            if (parts.length >= 3) {
+                                let d = parseInt(parts[0]);
+                                let m = parseInt(parts[1]) - 1;
+                                let y = parseInt(parts[2]);
+                                if (y < 100) y += 2000;
+                                let hh = parseInt(parts[3] || 0);
+                                let mm = parseInt(parts[4] || 0);
+                                dateObj = new Date(y, m, d, hh, mm);
+                            } else {
+                                dateObj = new Date(rawExcelDate);
+                            }
+                        }
+
+                        let etaString = '';
+                        if (dateObj && !isNaN(dateObj.getTime())) {
+                            const newDate = new Date(dateObj.getTime());
+                            newDate.setDate(newDate.getDate() + 4);
+                            const d = String(newDate.getDate()).padStart(2, '0');
+                            const m = String(newDate.getMonth() + 1).padStart(2, '0');
+                            const y = newDate.getFullYear();
+                            etaString = ` ETA ${d}-${m}-${y} 00:00`;
+                        }
+
+                        rawSheets.website[webMatchIndex][4] = rakeNo;
+                        rawSheets.website[webMatchIndex][8] = railDateFormatted;
+                        rawSheets.website[webMatchIndex][9] = `RAILOUT FROM MUNDRA ON ${railDateFormatted}${etaString}`;
+                        matchCount++;
+                    }
+                }
+            });
+            window.viewSheetData('website');
+            const box = document.createElement('div');
+            box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">${matchCount} containers updated successfully.</div>`;
+            document.body.appendChild(box);
+            setTimeout(() => box.remove(), 3000);
+            saveToCloud(); processCloudData();
+        };
 
         const websiteExcelInput = document.getElementById('websiteExcelInput');
         websiteExcelInput.addEventListener('change', (e) => {
@@ -1001,27 +1233,176 @@
                 const ws = wb.Sheets[wb.SheetNames[0]];
                 const rakeNo = ws['H7'] ? String(ws['H7'].v).trim() : '';
                 const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
-                if (jsonData.length < 11) return;
-                let matchCount = 0;
-                jsonData.slice(10).forEach(exRow => {
-                    const contNo = String(exRow[2] || '').trim(); 
-                    const railDateFormatted = formatToDDMMYY_HHMM(exRow[33]); 
-                    if (contNo && rawSheets.website) {
-                        const webMatchIndex = rawSheets.website.findIndex(w => String(w[3] || '').trim() === contNo);
-                        if (webMatchIndex !== -1) {
-                            rawSheets.website[webMatchIndex][4] = rakeNo;
-                            rawSheets.website[webMatchIndex][8] = railDateFormatted;
-                            rawSheets.website[webMatchIndex][9] = `RAILOUT FROM MUNDRA ON ${railDateFormatted}`;
-                            matchCount++;
-                        }
-                    }
-                });
-                window.viewSheetData('website');
-                alert(`${matchCount} updated.`);
-                saveToCloud(); processCloudData();
+                
+                if (jsonData.length < 11) {
+                    const box = document.createElement('div');
+                    box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000]">File format invalid (too few rows).</div>`;
+                    document.body.appendChild(box);
+                    setTimeout(() => box.remove(), 3000);
+                    return;
+                }
+
+                const ah11Value = (jsonData[10] && jsonData[10][33]) ? String(jsonData[10][33]).trim() : "";
+                
+                if (ah11Value === "") {
+                    pendingExcelData = jsonData;
+                    pendingRakeNo = rakeNo;
+                    document.getElementById('manualDateModal').classList.remove('hidden');
+                    document.getElementById('manualRailDateInput').focus();
+                    lucide.createIcons();
+                } else {
+                    executeExcelUpdate(rakeNo, null, jsonData);
+                }
             };
             reader.readAsBinaryString(file);
             e.target.value = '';
+        });
+
+        // ------------------------------------------
+        // SHIPPER EXCEL IMPORT LOGIC (Strict Cell Reference A, B, C, D)
+        // ------------------------------------------
+        const shipperExcelInput = document.getElementById('shipperExcelInput');
+        shipperExcelInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const bstr = evt.target.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                
+                if (jsonData.length < 2) return;
+
+                // Identification based strictly on requested Column positions:
+                // A = Index 0 (CONT_Nos.)
+                // B = Index 1 (Size)
+                // C = Index 2 (BL_No.)
+                // D = Index 3 (Consignee)
+                const contIdx = 0;
+                const sizeIdx = 1;
+                const blIdx = 2;
+                const consIdx = 3;
+
+                const internalHeaders = rawSheets.shipper[0];
+                if (!internalHeaders) {
+                    alert("SHIPPER sheet structure is missing headers.");
+                    return;
+                }
+
+                // Map where to put imported data in internal sheet based on internal headers
+                const internalContIdx = 0; // CONT is always first
+                const internalSizeIdx = internalHeaders.findIndex(h => /SIZE/i.test(String(h)));
+                const internalBlIdx = internalHeaders.findIndex(h => /BL/i.test(String(h)));
+                const internalConsIdx = internalHeaders.findIndex(h => /CONSIGNEE/i.test(String(h)));
+
+                let addedCount = 0;
+                let skipCount = 0;
+
+                jsonData.slice(1).forEach(exRow => {
+                    const contNo = String(exRow[contIdx] || '').trim();
+                    if (!contNo) return;
+
+                    // Duplicate check
+                    const alreadyExists = rawSheets.shipper.some(s => String(s[internalContIdx] || '').trim() === contNo);
+                    if (!alreadyExists) {
+                        let newRow = new Array(internalHeaders.length).fill("");
+                        newRow[internalContIdx] = contNo;
+                        if (internalBlIdx !== -1) newRow[internalBlIdx] = String(exRow[blIdx] || '').trim();
+                        if (internalSizeIdx !== -1) newRow[internalSizeIdx] = String(exRow[sizeIdx] || '').trim();
+                        if (internalConsIdx !== -1) newRow[internalConsIdx] = String(exRow[consIdx] || '').trim();
+                        
+                        rawSheets.shipper.push(newRow);
+                        addedCount++;
+                    } else {
+                        skipCount++;
+                    }
+                });
+
+                window.viewSheetData('shipper');
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">SHIPPER Import Complete: ${addedCount} added, ${skipCount} duplicates skipped.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 4000);
+                saveToCloud();
+                processCloudData();
+            };
+            reader.readAsBinaryString(file);
+            e.target.value = '';
+        });
+
+        // ------------------------------------------
+        // SMTP EXCEL IMPORT LOGIC
+        // ------------------------------------------
+        const smtpExcelInput = document.getElementById('smtpExcelInput');
+        smtpExcelInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const bstr = evt.target.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                
+                if (jsonData.length < 2) return;
+
+                // Identify SMTP headers to find container index
+                const smtpHeaders = rawSheets.smtp[0];
+                const sContIdx = smtpHeaders ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
+
+                let addedCount = 0;
+                let skipCount = 0;
+
+                // Start from index 1 (skip header)
+                jsonData.slice(1).forEach(exRow => {
+                    const contNo = String(exRow[sContIdx] || '').trim();
+                    // Cell L is index 11 (12th column: A=0, B=1, ..., L=11)
+                    const cellLValue = String(exRow[11] || '').toUpperCase(); 
+
+                    // Rule: Only copy if Cell L contains KILARAIPUR or LUDHIANA
+                    if (contNo && (cellLValue.includes("KILARAIPUR") || cellLValue.includes("LUDHIANA"))) {
+                        // Duplicate Check
+                        const alreadyExists = rawSheets.smtp.some(s => String(s[sContIdx] || '').trim() === contNo);
+                        
+                        if (!alreadyExists) {
+                            rawSheets.smtp.push(exRow);
+                            addedCount++;
+                        } else {
+                            skipCount++;
+                        }
+                    }
+                });
+
+                window.viewSheetData('smtp');
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">SMTP Update Complete: ${addedCount} added, ${skipCount} duplicates skipped.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 4000);
+                saveToCloud();
+                processCloudData();
+            };
+            reader.readAsBinaryString(file);
+            e.target.value = '';
+        });
+
+        // Manual Date Modal Events
+        document.getElementById('submitManualDateBtn').addEventListener('click', () => {
+            const dateVal = document.getElementById('manualRailDateInput').value.trim();
+            if (!dateVal) {
+                document.getElementById('manualRailDateInput').classList.add('ring-2', 'ring-rose-500');
+                return;
+            }
+            document.getElementById('manualRailDateInput').classList.remove('ring-2', 'ring-rose-500');
+            document.getElementById('manualDateModal').classList.add('hidden');
+            executeExcelUpdate(pendingRakeNo, dateVal, pendingExcelData);
+            document.getElementById('manualRailDateInput').value = '';
+        });
+
+        document.getElementById('cancelManualDateBtn').addEventListener('click', () => {
+            document.getElementById('manualDateModal').classList.add('hidden');
+            pendingExcelData = null;
+            pendingRakeNo = null;
         });
 
         refreshBtn.addEventListener('click', () => { loadFromCloud(); });
