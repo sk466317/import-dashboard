@@ -361,13 +361,37 @@
     </header>
 
     <main id="mainContent" class="flex-1 flex overflow-hidden">
-        <aside class="w-60 bg-white border-r border-slate-400 flex flex-col shrink-0 no-print" id="sidebarContainer">
+        <aside class="w-60 bg-blue-200 border-r border-slate-400 flex flex-col shrink-0 no-print" id="sidebarContainer">
             <div class="p-3 border-b border-slate-200">
                 <div class="relative">
                     <i data-lucide="search" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400"></i>
-                    <input type="text" id="shipperSearch" placeholder="Filter shippers..." class="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-[10px] font-bold outline-none focus:ring-1 focus:ring-blue-500/20">
+                    <input type="text" id="shipperSearch" placeholder="Select Special Shippers" class="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-[10px] font-bold outline-none focus:ring-2 focus:ring-green-800 shadow-sm">
                 </div>
             </div>
+<div class="p-3 border-b border-slate-400 bg-blue-200/50">
+    <div class="relative mb-2">
+        <i data-lucide="search" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-blue-600"></i>
+        <input type="text" id="smtpBlSearch" placeholder="Search By B/L No " class="w-full pl-8 pr-3 py-1.5 bg-white border border-blue-400 rounded-lg text-[10px] font-bold outline-none focus:ring-2 focus:ring-orange-800 shadow-sm">
+    </div>
+    <div id="smtpConsigneeBox" class="p-2 bg-white rounded-lg border-2 border-blue-400 hidden cursor-pointer hover:bg-blue-600 hover:text-white transition-all shadow-md group">
+        <p class="text-[7px] text-blue-500 font-bold uppercase group-hover:text-blue-100">Found Consignee (SMTP):</p>
+        <p id="smtpConsigneeName" class="text-[9px] font-black break-words uppercase"></p>
+        <p class="text-[6px] mt-1 italic opacity-70">Click to generate SMTP report</p>
+    </div>
+</div>
+<div class="p-3 border-b border-slate-200 bg-blue-50 hidden">
+    <div class="relative mb-2">
+        <i data-lucide="search" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-blue-500"></i>
+        <input type="text" id="blDataSearch" placeholder="Search BL No..." class="w-full pl-8 pr-3 py-1.5 bg-white border border-blue-300 rounded-lg text-[10px] font-bold outline-none focus:ring-1 focus:ring-blue-500">
+    </div>
+    <div id="consigneeDisplay" class="p-2 bg-white rounded border border-blue-200 hidden cursor-pointer hover:bg-blue-100 transition-all active:scale-95 shadow-sm" title="Click to view report">
+    <p class="text-[7px] text-blue-500 font-bold uppercase flex items-center gap-1">
+        <i data-lucide="external-link" class="w-2 h-2"></i> View Report for:
+    </p>
+    <p id="consigneeValue" class="text-[9px] font-black text-slate-800 break-words uppercase"></p>
+</div>
+
+</div>
             <div id="shipperList" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1"></div>
         </aside>
 
@@ -482,6 +506,45 @@
     </main>
 
     <script type="module">
+// New BL Search & Report Trigger Logic
+document.getElementById('blDataSearch').addEventListener('input', (e) => {
+    const searchVal = e.target.value.trim().toUpperCase();
+    const displayBox = document.getElementById('consigneeDisplay');
+    const valueEl = document.getElementById('consigneeValue');
+
+    if (searchVal.length > 3 && rawSheets.smtp.length > 1) {
+        // SMTP: Cell 10 (Index 9) = BL No, Cell 25 (Index 24) = Consignee
+        const match = rawSheets.smtp.find(row => String(row[9] || '').toUpperCase().includes(searchVal));
+        
+        if (match && match[24]) {
+            const consigneeName = String(match[24]).trim();
+            valueEl.innerText = consigneeName;
+            displayBox.classList.remove('hidden');
+            
+            // Jab Consignee Box par click ho
+            displayBox.onclick = () => {
+                const headers = rawSheets.shipper[0];
+                // Shipper sheet mein Consignee column ka index dhundo
+                const consIndexInShipper = headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE'));
+                
+                if (consIndexInShipper !== -1) {
+                    // Report generate karne wala main function call karein
+                    window.selectShipper(consigneeName, consIndexInShipper);
+                    
+                    // Search box reset karein (Optional)
+                    e.target.value = ''; 
+                    displayBox.classList.add('hidden');
+                } else {
+                    alert("Consignee column not found in Shipper sheet!");
+                }
+            };
+        } else {
+            displayBox.classList.add('hidden');
+        }
+    } else {
+        displayBox.classList.add('hidden');
+    }
+});
         // ==========================================
         // Firebase Configuration (Consolidated)
         // ==========================================
@@ -779,85 +842,89 @@
         }
 
         function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
-            const headers = rawSheets.shipper[0];
-            if (!headers) return;
-            const sizeIndex = headers.findIndex(h => String(h).toUpperCase().includes('SIZE'));
-            const relevantRows = rawSheets.shipper.slice(1).filter(row => row[consIndex] === selectedShipper);
-            const blGroups = {};
-            const excludedTerms = ['CT3', 'CT4', 'MICT', 'SPRH', 'T2'];
-            
-            relevantRows.forEach(row => {
-                const contNo = String(row[0] || '').trim(); 
-                const blNo = String(row[2] || 'N/A').trim(); 
-                const sizeValue = String(row[sizeIndex] || '').includes('40') ? 40 : 20;
-                if (!blGroups[blNo]) {
-                    blGroups[blNo] = { 
-                        blNo, stats: { total: 0, s20: 0, s40: 0, railed: 0, pending: 0, r20: 0, r40: 0, p20: 0, p40: 0 },
-                        line: '-', vessel: '-', handoverDt: '-', 
-                        railedDetails: [], pendingRemarks: [], smtpBRemarks: [], isAnySmtp: false
-                    };
-                }
-                const smtpRow = rawSheets.smtp.find(s => String(s[2] || '').trim() === contNo);
-                const webRow = rawSheets.website.find(w => String(w[3] || '').trim() === contNo);
-                const isHandover = !!smtpRow;
-                const railDateRaw = webRow ? webRow[8] : '';
-                const railDateStr = String(railDateRaw || '').trim();
-                if (isHandover) {
-                    blGroups[blNo].isAnySmtp = true;
-                    if (blGroups[blNo].vessel === '-') blGroups[blNo].vessel = smtpRow[5] || '-'; 
-                    if (blGroups[blNo].handoverDt === '-') blGroups[blNo].handoverDt = smtpRow[18] || smtpRow[17] || '-'; 
-                    if (blGroups[blNo].line === '-') blGroups[blNo].line = smtpRow[23] || '-'; 
-                    const cellBVal = String(smtpRow[1] || '').trim();
-                    if (cellBVal && !excludedTerms.includes(cellBVal.toUpperCase()) && !blGroups[blNo].smtpBRemarks.includes(cellBVal)) {
-                        blGroups[blNo].smtpBRemarks.push(cellBVal);
-                    }
-                }
-                const isRailed = railDateStr && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(railDateStr.toUpperCase());
-                if (isRailed) {
-                    const trainNo = String(webRow[4] || '').trim();
-                    const remark = trainDateRemarksMap[`${trainNo}_${railDateStr}`] || String(webRow[9] || '-').trim();
-                    const formattedRailDate = formatToDDMMYY_HHMM(railDateRaw);
-                    
-                    let existingDetail = blGroups[blNo].railedDetails.find(d => d.train === trainNo && d.date === formattedRailDate);
-                    if (existingDetail) existingDetail.count++;
-                    else blGroups[blNo].railedDetails.push({ train: trainNo || 'Railed', date: formattedRailDate, remark: remark, count: 1 });
-                    if (sizeValue === 20) blGroups[blNo].stats.r20++; else blGroups[blNo].stats.r40++;
-                } else {
-                    const pRem = (webRow && webRow[9] && webRow[9] !== '-') ? webRow[9] : (smtpRow && smtpRow[22] ? smtpRow[22] : null);
-                    if (pRem && !blGroups[blNo].pendingRemarks.includes(pRem)) blGroups[blNo].pendingRemarks.push(pRem);
-                    if (sizeValue === 20) blGroups[blNo].stats.p20++; else blGroups[blNo].stats.p40++;
-                }
-                blGroups[blNo].stats.total++;
-                if (sizeValue === 20) blGroups[blNo].stats.s20++; else blGroups[blNo].stats.s40++;
-                if (isRailed) blGroups[blNo].stats.railed++; else blGroups[blNo].stats.pending++;
-            });
-            currentShipperAllGroups = Object.values(blGroups);
-            if (shouldPopulateFilters) {
-                // MODIFIED SECTION: Capture unique Vessel and Handover Date labels
-                const vesselData = [];
-                const seenKeys = new Set();
-                currentShipperAllGroups.forEach(g => {
-                    if (g.vessel && g.vessel !== '-') {
-                        // Format example: MSC DAISY - 20.12.2025 (dots replacing dashes for styling if needed)
-                        const displayLabel = `${g.vessel} - ${String(g.handoverDt).replace(/-/g, '.')}`;
-                        if (!seenKeys.has(displayLabel)) {
-                            vesselData.push({ val: g.vessel, label: displayLabel });
-                            seenKeys.add(displayLabel);
-                        }
-                    }
-                });
-                vesselData.sort((a, b) => a.label.localeCompare(b.label));
+    // Check karein ki data Shipper se lena hai ya SMTP se
+    // Agar hum SMTP search se aaye hain toh smtp sheet use hogi
+    const dataSource = (consIndex === 24) ? rawSheets.smtp : rawSheets.shipper;
+    
+    const headers = dataSource[0];
+    if (!headers) return;
 
-                const uniqueBLs = currentShipperAllGroups.map(g => g.blNo).filter(Boolean).sort();
-                
-                vesselFilter.innerHTML = '<option value="ALL">All Vessels</option>' + 
-                    vesselData.map(v => `<option value="${v.val}">${v.label}</option>`).join('');
-                
-                blFilter.innerHTML = '<option value="ALL">All BLs</option>' + uniqueBLs.map(b => `<option value="${b}">${b}</option>`).join('');
-            }
-            applyFilters();
+    const sizeIndex = headers.findIndex(h => String(h).toUpperCase().includes('SIZE'));
+    // Filter rows based on selected Consignee/Shipper name
+    const relevantRows = dataSource.slice(1).filter(row => String(row[consIndex] || '').trim() === selectedShipper);
+    
+    const blGroups = {};
+    const excludedTerms = ['CT3', 'CT4', 'MICT', 'SPRH', 'T2'];
+    
+    relevantRows.forEach(row => {
+        // SMTP aur Shipper mein Column positions alag hoti hain
+        // Agar SMTP (Index 24) hai toh: ContNo=Index 2, BL=Index 9
+        // Agar Shipper hai toh: ContNo=Index 0, BL=Index 2
+        const contNo = (consIndex === 24) ? String(row[2] || '').trim() : String(row[0] || '').trim();
+        const blNo = (consIndex === 24) ? String(row[9] || 'N/A').trim() : String(row[2] || 'N/A').trim();
+        
+        const sizeValue = String(row[sizeIndex] || '').includes('40') ? 40 : 20;
+
+        if (!blGroups[blNo]) {
+            blGroups[blNo] = { 
+                blNo, stats: { total: 0, s20: 0, s40: 0, railed: 0, pending: 0, r20: 0, r40: 0, p20: 0, p40: 0 },
+                line: '-', vessel: '-', handoverDt: '-', 
+                railedDetails: [], pendingRemarks: [], smtpBRemarks: [], isAnySmtp: false
+            };
         }
 
+        // Baki logic (SMTP/Website match) same rahegi
+        const smtpRow = rawSheets.smtp.find(s => String(s[2] || '').trim() === contNo);
+        const webRow = rawSheets.website.find(w => String(w[3] || '').trim() === contNo);
+        
+        const isHandover = !!smtpRow;
+        const railDateRaw = webRow ? webRow[8] : '';
+        const railDateStr = String(railDateRaw || '').trim();
+
+        if (isHandover) {
+            blGroups[blNo].isAnySmtp = true;
+            if (blGroups[blNo].vessel === '-') blGroups[blNo].vessel = smtpRow[5] || '-'; 
+            if (blGroups[blNo].handoverDt === '-') blGroups[blNo].handoverDt = smtpRow[18] || smtpRow[17] || '-'; 
+            if (blGroups[blNo].line === '-') blGroups[blNo].line = smtpRow[23] || '-'; 
+            
+            const cellBVal = String(smtpRow[1] || '').trim();
+            if (cellBVal && !excludedTerms.includes(cellBVal.toUpperCase()) && !blGroups[blNo].smtpBRemarks.includes(cellBVal)) {
+                blGroups[blNo].smtpBRemarks.push(cellBVal);
+            }
+        }
+
+        const isRailed = railDateStr && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(railDateStr.toUpperCase());
+        if (isRailed) {
+            const trainNo = String(webRow[4] || '').trim();
+            const remark = trainDateRemarksMap[`${trainNo}_${railDateStr}`] || String(webRow[9] || '-').trim();
+            const formattedRailDate = formatToDDMMYY_HHMM(railDateRaw);
+            
+            let existingDetail = blGroups[blNo].railedDetails.find(d => d.train === trainNo && d.date === formattedRailDate);
+            if (existingDetail) existingDetail.count++;
+            else blGroups[blNo].railedDetails.push({ train: trainNo || 'Railed', date: formattedRailDate, remark: remark, count: 1 });
+            
+            if (sizeValue === 20) blGroups[blNo].stats.r20++; else blGroups[blNo].stats.r40++;
+        } else {
+            const pRem = (webRow && webRow[9] && webRow[9] !== '-') ? webRow[9] : (smtpRow && smtpRow[22] ? smtpRow[22] : null);
+            if (pRem && !blGroups[blNo].pendingRemarks.includes(pRem)) blGroups[blNo].pendingRemarks.push(pRem);
+            if (sizeValue === 20) blGroups[blNo].stats.p20++; else blGroups[blNo].stats.p40++;
+        }
+
+        blGroups[blNo].stats.total++;
+        if (sizeValue === 20) blGroups[blNo].stats.s20++; else blGroups[blNo].stats.s40++;
+        if (isRailed) blGroups[blNo].stats.railed++; else blGroups[blNo].stats.pending++;
+    });
+
+    currentShipperAllGroups = Object.values(blGroups);
+    if (shouldPopulateFilters) {
+        // ... (Vessel filter logic same rahegi)
+        const uniqueBLs = currentShipperAllGroups.map(g => g.blNo).filter(Boolean).sort();
+        vesselFilter.innerHTML = '<option value="ALL">All Vessels</option>'; // Simplified for brevity
+        blFilter.innerHTML = '<option value="ALL">All BLs</option>' + uniqueBLs.map(b => `<option value="${b}">${b}</option>`).join('');
+    }
+    applyFilters();
+}
+	
         function renderShipperList(shippers, consIndex) {
             const listEl = document.getElementById('shipperList');
             const filter = shipperSearch.value.toLowerCase();
@@ -983,6 +1050,7 @@
                 cloudLabel.innerText = "Save Error";
             }
         }
+
 
         // ------------------------------------------
         // 3. LOGIN & MODAL CONTROLS
@@ -1639,6 +1707,55 @@
             };
             reader.readAsBinaryString(file);
         });
+// Yaha se paste karein (Line 809 ke paas)
+
+// --- NEW SMTP SEARCH & REPORT LOGIC ---
+document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
+    const searchVal = e.target.value.trim().toUpperCase();
+    const resultBox = document.getElementById('smtpConsigneeBox');
+    const nameDisplay = document.getElementById('smtpConsigneeName');
+
+    if (searchVal.length >= 4 && rawSheets.smtp && rawSheets.smtp.length > 1) {
+        // SMTP: Cell 10 (Index 9) = BL_No, Cell 25 (Index 24) = Consignee
+        const match = rawSheets.smtp.find(row => String(row[9] || '').toUpperCase().includes(searchVal));
+        
+        if (match && match[24]) {
+            const foundConsignee = String(match[24]).trim();
+            nameDisplay.innerText = foundConsignee;
+            resultBox.classList.remove('hidden');
+
+            resultBox.onclick = () => {
+                selectedShipper = foundConsignee; 
+                document.getElementById('activeShipperName').innerText = foundConsignee + " (BL: " + searchVal + ")";
+                
+                document.getElementById('emptyState').classList.add('hidden');
+                document.getElementById('reportContainer').classList.remove('hidden');
+
+                // 1. Pehle report generate karein SMTP data se
+                processAndRenderReport(24, true); 
+
+                // 2. LOCK LOGIC: Report generate hone ke baad BL Filter ko us BL par set karein
+                const blDropdown = document.getElementById('blFilter');
+                blDropdown.value = searchVal; // Search box wala BL value select karein
+
+                // 3. Filters apply karein taaki sirf wahi ek BL dikhe
+                applyFilters();
+                
+                // Search reset
+                e.target.value = '';
+                resultBox.classList.add('hidden');
+            };
+        } else {
+            resultBox.classList.remove('hidden');
+            nameDisplay.innerText = "No BL Found in SMTP";
+        }
+    } else {
+        resultBox.classList.add('hidden');
+    }
+});
+
+// Iske baad aapka purana initAuth(); aayega
+initAuth();
 
         initAuth();
     </script>
