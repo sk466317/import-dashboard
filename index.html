@@ -230,9 +230,15 @@
                             UPLOAD SMTP EXCEL
                             <input type="file" id="smtpExcelInput" class="hidden" accept=".xlsx, .xls">
                         </label>
+
 <button onclick="document.getElementById('saveLocalChangesBtn').click()" class="px-4 py-1.5 bg-blue-700 text-white rounded-lg font-bold text-[10px] uppercase hover:bg-blue-800 shadow-md transition-all">
     Save Changes
 </button>
+<label class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
+    <i data-lucide="truck" class="w-3.5 h-3.5"></i>
+    Update Gate Out
+    <input type="file" id="gateOutExcelInput" class="hidden" accept=".xlsx, .xls">
+</label>
                         <p class="text-[9px] font-bold text-slate-400 italic">Checks Cell L (12th Col) for "KILARAIPUR/LUDHIANA" & skips duplicates.</p>
                     </div>
 
@@ -1615,12 +1621,12 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
                         addedCount++;
                     } else {
                         skipCount++;
-                    }
+                   }
                 });
 
-                window.viewSheetData('shipper');
+                window.viewSheetData('smtp');
                 const box = document.createElement('div');
-                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">SHIPPER Import Complete: ${addedCount} added, ${skipCount} duplicates skipped.</div>`;
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">SMTP Update Complete: ${addedCount} added, ${skipCount} duplicates skipped.</div>`;
                 document.body.appendChild(box);
                 setTimeout(() => box.remove(), 4000);
                 saveToCloud();
@@ -1629,6 +1635,73 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
             reader.readAsBinaryString(file);
             e.target.value = '';
         });
+
+        // --- DIRECT MAPPING GATE OUT LOGIC (YAHAN SE ALAG RAKHEIN) ---
+        const gateOutExcelInput = document.getElementById('gateOutExcelInput');
+        if (gateOutExcelInput) {
+            gateOutExcelInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                if (!rawSheets || !rawSheets.smtp || rawSheets.smtp.length <= 1) {
+                    alert("❌ ERROR: SMTP Data nahi mila. Pehle SMTP Excel upload karein.");
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const bstr = evt.target.result;
+                        const wb = XLSX.read(bstr, { type: 'binary' });
+                        const ws = wb.Sheets[wb.SheetNames[0]];
+                        const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+
+                        const smtpData = rawSheets.smtp;
+                        const sContIdx = 2; // Column C
+                        const gateOutColIdx = 26; // Column AA
+
+                        let updateCount = 0;
+                        let excelRowsProcessed = 0;
+
+                        if (smtpData[0].length <= gateOutColIdx) {
+                            while (smtpData[0].length <= gateOutColIdx) {
+                                smtpData[0].push(smtpData[0].length === gateOutColIdx ? "PONUMBER" : "");
+                            }
+                        }
+
+                        jsonData.forEach((exRow) => {
+                            const exContNo = String(exRow[0] || '').trim().toUpperCase();
+                            const exGateDate = String(exRow[1] || '').trim();
+
+                            if (exContNo && exGateDate) {
+                                excelRowsProcessed++;
+                                for (let i = 1; i < smtpData.length; i++) {
+                                    const smtpCont = String(smtpData[i][sContIdx] || '').trim().toUpperCase();
+                                    if (smtpCont === exContNo) {
+                                        while (smtpData[i].length <= gateOutColIdx) smtpData[i].push("");
+                                        smtpData[i][gateOutColIdx] = exGateDate;
+                                        updateCount++;
+                                    }
+                                }
+                            }
+                        });
+
+                        if (updateCount > 0) {
+                            rawSheets.smtp = smtpData;
+                            window.viewSheetData('smtp');
+                            alert(`✅ SUCCESS!\nContainers Updated: ${updateCount}`);
+                            saveToCloud();
+                        } else {
+                            alert(`❌ NO MATCH!\nExcel read kiya par SMTP Column C se match nahi mila.`);
+                        }
+                    } catch (err) {
+                        alert("Error: " + err.message);
+                    }
+                };
+                reader.readAsBinaryString(file);
+                e.target.value = ''; 
+            });
+        }
 
         // ------------------------------------------
         // SMTP EXCEL IMPORT LOGIC
@@ -1668,6 +1741,89 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
                         }
                     }
                 });
+
+// --- DIRECT MAPPING GATE OUT LOGIC ---
+const gateOutExcelInput = document.getElementById('gateOutExcelInput');
+if (gateOutExcelInput) {
+    gateOutExcelInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // ALERT 1: Check if file selected
+        console.log("File Selected:", file.name);
+
+        if (!rawSheets || !rawSheets.smtp || rawSheets.smtp.length <= 1) {
+            alert("❌ ERROR: SMTP Data nahi mila. Pehle SMTP Excel upload karein.");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const bstr = evt.target.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+
+                const smtpData = rawSheets.smtp;
+                
+                // --- INDEX SETTING ---
+                // Agar Excel me Column C hai, toh index 2 hoga.
+                const sContIdx = 2; // Direct Index 2 (Column C)
+                const gateOutColIdx = 26; // Column AA (PONUMBER)
+
+                let updateCount = 0;
+                let excelRowsProcessed = 0;
+
+                // Headers ko extend karein agar choti sheet hai
+                if (smtpData[0].length <= gateOutColIdx) {
+                    while (smtpData[0].length <= gateOutColIdx) {
+                        smtpData[0].push(smtpData[0].length === gateOutColIdx ? "PONUMBER" : "");
+                    }
+                }
+
+                jsonData.forEach((exRow, exIdx) => {
+                    // Excel Cell A (0) = Container, Cell B (1) = Date
+                    const exContNo = String(exRow[0] || '').trim().toUpperCase();
+                    const exGateDate = String(exRow[1] || '').trim();
+
+                    if (exContNo && exGateDate) {
+                        excelRowsProcessed++;
+                        let foundInSmtp = false;
+
+                        for (let i = 1; i < smtpData.length; i++) {
+                            const smtpCont = String(smtpData[i][sContIdx] || '').trim().toUpperCase();
+                            
+                            if (smtpCont === exContNo) {
+                                // Row extend karein
+                                while (smtpData[i].length <= gateOutColIdx) smtpData[i].push("");
+                                
+                                smtpData[i][gateOutColIdx] = exGateDate;
+                                updateCount++;
+                                foundInSmtp = true;
+                            }
+                        }
+                    }
+                });
+
+                // ALERT 2: Final Result
+                if (updateCount > 0) {
+                    rawSheets.smtp = smtpData;
+                    window.viewSheetData('smtp');
+                    alert(`✅ SUCCESS!\nExcel Rows Read: ${excelRowsProcessed}\nSMTP Containers Updated: ${updateCount}\n\nAb 'Save Changes' par click karein.`);
+                    saveToCloud();
+                } else {
+                    alert(`❌ NO MATCH!\nExcel se ${excelRowsProcessed} containers read kiye, par SMTP ke Column C se koi match nahi mila.\n\nTip: Check karein ki SMTP me Container No. Column C me hi hai?`);
+                }
+
+            } catch (err) {
+                alert("Critical Error: " + err.message);
+            }
+        };
+        reader.readAsBinaryString(file);
+        e.target.value = ''; 
+    });
+}
 
                 window.viewSheetData('smtp');
                 const box = document.createElement('div');
@@ -1944,8 +2100,6 @@ document.getElementById('downloadBtn').addEventListener('click', () => {
 });
 
 initAuth();
-
-        initAuth();
     </script>
 </body>
 </html>
