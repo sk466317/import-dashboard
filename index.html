@@ -1832,8 +1832,117 @@ document.getElementById('downloadWebsiteCsvBtn').addEventListener('click', () =>
     link.click();
     document.body.removeChild(link);
 });// --- PASTE KHATAM ---
+// --- UPDATED CONTAINER WISE EXPORT LOGIC (With Not Arrived Logic) ---
+document.getElementById('downloadBtn').addEventListener('click', () => {
+    if (!selectedShipper || !rawSheets.smtp || rawSheets.smtp.length <= 1) {
+        alert("Please select a Customer first.");
+        return;
+    }
 
-// Iske baad aapka purana initAuth(); aayega
+    const excelToDDMMYYYY = (val) => {
+        if (!val || val === '-') return '-';
+        let date;
+        if (!isNaN(val) && parseFloat(val) > 40000) {
+            date = new Date(Math.round((val - 25569) * 86400 * 1000));
+        } else {
+            const parts = String(val).split(/[-.\/]/);
+            if (parts.length >= 3) {
+                let d = parseInt(parts[0]);
+                let m = parseInt(parts[1]) - 1;
+                let y = parseInt(parts[2]);
+                if (y < 100) y += 2000;
+                date = new Date(y, m, d);
+            }
+        }
+        if (!date || isNaN(date.getTime())) return String(val);
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${day}-${month}-${year}`;
+    };
+
+    const strToDateObj = (str) => {
+        if (!str || str === '-' || !str.includes('-') || str === 'Not Arrived') return null;
+        const p = str.split('-');
+        return new Date(p[2], p[1] - 1, p[0]);
+    };
+
+    const smtpHeaders = rawSheets.smtp[0];
+    const sContIdx = smtpHeaders.findIndex(h => /CONT/i.test(String(h)));
+    const sSizeIdx = smtpHeaders.findIndex(h => /SIZE/i.test(String(h)));
+    const sBlIdx = smtpHeaders.findIndex(h => /BL/i.test(String(h)));
+    const sVslIdx = 5; 
+    const sTpIdx = smtpHeaders.findIndex(h => /TP_SUBMITTING/i.test(String(h))) !== -1 ? smtpHeaders.findIndex(h => /TP_SUBMITTING/i.test(String(h))) : 18;
+    const sGateOutIdx = 26; 
+    const sConsIdx = 24; 
+
+    let csvRows = [];
+    csvRows.push(`Selected Customer: ${selectedShipper}`);
+    csvRows.push(`BL_No.,CONT_Nos.,Size,Disch_Vsl_Name,Handover Date,Railout Date,Arrival Date,Gate out Date,Handover to Railout (Days),Railout to Arrival (Days),Arrival to Gateout (Days)`);
+
+    const customerSmtpRows = rawSheets.smtp.slice(1).filter(row => String(row[sConsIdx] || '').trim() === selectedShipper);
+
+    customerSmtpRows.forEach(sRow => {
+        const contNo = String(sRow[sContIdx] || '').trim();
+        const webRow = rawSheets.website.find(w => String(w[3] || '').trim() === contNo);
+        
+        const handoverDtStr = excelToDDMMYYYY(sRow[sTpIdx]);
+        const gateOutDtStr = excelToDDMMYYYY(sRow[sGateOutIdx]);
+
+        let railoutDtStr = '';
+        let arrivalDtStr = '';
+        
+        if (webRow) {
+            railoutDtStr = excelToDDMMYYYY(webRow[8]);
+            const rawRemarks = String(webRow[9] || '').toUpperCase();
+            
+            if (rawRemarks.includes("TRAIN ARRIVED")) {
+                const dateMatch = rawRemarks.match(/\d{2}[-./]\d{2}[-./]\d{2,4}/);
+                if (dateMatch) {
+                    arrivalDtStr = excelToDDMMYYYY(dateMatch[0]);
+                }
+            } else if (rawRemarks.includes("RAILOUT")) {
+                // AGAR REMARK ME RAILOUT HAI BUT ARRIVED NAHI HAI
+                arrivalDtStr = "Not Arrived";
+            }
+        }
+
+        const dH = strToDateObj(handoverDtStr);
+        const dR = strToDateObj(railoutDtStr);
+        const dA = strToDateObj(arrivalDtStr);
+        const dG = strToDateObj(gateOutDtStr);
+
+        const diffDays = (d1, d2) => {
+            if (!d1 || !d2) return "0";
+            const diff = d2.getTime() - d1.getTime();
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            return days < 0 ? 0 : days;
+        };
+
+        const row = [
+            `"${sRow[sBlIdx] || ''}"`,
+            contNo,
+            sRow[sSizeIdx] || '',
+            `"${sRow[sVslIdx] || ''}"`,
+            handoverDtStr,
+            railoutDtStr,
+            arrivalDtStr,
+            gateOutDtStr,
+            diffDays(dH, dR),
+            diffDays(dR, dA),
+            diffDays(dA, dG)
+        ];
+        csvRows.push(row.join(","));
+    });
+
+    const csvContent = "\uFEFF" + csvRows.join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.setAttribute("href", URL.createObjectURL(blob));
+    link.setAttribute("download", `Container_Report_${selectedShipper.replace(/\s+/g, '_')}.csv`);
+    link.click();
+});
+
 initAuth();
 
         initAuth();
