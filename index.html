@@ -9,7 +9,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Screenshot logic -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
     <!-- Firebase Libraries -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -845,8 +845,13 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
                             const isArrived = /TRAIN ARRIVED/i.test(detail.remark);
                             const remarkClass = isArrived ? 'bg-yellow-100 text-slate-900' : 'text-slate-500';
                             rHtml += `<tr class="border-b border-slate-200 hover:bg-emerald-50/30">`;
-                            if (idx === 0) rHtml += `<td rowspan="${detailsToShow.length}" class="px-3 py-1 font-bold text-slate-900 border-r border-slate-300 align-top">${bl.blNo} <span class="text-blue-500 text-[8px] uppercase font-bold">(${bl.stats.total} / ${bl.line})</span></td>`;
-                            rHtml += `<td class="px-3 py-1 text-center font-bold text-emerald-700 bg-emerald-50 border-r border-slate-300">${detail.count}</td><td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${detail.train}</td><td class="px-3 py-1 text-center text-blue-600 font-bold border-r border-slate-300 uppercase whitespace-nowrap">${detail.date}</td><td class="px-3 py-1 ${remarkClass} text-[9px] font-bold">${detail.remark}</td></tr>`;
+                            if (idx === 0) rHtml += `<td rowspan="${detailsToShow.length}" class="px-3 py-1 font-bold text-slate-900 border-r border-slate-300 align-top">
+    <a href="javascript:void(0)" onclick="searchHTPL('${bl.blNo}')" class="text-blue-1000 hover:underline cursor-pointer">
+        ${bl.blNo}
+    </a>
+    <span class="text-blue-500 text-[10px] uppercase font-bold ml-1">(${bl.stats.total} / ${bl.line})</span>
+</td>`
+                            rHtml += `<td class="px-3 py-1 text-center font-bold text-emerald-700 bg-emerald-50 border-r border-slate-300">${detail.count}</td><td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${detail	.train}</td><td class="px-3 py-1 text-center text-blue-600 font-bold border-r border-slate-300 uppercase whitespace-nowrap">${detail.date}</td><td class="px-3 py-1 ${remarkClass} text-[9px] font-bold">${detail.remark}</td></tr>`;
                         });
                         rHtml += `<tr class="bg-blue-100/60 font-bold border-b border-blue-200"><td class="px-3 py-1 text-blue-800 uppercase text-[8px]">Group Total</td><td class="px-3 py-1 text-center text-blue-900 border-r border-blue-200">${blTotal}</td><td colspan="3"></td></tr>`;
                     }
@@ -936,6 +941,29 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
             });
 
             currentShipperAllGroups = Object.values(blGroups);
+// --- SORTING LOGIC: NEW TO OLD HANDOVER DATE ---
+currentShipperAllGroups = Object.values(blGroups);
+
+currentShipperAllGroups.sort((a, b) => {
+    // Date string se comparison ke liye helper
+    const parseSortDate = (str) => {
+        if (!str || str === '-' || str === 'N/A') return new Date(0); // Empty dates niche jayengi
+        const parts = str.split(/[-.\/\s]/);
+        if (parts.length < 3) return new Date(0);
+        
+        let d = parseInt(parts[0]);
+        let m = parseInt(parts[1]) - 1;
+        let y = parseInt(parts[2]);
+        if (y < 100) y += 2000;
+        
+        return new Date(y, m, d).getTime();
+    };
+
+    const dateA = parseSortDate(a.handoverDt);
+    const dateB = parseSortDate(b.handoverDt);
+
+    return dateB - dateA; // New to Old (Descending order)
+});
 
             // VESSEL FILTER LOGIC FIX
             if (shouldPopulateFilters) {
@@ -1192,7 +1220,7 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
             rawSheets.website.slice(1).forEach((row) => {
                 const currentRemark = String(row[9] || '').toUpperCase();
                 if (String(row[4]).trim() === rake && currentRemark.includes("RAILOUT FROM")) {
-                    row[9] = `TRAIN ARRIVED ON ${arrivedDate}`;
+                    row[9] = `TRAIN ARRIVED ON ${arrivedDate},`;
                     updateCount++;
                 }
             });
@@ -1988,13 +2016,19 @@ document.getElementById('downloadWebsiteCsvBtn').addEventListener('click', () =>
     link.click();
     document.body.removeChild(link);
 });// --- PASTE KHATAM ---
-// --- UPDATED CONTAINER WISE EXPORT LOGIC (With Not Arrived Logic) ---
-document.getElementById('downloadBtn').addEventListener('click', () => {
-    if (!selectedShipper || !rawSheets.smtp || rawSheets.smtp.length <= 1) {
-        alert("Please select a Customer first.");
+// --- FINAL STYLED XLSX EXPORT (BLUE HEADERS & BORDERS) ---
+document.getElementById('downloadBtn').addEventListener('click', async () => {
+    if (!currentShipperAllGroups || currentShipperAllGroups.length === 0) {
+        alert("No data visible on screen to export.");
         return;
     }
 
+    const customerName = (selectedShipper || "Selected Customer").toUpperCase();
+    const visibleBLs = currentShipperAllGroups.map(g => g.blNo);
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Container Report');
+
+    // --- Data Mapping ---
     const excelToDDMMYYYY = (val) => {
         if (!val || val === '-') return '-';
         let date;
@@ -2003,102 +2037,127 @@ document.getElementById('downloadBtn').addEventListener('click', () => {
         } else {
             const parts = String(val).split(/[-.\/]/);
             if (parts.length >= 3) {
-                let d = parseInt(parts[0]);
-                let m = parseInt(parts[1]) - 1;
-                let y = parseInt(parts[2]);
+                let d = parseInt(parts[0]), m = parseInt(parts[1]) - 1, y = parseInt(parts[2]);
                 if (y < 100) y += 2000;
                 date = new Date(y, m, d);
             }
         }
         if (!date || isNaN(date.getTime())) return String(val);
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const year = date.getFullYear();
-        return `${day}-${month}-${year}`;
+        return `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`;
     };
 
     const strToDateObj = (str) => {
         if (!str || str === '-' || !str.includes('-') || str === 'Not Arrived') return null;
-        const p = str.split('-');
-        return new Date(p[2], p[1] - 1, p[0]);
+        const p = str.split('-'); return new Date(p[2], p[1] - 1, p[0]);
     };
 
+    const diffDays = (d1, d2) => {
+        if (!d1 || !d2) return "0";
+        const diff = d2.getTime() - d1.getTime();
+        return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
+    };
+
+    // 1. Add Customer Name
+    const titleRow = worksheet.addRow([customerName]);
+    titleRow.font = { name: 'Arial', size: 14, bold: true };
+    worksheet.addRow([]); // Blank Space
+
+    // 2. Add Headers
+    const headers = [
+        "BL_No.", "CONT_Nos.", "Size", "Disch_Vsl_Name", 
+        "Handover Date", "Railout Date", "Arrival Date", "Gate out Date", 
+        "Handover to Railout (Days)", "Railout to Arrival (Days)", "Arrival to Gateout (Days)"
+    ];
+    const headerRow = worksheet.addRow(headers);
+
+    // Style Header (Blue Background, White Text, Thin Border)
+    headerRow.eachCell((cell) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
+        cell.font = { color: { argb: 'FFFFFFFF' }, bold: true, size: 10 };
+        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    });
+
+    // 3. Add Data Rows
     const smtpHeaders = rawSheets.smtp[0];
-    const sContIdx = smtpHeaders.findIndex(h => /CONT/i.test(String(h)));
+    const sContIdx = smtpHeaders.findIndex(h => /CONT/i.test(String(h))) !== -1 ? smtpHeaders.findIndex(h => /CONT/i.test(String(h))) : 2;
+    const sBlIdx = smtpHeaders.findIndex(h => /BL/i.test(String(h))) !== -1 ? smtpHeaders.findIndex(h => /BL/i.test(String(h))) : 9;
     const sSizeIdx = smtpHeaders.findIndex(h => /SIZE/i.test(String(h)));
-    const sBlIdx = smtpHeaders.findIndex(h => /BL/i.test(String(h)));
     const sVslIdx = 5; 
     const sTpIdx = smtpHeaders.findIndex(h => /TP_SUBMITTING/i.test(String(h))) !== -1 ? smtpHeaders.findIndex(h => /TP_SUBMITTING/i.test(String(h))) : 18;
     const sGateOutIdx = 26; 
-    const sConsIdx = 24; 
 
-    let csvRows = [];
-    csvRows.push(`Selected Customer: ${selectedShipper}`);
-    csvRows.push(`BL_No.,CONT_Nos.,Size,Disch_Vsl_Name,Handover Date,Railout Date,Arrival Date,Gate out Date,Handover to Railout (Days),Railout to Arrival (Days),Arrival to Gateout (Days)`);
+    const filteredSmtpRows = rawSheets.smtp.slice(1).filter(row => visibleBLs.includes(String(row[sBlIdx] || '').trim()));
 
-    const customerSmtpRows = rawSheets.smtp.slice(1).filter(row => String(row[sConsIdx] || '').trim() === selectedShipper);
-
-    customerSmtpRows.forEach(sRow => {
+    filteredSmtpRows.forEach(sRow => {
         const contNo = String(sRow[sContIdx] || '').trim();
         const webRow = rawSheets.website.find(w => String(w[3] || '').trim() === contNo);
-        
-        const handoverDtStr = excelToDDMMYYYY(sRow[sTpIdx]);
-        const gateOutDtStr = excelToDDMMYYYY(sRow[sGateOutIdx]);
+        const hDt = excelToDDMMYYYY(sRow[sTpIdx]);
+        const gDt = excelToDDMMYYYY(sRow[sGateOutIdx]);
 
-        let railoutDtStr = '';
-        let arrivalDtStr = '';
-        
+        let rDt = '', aDt = '';
         if (webRow) {
-            railoutDtStr = excelToDDMMYYYY(webRow[8]);
-            const rawRemarks = String(webRow[9] || '').toUpperCase();
-            
-            if (rawRemarks.includes("TRAIN ARRIVED")) {
-                const dateMatch = rawRemarks.match(/\d{2}[-./]\d{2}[-./]\d{2,4}/);
-                if (dateMatch) {
-                    arrivalDtStr = excelToDDMMYYYY(dateMatch[0]);
-                }
-            } else if (rawRemarks.includes("RAILOUT")) {
-                // AGAR REMARK ME RAILOUT HAI BUT ARRIVED NAHI HAI
-                arrivalDtStr = "Not Arrived";
-            }
+            rDt = excelToDDMMYYYY(webRow[8]);
+            const rem = String(webRow[9] || '').toUpperCase();
+            if (rem.includes("TRAIN ARRIVED")) {
+                const m = rem.match(/\d{2}[-./]\d{2}[-./]\d{2,4}/);
+                if (m) aDt = excelToDDMMYYYY(m[0]);
+            } else if (rem.includes("RAILOUT")) aDt = "Not Arrived";
         }
 
-        const dH = strToDateObj(handoverDtStr);
-        const dR = strToDateObj(railoutDtStr);
-        const dA = strToDateObj(arrivalDtStr);
-        const dG = strToDateObj(gateOutDtStr);
-
-        const diffDays = (d1, d2) => {
-            if (!d1 || !d2) return "0";
-            const diff = d2.getTime() - d1.getTime();
-            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-            return days < 0 ? 0 : days;
-        };
-
-        const row = [
-            `"${sRow[sBlIdx] || ''}"`,
-            contNo,
-            sRow[sSizeIdx] || '',
-            `"${sRow[sVslIdx] || ''}"`,
-            handoverDtStr,
-            railoutDtStr,
-            arrivalDtStr,
-            gateOutDtStr,
-            diffDays(dH, dR),
-            diffDays(dR, dA),
-            diffDays(dA, dG)
+        const rowData = [
+            String(sRow[sBlIdx] || ''), contNo, sRow[sSizeIdx] || '', String(sRow[sVslIdx] || ''),
+            hDt, rDt, aDt, gDt,
+            diffDays(strToDateObj(hDt), strToDateObj(rDt)),
+            diffDays(strToDateObj(rDt), strToDateObj(aDt)),
+            diffDays(strToDateObj(aDt), strToDateObj(gDt))
         ];
-        csvRows.push(row.join(","));
+
+        const dataRow = worksheet.addRow(rowData);
+        dataRow.eachCell((cell) => {
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            cell.font = { name: 'Arial', size: 9 };
+            cell.alignment = { vertical: 'middle', horizontal: 'left' };
+        });
     });
 
-    const csvContent = "\uFEFF" + csvRows.join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.setAttribute("href", URL.createObjectURL(blob));
-    link.setAttribute("download", `Container_Report_${selectedShipper.replace(/\s+/g, '_')}.csv`);
-    link.click();
-});
+    // Column Widths
+    worksheet.columns.forEach(col => { col.width = 18; });
+    worksheet.getColumn(4).width = 25; // Vessel Name Column
 
+    // Generate & Download File
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${customerName.replace(/\s+/g, '_')}_Report.xlsx`;
+    anchor.click();
+    window.URL.revokeObjectURL(url);
+});
+// --- HIND TERMINALS AUTO SEARCH LOGIC ---
+window.searchHTPL = function(blNumber) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'https://www.hindterminals.com/Container%20Tracking%20System/Import/Search%20Function/search.php';
+    form.target = '_blank'; 
+
+    const inputBL = document.createElement('input');
+    inputBL.type = 'hidden';
+    inputBL.name = 'Bill_NO'; // HTPL ki website ka field name
+    inputBL.value = blNumber;
+    form.appendChild(inputBL);
+
+    const inputSubmit = document.createElement('input');
+    inputSubmit.type = 'hidden';
+    inputSubmit.name = 'search1'; // HTPL ka submit button name
+    inputSubmit.value = 'Search';
+    form.appendChild(inputSubmit);
+
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+};
 initAuth();
     </script>
 </body>
