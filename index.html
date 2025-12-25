@@ -1066,80 +1066,90 @@ currentShipperAllGroups.sort((a, b) => {
         }
 
         async function loadFromCloud() {
-            if (!isCloudEnabled || !auth.currentUser) return;
-            cloudLabel.innerText = "Loading...";
-            refreshIcon.classList.add('animate-spin');
-            try {
-                const metaRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_meta', 'latest');
-                const metaSnap = await getDoc(metaRef);
-                if (metaSnap.exists()) {
-                    const { chunkCount } = metaSnap.data();
-                    if (chunkCount === 0) {
-                        cloudLabel.innerText = "Online";
-                        refreshIcon.classList.remove('animate-spin');
-                        return;
-                    }
-                    let fullStr = "";
-                    for (let i = 0; i < chunkCount; i++) {
-                        const chunkRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_chunks', `chunk_${i}`);
-                        const chunkSnap = await getDoc(chunkRef);
-                        if (chunkSnap.exists()) fullStr += chunkSnap.data().data;
-                    }
-                    if (fullStr) {
-                        rawSheets = JSON.parse(fullStr);
-                        processCloudData();
-                    }
-                }
-                cloudLabel.innerText = "Online";
-            } catch (e) { 
-                console.error("Cloud Load Error:", e); 
-                cloudLabel.innerText = "Load Error";
-            } finally {
+    if (!isCloudEnabled || !auth.currentUser) return;
+    cloudLabel.innerText = "Loading...";
+    refreshIcon.classList.add('animate-spin');
+
+    try {
+        const metaRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_meta', 'latest');
+        const metaSnap = await getDoc(metaRef);
+        
+        if (metaSnap.exists()) {
+            const { chunkCount } = metaSnap.data();
+            if (chunkCount === 0) {
+                cloudLabel.innerText = "Online (No Data)";
                 refreshIcon.classList.remove('animate-spin');
+                return;
             }
-        }
 
-        async function saveToCloud() {
-            if (!isCloudEnabled || !auth.currentUser) return;
-            
-            const overlay = document.getElementById('savingOverlay');
-            const progressText = document.getElementById('savingProgressText');
-            
-            // 1. Screen Lock karein aur Warning ON karein
-            overlay.classList.remove('hidden');
-            const preventClose = (e) => { e.preventDefault(); e.returnValue = ''; };
-            window.addEventListener('beforeunload', preventClose);
-
-            try {
-                const str = JSON.stringify(rawSheets);
-                const chunkSize = 800000; 
-                const chunkCount = Math.ceil(str.length / chunkSize);
-                
-                for (let i = 0; i < chunkCount; i++) {
-                    // Calculate Progress Percentage
-                    const progress = Math.round(((i + 1) / chunkCount) * 100);
-                    progressText.innerText = progress + "%";
-                    
-                    const chunk = str.substring(i * chunkSize, (i + 1) * chunkSize);
-                    const chunkRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_chunks', `chunk_${i}`);
-                    await setDoc(chunkRef, { data: chunk });
+            let fullStr = "";
+            // Loop through each chunk
+            for (let i = 0; i < chunkCount; i++) {
+                const chunkRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_chunks', `chunk_${i}`);
+                const chunkSnap = await getDoc(chunkRef);
+                if (chunkSnap.exists()) {
+                    fullStr += chunkSnap.data().data;
                 }
-                
-                const metaRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_meta', 'latest');
-                await setDoc(metaRef, { chunkCount, updatedAt: new Date().toISOString() });
-                
-                cloudLabel.innerText = "Connected";
-            } catch (e) {
-                console.error("Save Error:", e);
-                alert("Critical Error: Data could not be saved to cloud!");
-            } finally {
-                // 2. Data save hone ke baad Lock hatayein
-                setTimeout(() => {
-                    overlay.classList.add('hidden');
-                    window.removeEventListener('beforeunload', preventClose);
-                }, 500);
             }
+
+            if (fullStr) {
+                rawSheets = JSON.parse(fullStr);
+                processCloudData();
+            }
+            cloudLabel.innerText = "Online";
+        } else {
+            cloudLabel.innerText = "No Cloud Data";
         }
+    } catch (e) { 
+        console.error("Cloud Load Error:", e); 
+        cloudLabel.innerText = "Load Error";
+    } finally {
+        refreshIcon.classList.remove('animate-spin');
+    }
+}
+        async function saveToCloud() {
+    if (!isCloudEnabled || !auth.currentUser) return;
+    
+    const overlay = document.getElementById('savingOverlay');
+    const progressText = document.getElementById('savingProgressText');
+    
+    overlay.classList.remove('hidden');
+    const preventClose = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', preventClose);
+
+    try {
+        const str = JSON.stringify(rawSheets);
+        const chunkSize = 800000; 
+        const chunkCount = Math.ceil(str.length / chunkSize);
+        
+        // Step 1: Upload Chunks first
+        for (let i = 0; i < chunkCount; i++) {
+            const progress = Math.round(((i + 1) / chunkCount) * 100);
+            progressText.innerText = progress + "%";
+            
+            const chunk = str.substring(i * chunkSize, (i + 1) * chunkSize);
+            const chunkRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_chunks', `chunk_${i}`);
+            await setDoc(chunkRef, { data: chunk });
+        }
+        
+        // Step 2: ONLY update Meta after all chunks are successful
+        const metaRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_meta', 'latest');
+        await setDoc(metaRef, { 
+            chunkCount: chunkCount, 
+            updatedAt: new Date().toISOString() 
+        });
+        
+        cloudLabel.innerText = "Connected";
+    } catch (e) {
+        console.error("Save Error:", e);
+        alert("Critical Error: Data save nahi ho paya. Internet check karein.");
+    } finally {
+        setTimeout(() => {
+            overlay.classList.add('hidden');
+            window.removeEventListener('beforeunload', preventClose);
+        }, 500);
+    }
+}
 
 
         // ------------------------------------------
@@ -1411,6 +1421,11 @@ currentShipperAllGroups.sort((a, b) => {
 
                 const maxCols = Math.max(...data.map(r => r.length));
                 for(let colIndex = 0; colIndex < maxCols; colIndex++) {
+                if (sheetName === 'smtp') {
+                        const allowedIndices = [1, 2, 3, 5, 9, 17, 18, 22, 23, 24, 26];
+                        if (!allowedIndices.includes(colIndex)) continue; 
+                    }
+
                     const content = row[colIndex] !== undefined && row[colIndex] !== null ? row[colIndex] : '';
                     html += `<td class="px-2 py-1.5 border-r border-slate-200 truncate max-w-[200px] ${!isHeader ? 'editable-cell' : ''}" 
                                 ${!isHeader ? 'contenteditable="true"' : ''} 
@@ -1742,136 +1757,68 @@ currentShipperAllGroups.sort((a, b) => {
         // ------------------------------------------
         // SMTP EXCEL IMPORT LOGIC
         // ------------------------------------------
-        const smtpExcelInput = document.getElementById('smtpExcelInput');
-        smtpExcelInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                const bstr = evt.target.result;
-                const wb = XLSX.read(bstr, { type: 'binary' });
-                const ws = wb.Sheets[wb.SheetNames[0]];
-                const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
-                
-                if (jsonData.length < 2) return;
-
-                const smtpHeaders = rawSheets.smtp[0];
-                const sContIdx = smtpHeaders ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
-
-                let addedCount = 0;
-                let skipCount = 0;
-
-                jsonData.slice(1).forEach(exRow => {
-                    const contNo = String(exRow[sContIdx] || '').trim();
-                    // Cell L is index 11 (12th column: A=0, B=1, ..., L=11)
-                    const cellLValue = String(exRow[11] || '').toUpperCase(); 
-
-                    if (contNo && (cellLValue.includes("KILARAIPUR") || cellLValue.includes("LUDHIANA"))) {
-                        const alreadyExists = rawSheets.smtp.some(s => String(s[sContIdx] || '').trim() === contNo);
-                        
-                        if (!alreadyExists) {
-                            rawSheets.smtp.push(exRow);
-                            addedCount++;
-                        } else {
-                            skipCount++;
-                        }
-                    }
-                });
-
-// --- DIRECT MAPPING GATE OUT LOGIC ---
-const gateOutExcelInput = document.getElementById('gateOutExcelInput');
-if (gateOutExcelInput) {
-    gateOutExcelInput.addEventListener('change', (e) => {
+        // --- AUTO-TRANSFER SMTP & WEBSITE LOGIC ---
+const smtpExcelInput = document.getElementById('smtpExcelInput');
+if (smtpExcelInput) {
+    smtpExcelInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
-        // ALERT 1: Check if file selected
-        console.log("File Selected:", file.name);
-
-        if (!rawSheets || !rawSheets.smtp || rawSheets.smtp.length <= 1) {
-            alert("❌ ERROR: SMTP Data nahi mila. Pehle SMTP Excel upload karein.");
-            return;
-        }
-
         const reader = new FileReader();
         reader.onload = (evt) => {
-            try {
-                const bstr = evt.target.result;
-                const wb = XLSX.read(bstr, { type: 'binary' });
-                const ws = wb.Sheets[wb.SheetNames[0]];
-                const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+            const bstr = evt.target.result;
+            const wb = XLSX.read(bstr, { type: 'binary' });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
+            
+            if (jsonData.length < 2) return;
 
-                const smtpData = rawSheets.smtp;
-                
-                // --- INDEX SETTING ---
-                // Agar Excel me Column C hai, toh index 2 hoga.
-                const sContIdx = 2; // Direct Index 2 (Column C)
-                const gateOutColIdx = 26; // Column AA (PONUMBER)
+            let addedCount = 0;
+            let transferCount = 0;
+            const activeIndices = [1, 2, 3, 5, 9, 11, 17, 18, 22, 23, 24, 26]; // 11 added for location check
 
-                let updateCount = 0;
-                let excelRowsProcessed = 0;
-
-                // Headers ko extend karein agar choti sheet hai
-                if (smtpData[0].length <= gateOutColIdx) {
-                    while (smtpData[0].length <= gateOutColIdx) {
-                        smtpData[0].push(smtpData[0].length === gateOutColIdx ? "PONUMBER" : "");
-                    }
-                }
-
-                jsonData.forEach((exRow, exIdx) => {
-                    // Excel Cell A (0) = Container, Cell B (1) = Date
-                    const exContNo = String(exRow[0] || '').trim().toUpperCase();
-                    const exGateDate = String(exRow[1] || '').trim();
-
-                    if (exContNo && exGateDate) {
-                        excelRowsProcessed++;
-                        let foundInSmtp = false;
-
-                        for (let i = 1; i < smtpData.length; i++) {
-                            const smtpCont = String(smtpData[i][sContIdx] || '').trim().toUpperCase();
-                            
-                            if (smtpCont === exContNo) {
-                                // Row extend karein
-                                while (smtpData[i].length <= gateOutColIdx) smtpData[i].push("");
-                                
-                                smtpData[i][gateOutColIdx] = exGateDate;
-                                updateCount++;
-                                foundInSmtp = true;
-                            }
-                        }
-                    }
-                });
-
-                // ALERT 2: Final Result
-                if (updateCount > 0) {
-                    rawSheets.smtp = smtpData;
-                    window.viewSheetData('smtp');
-                    alert(`✅ SUCCESS!\nExcel Rows Read: ${excelRowsProcessed}\nSMTP Containers Updated: ${updateCount}\n\nAb 'Save Changes' par click karein.`);
-                    saveToCloud();
-                } else {
-                    alert(`❌ NO MATCH!\nExcel se ${excelRowsProcessed} containers read kiye, par SMTP ke Column C se koi match nahi mila.\n\nTip: Check karein ki SMTP me Container No. Column C me hi hai?`);
-                }
-
-            } catch (err) {
-                alert("Critical Error: " + err.message);
+            if (!rawSheets.website || rawSheets.website.length === 0) {
+                rawSheets.website = [["UID", "SR_NO", "BILL_NO", "CONTAINER_NO", "RAKE_NO", "STACK", "SOURCE", "DESTINATION", "RAILING_DATE", "REMARKS"]];
             }
+
+            jsonData.slice(1).forEach(exRow => {
+                const contNo = String(exRow[2] || '').trim();
+                const cellLValue = String(exRow[11] || '').toUpperCase(); 
+
+                if (contNo && (cellLValue.includes("KILARAIPUR") || cellLValue.includes("LUDHIANA"))) {
+                    // 1. Update SMTP
+                    const alreadyInSmtp = rawSheets.smtp.some(s => String(s[2] || '').trim() === contNo);
+                    if (!alreadyInSmtp) {
+                        let optimizedRow = new Array(27).fill(""); 
+                        activeIndices.forEach(i => { optimizedRow[i] = exRow[i] !== undefined ? exRow[i] : ""; });
+                        rawSheets.smtp.push(optimizedRow);
+                        addedCount++;
+                    }
+
+                    // 2. Auto-Transfer to Website
+                    const alreadyInWebsite = rawSheets.website.some(w => String(w[3] || '').trim() === contNo);
+                    if (!alreadyInWebsite) {
+                        const blNo = String(exRow[9] || '').trim();
+                        const rawTpDate = exRow[18] || exRow[17];
+                        const tpDateFormatted = formatToDDMMYYYY(rawTpDate);
+                        
+                        rawSheets.website.push([
+                            103, rawSheets.website.length, blNo, contNo, "-", "Lower", "Mundra", "KILARAIPUR", "Pending", 
+                            `CONTAINER HANDOVER TO HTPL ON ${tpDateFormatted}`
+                        ]);
+                        transferCount++;
+                    }
+                }
+            });
+
+            window.viewSheetData('smtp');
+            alert(`SUCCESS: SMTP ${addedCount} added & Website ${transferCount} synced.`);
+            saveToCloud(); 
+            processCloudData();
         };
         reader.readAsBinaryString(file);
         e.target.value = ''; 
     });
 }
-
-                window.viewSheetData('smtp');
-                const box = document.createElement('div');
-                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">SMTP Update Complete: ${addedCount} added, ${skipCount} duplicates skipped.</div>`;
-                document.body.appendChild(box);
-                setTimeout(() => box.remove(), 4000);
-                saveToCloud();
-                processCloudData();
-            };
-            reader.readAsBinaryString(file);
-            e.target.value = '';
-        });
 
         // Manual Date Modal Events
         document.getElementById('submitManualDateBtn').addEventListener('click', () => {
@@ -2332,15 +2279,16 @@ initAuth();
         <div class="flex-1 overflow-auto p-4 custom-scrollbar bg-slate-50">
             <table class="w-full text-[11px] border-collapse bg-white shadow-sm">
                 <thead>
-                    <tr class="bg-slate-800 text-white uppercase text-[10px]">
-                        <th class="p-3 border">Train No</th>
-                        <th class="p-3 border">Railout Date</th>
-                        <th class="p-3 border">B/L No</th>
-                        <th class="p-3 border">Total Cont.</th>
-                        <th class="p-3 border">Shipper Name</th>
-                        <th class="p-3 border">Latest Remarks</th>
-                    </tr>
-                </thead>
+    <tr class="bg-slate-800 text-white uppercase text-[10px]">
+        <th class="p-3 border">Train No</th>
+        <th class="p-3 border">Railout Date</th>
+        <th class="p-3 border text-left">Shipper Name</th>
+        <th class="p-2 border w-12 text-center bg-slate-700">20"</th>
+        <th class="p-2 border w-12 text-center bg-slate-700">40"</th>
+        <th class="p-2 border w-16 text-center bg-blue-900">TEU</th>
+        <th class="p-3 border text-left">ETA / Remarks</th>
+    </tr>
+</thead>
                 <tbody id="runningTrainsBody" class="font-bold text-slate-700 text-center">
                     </tbody>
             </table>
