@@ -160,7 +160,7 @@
             <h3 class="text-xl font-black text-slate-800 uppercase tracking-tight">Data Saving...</h3>
             <p id="savingProgressText" class="text-blue-600 font-bold text-lg">0%</p>
         </div>
-        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Please do not close or refresh this page</p>
+        <p class="text-[10px] text-red-600 font-bold uppercase tracking-widest">Please do not close or refresh this page</p>
     </div>
 </div>
     <!-- Login Screen Overlay -->
@@ -277,8 +277,8 @@
                             </div>
                         </div>
 
-                        <div class="flex items-center gap-2 pl-1">
-    <button id="addSmtpBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] transition-all flex items-center gap-2 uppercase">
+                <div class="flex items-center gap-2 pl-1">
+    <button id="addSmtpBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] transition-all flex items-center gap-2 uppercase shadow-sm">
         <i data-lucide="list-plus" class="w-3.5 h-3.5"></i>
         Add SMTP
     </button>
@@ -287,14 +287,18 @@
         <i data-lucide="download-cloud" class="w-3.5 h-3.5"></i>
         Export CSV
     </button>
-<button id="saveLocalChangesBtn" class="px-4 py-1.5 bg-blue-700 text-white rounded-lg font-bold text-[10px] uppercase hover:bg-blue-800 shadow-md transition-all">
-    Save Changes
-</button>
-    <label class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm">
+
+    <label class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
         <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
         UPDATE RAILOUT
         <input type="file" id="websiteExcelInput" class="hidden" accept=".xlsx, .xls">
     </label>
+<button id="saveLocalChangesBtn" class="bg-blue-800 hover:bg-blue-900 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase shadow-md transition-all">
+        Save Changes
+    </button>
+    <button onclick="window.hideModal()" class="bg-red-800 hover:bg-slate-300 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all shadow-sm">
+        Close
+    </button>
 </div>
                     </div>
                 </div>
@@ -309,13 +313,14 @@
                 </div>
             </div>
             
-            <div class="p-3 bg-white border-t border-slate-200 flex justify-between items-center shrink-0">
-                <p class="text-[9px] font-bold text-slate-400 uppercase italic">Changes are local until "Save Changes" is clicked.</p>
-                <div class="flex gap-2">
-                    <button id="saveLocalChangesBtn" class="px-6 py-2 bg-blue-700 text-white rounded-lg font-bold text-[10px] uppercase hover:bg-blue-800 shadow-md transition-all">Save Changes</button>
-                    <button id="closeModalBtnFooter" class="px-6 py-2 bg-slate-200 text-slate-700 rounded-lg font-bold text-[10px] uppercase hover:bg-slate-300 transition-all">Close</button>
-                </div>
-            </div>
+           <div class="p-3 bg-white border-t border-slate-200 flex justify-between items-center shrink-0">
+    <p class="text-[9px] font-bold text-red-700 uppercase italic">Changes are local until "Save Changes" is clicked.</p>
+    
+    <div class="flex gap-2 hidden">
+        <button id="saveLocalChangesBtn" ...>Save Changes</button>
+        <button id="closeModalBtnFooter" ...>Close</button>
+    </div>
+</div>
         </div>
     </div>
 
@@ -364,7 +369,10 @@
                 <i data-lucide="database" class="w-3 h-3"></i>
                 UPDATE DATA
             </button>
-            
+            <button id="runningTrainsBtn" class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-md font-bold text-[10px] transition-all flex items-center gap-1.5 shadow-sm">
+    <i data-lucide="train" class="w-3.5 h-3.5"></i>
+    RUNNING TRAINS
+</button>
             <!-- Image Save Button -->
             <button id="saveImageBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-md font-bold text-[10px] transition-all flex items-center gap-1.5 shadow-sm">
                 <i data-lucide="image" class="w-3 h-3"></i>
@@ -851,7 +859,7 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
     </a>
     <span class="text-blue-500 text-[10px] uppercase font-bold ml-1">(${bl.stats.total} / ${bl.line})</span>
 </td>`
-                            rHtml += `<td class="px-3 py-1 text-center font-bold text-emerald-700 bg-emerald-50 border-r border-slate-300">${detail.count}</td><td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${detail	.train}</td><td class="px-3 py-1 text-center text-blue-600 font-bold border-r border-slate-300 uppercase whitespace-nowrap">${detail.date}</td><td class="px-3 py-1 ${remarkClass} text-[9px] font-bold">${detail.remark}</td></tr>`;
+                            rHtml += `<td class="px-3 py-1 text-center font-bold text-emerald-700 bg-emerald-50 border-r border-slate-300">${detail.count}</td><td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${detail.train}</td><td class="px-3 py-1 text-center text-blue-600 font-bold border-r border-slate-300 uppercase whitespace-nowrap">${detail.date}</td><td class="px-3 py-1 ${remarkClass} text-[9px] font-bold">${detail.remark}</td></tr>`;
                         });
                         rHtml += `<tr class="bg-blue-100/60 font-bold border-b border-blue-200"><td class="px-3 py-1 text-blue-800 uppercase text-[8px]">Group Total</td><td class="px-3 py-1 text-center text-blue-900 border-r border-blue-200">${blTotal}</td><td colspan="3"></td></tr>`;
                     }
@@ -2158,7 +2166,176 @@ window.searchHTPL = function(blNumber) {
     form.submit();
     document.body.removeChild(form);
 };
+// ... Iske upar aapka sara purana code (downloadBtn logic etc.) khatam ho raha hoga ...
+
+// *******************************************************************
+// IS LINE KE THEEK UPAR PASTE KAREIN (Running Trains Logic)
+// *******************************************************************
+
+document.getElementById('runningTrainsBtn').addEventListener('click', () => {
+    const modal = document.getElementById('runningTrainsModal');
+    const tableBody = document.getElementById('runningTrainsBody');
+    
+    // Header setup
+    const tableHeader = modal.querySelector('thead tr');
+    tableHeader.innerHTML = `
+        <th class="p-3 border">Train No</th>
+        <th class="p-3 border">Railout Date</th>
+        <th class="p-3 border text-left">Shipper Name</th>
+        <th class="p-3 border">Total Cont.</th>
+        <th class="p-3 border text-left">Expected Arrival (ETA)</th>
+    `;
+
+    tableBody.innerHTML = ""; 
+
+    if (!rawSheets.website || rawSheets.website.length <= 1) {
+        alert("No tracking data available.");
+        return;
+    }
+
+    const getShipperName = (blNo) => {
+        if (!rawSheets.shipper || rawSheets.shipper.length <= 1) return "OTHER SHIPPERS";
+        const match = rawSheets.shipper.find(r => String(r[2] || '').trim().toUpperCase() === String(blNo).trim().toUpperCase());
+        return (match && match[3]) ? String(match[3]).trim().toUpperCase() : "OTHER SHIPPERS";
+    };
+
+    const extractETA = (remark) => {
+        const upperRem = String(remark).toUpperCase();
+        if (upperRem.includes("ETA")) {
+            const parts = upperRem.split("ETA");
+            return "ETA " + parts[1].trim();
+        }
+        return remark;
+    };
+
+    // --- STEP 1: Group by Train First ---
+    let trainGroups = {};
+
+    rawSheets.website.slice(1).forEach(row => {
+        const remark = String(row[9] || '').toUpperCase();
+        if (remark.includes("RAILOUT FROM") && !remark.includes("ARRIVED")) {
+            const trainNo = row[4] || "N/A";
+            const railDate = row[8] || "N/A";
+            const blNo = row[2] || "N/A";
+            const shipperName = getShipperName(blNo);
+            const etaOnly = extractETA(row[9]);
+
+            const trainKey = `${trainNo}_${railDate}`;
+
+            if (!trainGroups[trainKey]) {
+                trainGroups[trainKey] = {
+                    trainNo,
+                    railDate,
+                    eta: etaOnly,
+                    shippers: {}
+                };
+            }
+
+            if (!trainGroups[trainKey].shippers[shipperName]) {
+                trainGroups[trainKey].shippers[shipperName] = 0;
+            }
+            trainGroups[trainKey].shippers[shipperName]++;
+        }
+    });
+
+    // --- STEP 2: Sort Trains by Date (Old to New) ---
+    const sortedTrains = Object.values(trainGroups).sort((a, b) => {
+        const parseDate = (str) => {
+            const p = str.split(/[-.\/\s]/);
+            let y = parseInt(p[2]); if (y < 100) y += 2000;
+            return new Date(y, parseInt(p[1]) - 1, parseInt(p[0])).getTime();
+        };
+        return parseDate(a.railDate) - parseDate(b.railDate);
+    });
+
+    // --- STEP 3: Render with Rowspan Logic ---
+    if (sortedTrains.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="5" class="p-10 text-slate-400 uppercase font-bold text-center">No Running Trains Found.</td></tr>`;
+    } else {
+        sortedTrains.forEach(train => {
+            const shipperEntries = Object.entries(train.shippers);
+            const rowSpan = shipperEntries.length;
+
+            shipperEntries.forEach(([shipperName, count], idx) => {
+                const tr = document.createElement('tr');
+                tr.className = "border-b border-slate-200 transition-colors hover:bg-slate-50";
+                
+                let html = "";
+                // Pehli row mein Train No aur Date dikhao with Rowspan
+                if (idx === 0) {
+                    html += `
+                        <td rowspan="${rowSpan}" class="p-3 border border-slate-300 text-blue-800 font-black bg-white align-top text-sm">
+                            <div class="flex items-center gap-2"><i data-lucide="train" class="w-3 h-3 text-amber-600"></i> ${train.trainNo}</div>
+                        </td>
+                        <td rowspan="${rowSpan}" class="p-3 border border-slate-300 font-bold text-slate-600 bg-white align-top whitespace-nowrap text-[11px]">
+                            ${train.railDate}
+                        </td>
+                    `;
+                }
+
+                const shipperStyle = shipperName === "OTHER SHIPPERS" ? "text-rose-600 italic" : "text-slate-900 font-black";
+
+                html += `
+                    <td class="p-2 border border-slate-300 text-[10px] text-left leading-tight ${shipperStyle}">
+                        ${shipperName}
+                    </td>
+                    <td class="p-2 border border-slate-300 text-amber-700 font-black text-center text-md bg-amber-50/30">
+                        ${count}
+                    </td>
+                `;
+
+                // ETA ko bhi rowspan mein rakhte hain kyunki poori train ka ETA ek hi hoga
+                if (idx === 0) {
+                    html += `
+                        <td rowspan="${rowSpan}" class="p-3 border border-slate-300 text-[11px] text-indigo-800 text-left font-black uppercase bg-indigo-50/30 align-top">
+                            ${train.eta}
+                        </td>
+                    `;
+                }
+
+                tr.innerHTML = html;
+                tableBody.appendChild(tr);
+            });
+        });
+    }
+
+    modal.classList.remove('hidden');
+    lucide.createIcons();
+});
 initAuth();
     </script>
+<div id="runningTrainsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col border border-slate-300 overflow-hidden">
+        <div class="bg-amber-600 p-4 flex justify-between items-center shrink-0">
+            <div class="flex items-center gap-3 text-white">
+                <i data-lucide="train" class="w-6 h-6"></i>
+                <h2 class="font-bold uppercase tracking-tight text-sm">Live Running Trains Report (In Transit)</h2>
+            </div>
+            <button onclick="document.getElementById('runningTrainsModal').classList.add('hidden')" class="text-white hover:rotate-90 transition-all">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+        </div>
+        <div class="flex-1 overflow-auto p-4 custom-scrollbar bg-slate-50">
+            <table class="w-full text-[11px] border-collapse bg-white shadow-sm">
+                <thead>
+                    <tr class="bg-slate-800 text-white uppercase text-[10px]">
+                        <th class="p-3 border">Train No</th>
+                        <th class="p-3 border">Railout Date</th>
+                        <th class="p-3 border">B/L No</th>
+                        <th class="p-3 border">Total Cont.</th>
+                        <th class="p-3 border">Shipper Name</th>
+                        <th class="p-3 border">Latest Remarks</th>
+                    </tr>
+                </thead>
+                <tbody id="runningTrainsBody" class="font-bold text-slate-700 text-center">
+                    </tbody>
+            </table>
+        </div>
+        <div class="p-3 bg-slate-100 border-t border-slate-200 flex justify-between items-center shrink-0">
+            <p class="text-[9px] font-bold text-slate-500 uppercase italic">Only Showing Containers with 'RAILOUT FROM' remark.</p>
+            <button onclick="document.getElementById('runningTrainsModal').classList.add('hidden')" class="px-6 py-2 bg-slate-800 text-white rounded-lg font-bold text-[10px] uppercase">Close Report</button>
+        </div>
+    </div>
+</div>
 </body>
 </html>
