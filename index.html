@@ -212,7 +212,9 @@
                         <button id="tabSmtp" class="sheet-tab-btn px-4 py-2 bg-white border border-slate-300 rounded-lg font-bold text-[10px] uppercase hover:bg-blue-50 transition-all" data-sheet="smtp">SMTP</button>
                         <button id="tabWebsite" class="sheet-tab-btn px-4 py-2 bg-white border border-slate-300 rounded-lg font-bold text-[10px] uppercase hover:bg-blue-50 transition-all" data-sheet="website">WEBSITE</button>
                     </div>
-
+<button id="openAddShipperBtn" class="bg-slate-900 hover:bg-black text-white px-4 py-2 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-lg">
+    <i data-lucide="user-plus" class="w-3.5 h-3.5"></i> Add Shipper
+</button>
                     <!-- Shipper Tab Context Tools -->
                     <div id="shipperUpdateSection" class="hidden items-center gap-3 bg-white p-2 rounded-xl border border-slate-300 shadow-sm flex-wrap">
                         <label class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
@@ -225,22 +227,31 @@
 
                     <!-- SMTP Tab Context Tools -->
                     <div id="smtpUpdateSection" class="hidden items-center gap-3 bg-white p-2 rounded-xl border border-slate-300 shadow-sm flex-wrap">
-                        <label class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
-                            <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
-                            UPLOAD SMTP EXCEL
-                            <input type="file" id="smtpExcelInput" class="hidden" accept=".xlsx, .xls">
-                        </label>
+    
+    <label class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase shrink-0">
+        <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
+        UPLOAD SMTP EXCEL
+        <input type="file" id="smtpExcelInput" class="hidden" accept=".xlsx, .xls">
+    </label>
 
-<button onclick="document.getElementById('saveLocalChangesBtn').click()" class="px-4 py-1.5 bg-blue-700 text-white rounded-lg font-bold text-[10px] uppercase hover:bg-blue-800 shadow-md transition-all">
-    Save Changes
-</button>
-<label class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
-    <i data-lucide="truck" class="w-3.5 h-3.5"></i>
-    Update Gate Out
-    <input type="file" id="gateOutExcelInput" class="hidden" accept=".xlsx, .xls">
-</label>
-                        <p class="text-[9px] font-bold text-slate-400 italic">Checks Cell L (12th Col) for "KILARAIPUR/LUDHIANA" & skips duplicates.</p>
-                    </div>
+    <button onclick="document.getElementById('saveLocalChangesBtn').click()" class="px-4 py-1.5 bg-blue-700 text-white rounded-lg font-bold text-[10px] uppercase hover:bg-blue-800 shadow-md transition-all shrink-0">
+        Save Changes
+    </button>
+
+    <label class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase shrink-0">
+        <i data-lucide="truck" class="w-3.5 h-3.5"></i>
+        Update Gate Out
+        <input type="file" id="gateOutExcelInput" class="hidden" accept=".xlsx, .xls">
+    </label>
+
+    <label id="scanningBtnLabel" class="bg-pink-600 hover:bg-pink-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase shrink-0">
+        <i data-lucide="scan" class="w-3.5 h-3.5"></i>
+        Update Scanning
+        <input type="file" id="scanningExcelInput" class="hidden" accept=".xlsx, .xls">
+    </label>
+
+    <p class="text-[9px] font-bold text-slate-400 italic block w-full sm:w-auto">Filter: KILARAIPUR/LUDHIANA containers only.</p>
+</div>
 
                     <!-- Website Tab Context Tools -->
                     <div id="websiteUpdateSection" class="hidden items-center gap-3 bg-white p-2 rounded-xl border border-slate-300 shadow-sm flex-wrap">
@@ -1346,16 +1357,22 @@ currentShipperAllGroups.sort((a, b) => {
             }
         });
 
-        window.viewSheetData = (sheetName) => {
-            currentSheetInView = sheetName;
-            const container = document.getElementById('sheetDataContainer');
-            const data = rawSheets[sheetName];
-            
-            // Manage Tab-specific tool visibility
-            const webSection = document.getElementById('websiteUpdateSection');
-            const smtpSection = document.getElementById('smtpUpdateSection');
-            const shipperSection = document.getElementById('shipperUpdateSection');
-
+    window.viewSheetData = (sheetName) => {
+    currentSheetInView = sheetName;
+    const container = document.getElementById('sheetDataContainer');
+    const data = rawSheets[sheetName];
+    
+    const webSection = document.getElementById('websiteUpdateSection');
+    const smtpSection = document.getElementById('smtpUpdateSection');
+    const shipperSection = document.getElementById('shipperUpdateSection');
+        
+    const addShipperBtn = document.getElementById('openAddShipperBtn');
+    if (sheetName === 'shipper') {
+        addShipperBtn.classList.remove('hidden');
+    } else {
+        addShipperBtn.classList.add('hidden');
+    }
+    
             if (sheetName === 'website') {
                 webSection.classList.remove('hidden');
                 webSection.classList.add('flex');
@@ -1753,7 +1770,73 @@ currentShipperAllGroups.sort((a, b) => {
                 e.target.value = ''; 
             });
         }
+// --- SCANNING UPDATE LOGIC ---
+const scanningExcelInput = document.getElementById('scanningExcelInput');
+if (scanningExcelInput) {
+    scanningExcelInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
 
+        if (!rawSheets || !rawSheets.smtp || rawSheets.smtp.length <= 1) {
+            alert("❌ ERROR: SMTP Data nahi mila.");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const bstr = evt.target.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+                const smtpData = rawSheets.smtp;
+                const sContIdx = 2;       // SMTP Index 2 = Column C (Container No)
+                const terminalColIdx = 1; // SMTP Index 1 = Column B (Terminals)
+
+                let updateCount = 0;
+
+                jsonData.forEach((exRow) => {
+                    // Excel Cell B (Index 1) = Container Number
+                    const exContNo = String(exRow[1] || '').trim().toUpperCase();
+
+                    if (exContNo) {
+                        for (let i = 1; i < smtpData.length; i++) {
+                            const smtpCont = String(smtpData[i][sContIdx] || '').trim().toUpperCase();
+                            
+                            if (smtpCont === exContNo) {
+                                smtpData[i][terminalColIdx] = "Under Scanning";
+                                updateCount++;
+                            }
+                        }
+                    }
+                });
+
+                if (updateCount > 0) {
+                    rawSheets.smtp = smtpData;
+                    window.viewSheetData('smtp'); // Refresh table view
+                    
+                    // Success Alert
+                    const box = document.createElement('div');
+                    box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-pink-600 text-white px-8 py-4 rounded-xl shadow-2xl z-[100000] font-bold uppercase text-[10px] animate-bounce">
+                        ✅ Success: ${updateCount} Containers marked as Under Scanning
+                    </div>`;
+                    document.body.appendChild(box);
+                    setTimeout(() => box.remove(), 4000);
+
+                    saveToCloud();
+                    processCloudData();
+                } else {
+                    alert("❌ Match Nahi Mila: Excel ke Column B ke containers SMTP se match nahi huye.");
+                }
+            } catch (err) {
+                alert("Critical Error: " + err.message);
+            }
+        };
+        reader.readAsBinaryString(file);
+        e.target.value = ''; // Reset input
+    });
+}
         // ------------------------------------------
         // SMTP EXCEL IMPORT LOGIC
         // ------------------------------------------
@@ -2263,6 +2346,68 @@ document.getElementById('runningTrainsBtn').addEventListener('click', () => {
     modal.classList.remove('hidden');
     lucide.createIcons();
 });
+// --- MANUAL ADD SHIPPER LOGIC ---
+const openAddShipperBtn = document.getElementById('openAddShipperBtn');
+const addShipperModal = document.getElementById('addShipperModal');
+const manualBlInput = document.getElementById('manualBlInput');
+const manualShipperNameInput = document.getElementById('manualShipperNameInput');
+const saveManualShipperBtn = document.getElementById('saveManualShipperBtn');
+const blMatchStatus = document.getElementById('blMatchStatus');
+const previewList = document.getElementById('previewList');
+const containerPreviewArea = document.getElementById('containerPreviewArea');
+
+let matchedContainers = [];
+
+openAddShipperBtn.addEventListener('click', () => {
+    addShipperModal.classList.remove('hidden');
+    manualBlInput.value = ''; manualShipperNameInput.value = '';
+    blMatchStatus.innerHTML = ''; containerPreviewArea.classList.add('hidden');
+    matchedContainers = [];
+    if(window.lucide) lucide.createIcons();
+});
+
+manualBlInput.addEventListener('input', (e) => {
+    const searchVal = e.target.value.trim().toUpperCase();
+    if (searchVal.length < 4) {
+        blMatchStatus.innerHTML = ''; containerPreviewArea.classList.add('hidden');
+        return;
+    }
+    const matches = rawSheets.smtp.filter(row => String(row[9] || '').toUpperCase() === searchVal);
+    if (matches.length > 0) {
+        matchedContainers = matches.map(row => ({ cont: row[2], size: row[3], bl: row[9] }));
+        blMatchStatus.className = "mt-1 text-[9px] font-bold uppercase text-emerald-600";
+        blMatchStatus.innerText = `✅ Found ${matches.length} Containers`;
+        containerPreviewArea.classList.remove('hidden');
+        previewList.innerHTML = matchedContainers.map(m => `<li>• ${m.cont} (${m.size}")</li>`).join('');
+        if (!manualShipperNameInput.value) manualShipperNameInput.value = matches[0][24] || '';
+    } else {
+        blMatchStatus.className = "mt-1 text-[9px] font-bold uppercase text-rose-500";
+        blMatchStatus.innerText = "❌ No match in SMTP";
+        containerPreviewArea.classList.add('hidden');
+        matchedContainers = [];
+    }
+});
+
+saveManualShipperBtn.addEventListener('click', async () => {
+    const shipperName = manualShipperNameInput.value.trim().toUpperCase();
+    const blNo = manualBlInput.value.trim().toUpperCase();
+    if (!shipperName || matchedContainers.length === 0) { alert("Invalid details."); return; }
+
+    let addedCount = 0;
+    matchedContainers.forEach(m => {
+        const alreadyExists = rawSheets.shipper.some(s => String(s[0] || '').trim() === String(m.cont).trim());
+        if (!alreadyExists) {
+            rawSheets.shipper.push([m.cont, m.size, blNo, shipperName]);
+            addedCount++;
+        }
+    });
+
+    addShipperModal.classList.add('hidden');
+    window.viewSheetData('shipper');
+    saveToCloud(); 
+    processCloudData();
+    alert(`Success: ${addedCount} containers added to Shipper tab.`);
+});
 initAuth();
     </script>
 <div id="runningTrainsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] hidden flex items-center justify-center p-4">
@@ -2296,6 +2441,30 @@ initAuth();
         <div class="p-3 bg-slate-100 border-t border-slate-200 flex justify-between items-center shrink-0">
             <p class="text-[9px] font-bold text-slate-500 uppercase italic">Only Showing Containers with 'RAILOUT FROM' remark.</p>
             <button onclick="document.getElementById('runningTrainsModal').classList.add('hidden')" class="px-6 py-2 bg-slate-800 text-white rounded-lg font-bold text-[10px] uppercase">Close Report</button>
+        </div>
+    </div>
+</div>
+<div id="addShipperModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100001] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-slate-300 overflow-hidden">
+        <div class="bg-teal-600 p-4 flex justify-between items-center text-white">
+            <h3 class="font-bold uppercase text-sm flex items-center gap-2"><i data-lucide="user-plus" class="w-4 h-4"></i> Add Manual Shipper</h3>
+            <button onclick="document.getElementById('addShipperModal').classList.add('hidden')"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <div class="p-6 space-y-4">
+            <div>
+                <label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">B/L Number (Lookup from SMTP)</label>
+                <input type="text" id="manualBlInput" placeholder="Enter B/L Number..." class="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-teal-500 uppercase">
+                <div id="blMatchStatus" class="mt-1 text-[9px] font-bold uppercase"></div>
+            </div>
+            <div>
+                <label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">Shipper / Consignee Name</label>
+                <input type="text" id="manualShipperNameInput" placeholder="Type Shipper Name..." class="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-teal-500 uppercase">
+            </div>
+            <div id="containerPreviewArea" class="bg-slate-100 p-3 rounded-lg hidden max-h-40 overflow-y-auto border border-slate-200 custom-scrollbar">
+                <p class="text-[8px] font-bold text-slate-500 mb-2 uppercase border-b pb-1">Containers in SMTP:</p>
+                <ul id="previewList" class="text-[10px] font-bold text-teal-800"></ul>
+            </div>
+            <button id="saveManualShipperBtn" class="w-full bg-teal-700 hover:bg-teal-800 text-white font-black py-3 rounded-xl shadow-lg transition-all transform active:scale-95 uppercase text-xs">Link & Save to Shipper Tab</button>
         </div>
     </div>
 </div>
