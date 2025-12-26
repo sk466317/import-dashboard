@@ -959,16 +959,23 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
                 if (isRailed) blGroups[blNo].stats.railed++; else blGroups[blNo].stats.pending++;
             });
 
-            currentShipperAllGroups = Object.values(blGroups);
-// --- SORTING LOGIC: NEW TO OLD HANDOVER DATE ---
+// --- UPDATED SORTING LOGIC: NOT HANDOVER FIRST, THEN NEW TO OLD ---
 currentShipperAllGroups = Object.values(blGroups);
 
 currentShipperAllGroups.sort((a, b) => {
-    // Date string se comparison ke liye helper
+    // 1. Check for "NOT Handover" status
+    // (Agar vessel name "NOT Handover" hai toh use priority 1 milegi)
+    const isNotHandoverA = (!a.isAnySmtp && a.stats.railed === 0);
+    const isNotHandoverB = (!b.isAnySmtp && b.stats.railed === 0);
+
+    if (isNotHandoverA && !isNotHandoverB) return -1;
+    if (!isNotHandoverA && isNotHandoverB) return 1;
+
+    // 2. Agar dono handover hain ya dono nahi hain, toh date se sort karein
     const parseSortDate = (str) => {
-        if (!str || str === '-' || str === 'N/A') return new Date(0); // Empty dates niche jayengi
+        if (!str || str === '-' || str === 'N/A') return 0;
         const parts = str.split(/[-.\/\s]/);
-        if (parts.length < 3) return new Date(0);
+        if (parts.length < 3) return 0;
         
         let d = parseInt(parts[0]);
         let m = parseInt(parts[1]) - 1;
@@ -981,7 +988,7 @@ currentShipperAllGroups.sort((a, b) => {
     const dateA = parseSortDate(a.handoverDt);
     const dateB = parseSortDate(b.handoverDt);
 
-    return dateB - dateA; // New to Old (Descending order)
+    return dateB - dateA; // New to Old
 });
 
             // VESSEL FILTER LOGIC FIX
@@ -1118,20 +1125,21 @@ currentShipperAllGroups.sort((a, b) => {
         refreshIcon.classList.remove('animate-spin');
     }
 }
-        async function saveToCloud() {
+       async function saveToCloud() {
     if (!isCloudEnabled || !auth.currentUser) return;
     
     const overlay = document.getElementById('savingOverlay');
     const progressText = document.getElementById('savingProgressText');
     
     overlay.classList.remove('hidden');
-    const preventClose = (e) => { e.preventDefault(); e.returnValue = ''; };
-    window.addEventListener('beforeunload', preventClose);
 
     try {
         const str = JSON.stringify(rawSheets);
-        const chunkSize = 800000; 
+        // Optimized Chunk Size for Firestore Safety
+        const chunkSize = 500000; 
         const chunkCount = Math.ceil(str.length / chunkSize);
+        
+        // ... baaki ka logic same rahega
         
         // Step 1: Upload Chunks first
         for (let i = 0; i < chunkCount; i++) {
@@ -2356,57 +2364,121 @@ const blMatchStatus = document.getElementById('blMatchStatus');
 const previewList = document.getElementById('previewList');
 const containerPreviewArea = document.getElementById('containerPreviewArea');
 
+// --- COMPLETE ADD SHIPPER LOGIC (FIXED) ---
 let matchedContainers = [];
 
-openAddShipperBtn.addEventListener('click', () => {
-    addShipperModal.classList.remove('hidden');
-    manualBlInput.value = ''; manualShipperNameInput.value = '';
-    blMatchStatus.innerHTML = ''; containerPreviewArea.classList.add('hidden');
+// 1. Modal Kholne ka Button (Fix: Ye button click hona chahiye)
+document.getElementById('openAddShipperBtn').addEventListener('click', () => {
+    document.getElementById('addShipperModal').classList.remove('hidden');
+    // Saare fields reset karein
+    document.getElementById('manualBlInput').value = ''; 
+    document.getElementById('manualShipperNameInput').value = '';
+    document.getElementById('manualSingleCont').value = '';
+    document.getElementById('blMatchStatus').innerText = '';
+    document.getElementById('containerPreviewArea').classList.add('hidden');
     matchedContainers = [];
     if(window.lucide) lucide.createIcons();
 });
 
-manualBlInput.addEventListener('input', (e) => {
-    const searchVal = e.target.value.trim().toUpperCase();
-    if (searchVal.length < 4) {
-        blMatchStatus.innerHTML = ''; containerPreviewArea.classList.add('hidden');
+// 2. Preview List ko Refresh karne ka function
+const refreshPreviewUI = () => {
+    const previewArea = document.getElementById('containerPreviewArea');
+    const previewList = document.getElementById('previewList');
+    if (matchedContainers.length > 0) {
+        previewArea.classList.remove('hidden');
+        previewList.innerHTML = matchedContainers.map((m, idx) => `
+            <li class="flex justify-between items-center bg-white p-1.5 mb-1 rounded border border-slate-200 shadow-sm">
+                <span class="text-[10px] font-bold text-slate-700">${m.cont} (${m.size}")</span>
+                <button onclick="removeTempCont(${idx})" type="button" class="text-rose-500 hover:scale-110 transition-transform">
+                    <i data-lucide="x-circle" class="w-4 h-4"></i>
+                </button>
+            </li>
+        `).join('');
+        if(window.lucide) lucide.createIcons();
+    } else {
+        previewArea.classList.add('hidden');
+    }
+};
+
+// 3. Queue se hatane ka function
+window.removeTempCont = (idx) => {
+    matchedContainers.splice(idx, 1);
+    refreshPreviewUI();
+};
+
+// 4. Manual Add Button (Blue Box wala ADD button)
+document.getElementById('addManualToPreviewBtn').addEventListener('click', () => {
+    const cont = document.getElementById('manualSingleCont').value.trim().toUpperCase();
+    const size = document.getElementById('manualSingleSize').value;
+    const blNo = document.getElementById('manualBlInput').value.trim().toUpperCase() || "MANUAL";
+    
+    if (!cont) {
+        alert("Pehle Container Number bhariye!");
         return;
     }
+    
+    // Check if already in list
+    if (matchedContainers.some(m => m.cont === cont)) {
+        alert("Ye container pehle se list mein hai!");
+        return;
+    }
+
+    matchedContainers.push({ cont, size, bl: blNo });
+    document.getElementById('manualSingleCont').value = ''; // Clear box
+    refreshPreviewUI();
+});
+
+// 5. B/L Lookup (SMTP search)
+document.getElementById('manualBlInput').addEventListener('input', (e) => {
+    const searchVal = e.target.value.trim().toUpperCase();
+    const status = document.getElementById('blMatchStatus');
+    
+    if (searchVal.length < 4) {
+        status.innerText = "";
+        return;
+    }
+
     const matches = rawSheets.smtp.filter(row => String(row[9] || '').toUpperCase() === searchVal);
+    
     if (matches.length > 0) {
-        matchedContainers = matches.map(row => ({ cont: row[2], size: row[3], bl: row[9] }));
-        blMatchStatus.className = "mt-1 text-[9px] font-bold uppercase text-emerald-600";
-        blMatchStatus.innerText = `✅ Found ${matches.length} Containers`;
-        containerPreviewArea.classList.remove('hidden');
-        previewList.innerHTML = matchedContainers.map(m => `<li>• ${m.cont} (${m.size}")</li>`).join('');
-        if (!manualShipperNameInput.value) manualShipperNameInput.value = matches[0][24] || '';
+        matchedContainers = matches.map(row => ({ 
+            cont: String(row[2]).trim(), 
+            size: String(row[3]).includes('40') ? '40' : '20', 
+            bl: searchVal 
+        }));
+        status.className = "mt-1 text-[9px] font-bold uppercase text-emerald-600";
+        status.innerText = `✅ Found ${matches.length} in SMTP`;
+        
+        if (!document.getElementById('manualShipperNameInput').value) {
+            document.getElementById('manualShipperNameInput').value = matches[0][24] || '';
+        }
+        refreshPreviewUI();
     } else {
-        blMatchStatus.className = "mt-1 text-[9px] font-bold uppercase text-rose-500";
-        blMatchStatus.innerText = "❌ No match in SMTP";
-        containerPreviewArea.classList.add('hidden');
-        matchedContainers = [];
+        status.className = "mt-1 text-[9px] font-bold uppercase text-amber-500";
+        status.innerText = "⚠️ Not in SMTP. Add containers manually below.";
     }
 });
 
-saveManualShipperBtn.addEventListener('click', async () => {
-    const shipperName = manualShipperNameInput.value.trim().toUpperCase();
-    const blNo = manualBlInput.value.trim().toUpperCase();
-    if (!shipperName || matchedContainers.length === 0) { alert("Invalid details."); return; }
+// 6. Final Save Button (Link & Save)
+document.getElementById('saveManualShipperBtn').addEventListener('click', async () => {
+    const shipperName = document.getElementById('manualShipperNameInput').value.trim().toUpperCase();
+    if (!shipperName) { alert("Shipper Name zaroori hai!"); return; }
+    if (matchedContainers.length === 0) { alert("Kam se kam ek container add karein!"); return; }
 
     let addedCount = 0;
     matchedContainers.forEach(m => {
-        const alreadyExists = rawSheets.shipper.some(s => String(s[0] || '').trim() === String(m.cont).trim());
-        if (!alreadyExists) {
-            rawSheets.shipper.push([m.cont, m.size, blNo, shipperName]);
+        // Double check taaki duplicate na ho
+        if (!rawSheets.shipper.some(s => String(s[0]).trim() === m.cont)) {
+            rawSheets.shipper.push([m.cont, m.size, m.bl, shipperName]);
             addedCount++;
         }
     });
 
-    addShipperModal.classList.add('hidden');
+    document.getElementById('addShipperModal').classList.add('hidden');
     window.viewSheetData('shipper');
-    saveToCloud(); 
+    await saveToCloud();
     processCloudData();
-    alert(`Success: ${addedCount} containers added to Shipper tab.`);
+    alert(`Success! ${addedCount} containers added.`);
 });
 initAuth();
     </script>
@@ -2460,6 +2532,22 @@ initAuth();
                 <label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">Shipper / Consignee Name</label>
                 <input type="text" id="manualShipperNameInput" placeholder="Type Shipper Name..." class="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-teal-500 uppercase">
             </div>
+<div id="manualInputFields" class="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+    <p class="text-[9px] font-black text-blue-600 uppercase mb-2">Manual Container Entry</p>
+    <div class="flex gap-2">
+        <input type="text" id="manualSingleCont" placeholder="CONT NO" class="flex-1 px-3 py-1.5 border border-slate-300 rounded text-[10px] font-bold uppercase outline-none focus:ring-1 focus:ring-blue-500">
+        <select id="manualSingleSize" class="w-20 px-1 py-1.5 border border-slate-300 rounded text-[10px] font-bold outline-none">
+            <option value="20">20"</option>
+            <option value="40">40"</option>
+        </select>
+        <button id="addManualToPreviewBtn" type="button" class="bg-blue-600 text-white px-3 py-1.5 rounded font-bold text-[10px] hover:bg-blue-700">ADD</button>
+    </div>
+</div>
+
+<div id="containerPreviewArea" class="mt-4 bg-slate-100 p-3 rounded-lg hidden max-h-40 overflow-y-auto border border-slate-200 custom-scrollbar">
+    <p class="text-[8px] font-bold text-slate-500 mb-2 uppercase border-b pb-1">Queue to be Linked:</p>
+    <ul id="previewList" class="text-[10px] font-bold text-teal-800 space-y-1"></ul>
+</div>
             <div id="containerPreviewArea" class="bg-slate-100 p-3 rounded-lg hidden max-h-40 overflow-y-auto border border-slate-200 custom-scrollbar">
                 <p class="text-[8px] font-bold text-slate-500 mb-2 uppercase border-b pb-1">Containers in SMTP:</p>
                 <ul id="previewList" class="text-[10px] font-bold text-teal-800"></ul>
