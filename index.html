@@ -52,12 +52,14 @@
         th, td { border: 1px solid #1e3a8a33; word-wrap: break-word; line-height: 1.2; padding: 4px 6px; }
         
         .report-box {
-            border: 1px solid #94a3b8; 
-            background-color: white;
-            border-radius: 0.75rem;
-            overflow: hidden;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-        }
+    border: 1px solid #94a3b8; 
+    background-color: white;
+    border-radius: 0.75rem;
+    overflow: visible !important; /* hidden ki jagah visible karein */
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    position: relative;
+    z-index: 10;
+}
 
         .font-bold { font-weight: 700; }
         .compact-header { padding-top: 0.4rem; padding-bottom: 0.4rem; }
@@ -144,7 +146,59 @@
     background: rgba(255,255,255,0.1); z-index: 100000; display: none;
 }
 #saveProgressBar {
-    height: 100%; width: 0%; background: #22c55e; transition: width 0.3s ease;
+    height: 100%;
+    width: 0%;
+    background: #22c55e;
+    transition: width 0.3s ease;
+}
+
+/* Vessel Dropdown को क्लिक योग्य बनाने तथा header से ऊपर रखने के लिए */
+.relative.inline-block.w-64 {
+    position: relative !important;
+    z-index: 600 !important;  /* header से अधिक */
+    pointer-events: auto !important;
+}
+
+#vesselDropdownBtn {
+    position: relative !important;
+    z-index: 601 !important;
+    pointer-events: auto !important;
+    cursor: pointer !important;
+}
+
+#vesselDropdownMenu {
+    position: absolute !important;
+    z-index: 1000 !important; /* Isse 602 se badha kar 1000 karein */
+    background-color: white !important;
+    border: 2px solid #1d4ed8 !important;
+    border-radius: 0.375rem !important;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2) !important;
+    max-height: 50vh !important;
+    overflow-y: auto !important;
+    width: 100% !important;
+    left: 0 !important;
+    top: calc(100% + 8px) !important;
+    padding: 8px !important;
+    pointer-events: auto !important;
+}
+
+/* Table header का z-index कम रखें तथा background solid */
+.report-box .overflow-x-auto {
+    position: relative;
+    z-index: 50;
+    overflow: visible !important; /* Isse table ke bahr dropdown dikhega */
+}
+
+.report-box table thead {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 10 !important;  /* Isse 100 se kam karke 10 kar dein */
+    background-color: #0f172a !important;
+}
+#railedBreakdownContainer, 
+#pendingBreakdownContainer {
+    position: relative;
+    z-index: 1 !important; /* Inhe sabse niche rakha gaya hai */
 }
     </style>
 </head>
@@ -463,9 +517,15 @@
                             <div class="flex items-center gap-4 no-print">
                                 <div class="flex items-center gap-2">
                                     <label class="text-[9px] font-extrabold text-blue-700 uppercase tracking-tight">Vessel Wise:</label>
-                                    <select id="vesselFilter" class="filter-select">
-                                        <option value="ALL">All Vessels</option>
-                                    </select>
+                                  <div class="relative inline-block w-64">  <!-- w-44 से w-64 करें -->
+    <button id="vesselDropdownBtn" onclick="window.toggleVesselMenu()" class="filter-select w-full flex justify-between items-center px-2">
+        <span id="vesselDropdownLabel">Select Vessels</span>
+        <i data-lucide="chevron-down" class="w-3 h-3 ml-1"></i>
+    </button>
+    <div id="vesselDropdownMenu" class="hidden absolute left-0 top-full mt-1 w-full bg-white border-2 border-blue-700 rounded-lg shadow-2xl z-[100] max-h-60 overflow-y-auto p-2 custom-scrollbar">
+        <!-- content -->
+    </div>
+</div>
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <label class="text-[9px] font-extrabold text-blue-700 uppercase tracking-tight">BL Wise:</label>
@@ -510,7 +570,7 @@
                         </div>
                         <div class="overflow-x-auto">
                             <table class="w-full text-left text-[9px]">
-                                <thead class="bg-emerald-50 text-emerald-900 font-bold uppercase">
+                                <thead class="bg-emerald-50 text-white font-bold uppercase">
                                     <tr>
                                         <th class="px-3 py-2">BL (Containers/Line)</th>
                                         <th class="px-3 py-2 text-center w-24 whitespace-normal uppercase">Railout Done</th>
@@ -534,7 +594,7 @@
                         </div>
                         <div class="overflow-x-auto">
                             <table class="w-full text-left text-[9px]">
-                                <thead class="bg-rose-50 text-rose-900 font-bold uppercase">
+                                <thead class="bg-rose-50 text-white font-bold uppercase">
                                     <tr>
                                         <th class="px-3 py-2">BL (Containers/Line)</th>
                                         <th class="px-3 py-2">Remarks </th>
@@ -628,7 +688,6 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
         const saveLocalChangesBtn = document.getElementById('saveLocalChangesBtn');
         const authBtn = document.getElementById('authBtn');
         const loginScreen = document.getElementById('loginScreen');
-        const vesselFilter = document.getElementById('vesselFilter');
         const blFilter = document.getElementById('blFilter');
         const shipperSearch = document.getElementById('shipperSearch');
         const fileInput = document.getElementById('fileInput');
@@ -702,17 +761,23 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
         // ------------------------------------------
         // 2. RENDERING LOGIC
         // ------------------------------------------
-        function applyFilters() {
-            if (!currentShipperAllGroups.length) return;
-            let filtered = [...currentShipperAllGroups];
-            const vVal = vesselFilter.value;
-            const bVal = blFilter.value;
-            if (vVal !== "ALL") filtered = filtered.filter(g => g.vessel === vVal);
-            if (bVal !== "ALL") filtered = filtered.filter(g => g.blNo === bVal);
-            renderStats(filtered);
-            renderMainTable(filtered);
-            renderDetailedBreakdown(filtered);
-        }
+         function applyFilters() {
+    if (!currentShipperAllGroups.length) return;
+    let filtered = [...currentShipperAllGroups];
+
+    // Vessel filter
+    if (window.selectedVessels && window.selectedVessels.length > 0) {
+        filtered = filtered.filter(g => window.selectedVessels.includes(g.vessel));
+    }
+
+    // BL filter
+    const bVal = blFilter.value;
+    if (bVal !== "ALL") filtered = filtered.filter(g => g.blNo === bVal);
+
+    renderStats(filtered);
+    renderMainTable(filtered);
+    renderDetailedBreakdown(filtered);
+}
 
         function renderStats(groups) {
             const t20 = groups.reduce((acc, b) => acc + b.stats.s20, 0);
@@ -993,26 +1058,47 @@ currentShipperAllGroups.sort((a, b) => {
 
             // VESSEL FILTER LOGIC FIX
             if (shouldPopulateFilters) {
-                const vesselData = [];
-                const seenKeys = new Set();
-                currentShipperAllGroups.forEach(g => {
-                    if (g.vessel && g.vessel !== '-' && g.vessel !== '') {
-                        const displayLabel = `${g.vessel} (${g.handoverDt})`;
-                        if (!seenKeys.has(displayLabel)) {
-                            vesselData.push({ val: g.vessel, label: displayLabel });
-                            seenKeys.add(displayLabel);
-                        }
-                    }
-                });
-                vesselData.sort((a, b) => a.label.localeCompare(b.label));
-                vesselFilter.innerHTML = '<option value="ALL">All Vessels</option>' + 
-                    vesselData.map(v => `<option value="${v.val}">${v.label}</option>`).join('');
+    window.selectedVessels = [];
+    document.getElementById('vesselDropdownLabel').innerText = "Select Vessels";
 
-                const uniqueBLs = currentShipperAllGroups.map(g => g.blNo).filter(Boolean).sort();
-                blFilter.innerHTML = '<option value="ALL">All BLs</option>' + uniqueBLs.map(b => `<option value="${b}">${b}</option>`).join('');
+    // Vessels ko unki latest date ke saath nikalna aur sort karna
+    const vesselDateMap = {};
+    currentShipperAllGroups.forEach(g => {
+        if (g.vessel && g.vessel !== '-' && g.vessel !== '') {
+            const currentVal = g.vessel;
+            const currentDt = g.handoverDt;
+            
+            // Date parsing logic for sorting
+            const parseDate = (str) => {
+                if (!str || str === '-' || str === 'N/A') return 0;
+                const p = str.split(/[-.\/\s]/);
+                let y = parseInt(p[2]); if (y < 100) y += 2000;
+                return new Date(y, parseInt(p[1]) - 1, parseInt(p[0])).getTime();
+            };
+
+            const newTime = parseDate(currentDt);
+            if (!vesselDateMap[currentVal] || newTime > vesselDateMap[currentVal].time) {
+                vesselDateMap[currentVal] = { name: currentVal, time: newTime };
             }
-            applyFilters();
         }
+    });
+
+    // New to Old Sort
+    const sortedVesselNames = Object.values(vesselDateMap)
+        .sort((a, b) => b.time - a.time)
+        .map(v => v.name);
+
+    window.populateVesselFilters(sortedVesselNames);
+    
+    // BL Filter Logic (Same rahega)
+    const uniqueBLs = currentShipperAllGroups.map(g => g.blNo).filter(Boolean).sort();
+    blFilter.innerHTML = '<option value="ALL">All BLs</option>' + uniqueBLs.map(b => `<option value="${b}">${b}</option>`).join('');
+}
+
+    // BL Filter logic same rahega
+    const uniqueBLs = currentShipperAllGroups.map(g => g.blNo).filter(Boolean).sort();
+    blFilter.innerHTML = '<option value="ALL">All BLs</option>' + uniqueBLs.map(b => `<option value="${b}">${b}</option>`).join('');
+}
 	
         function renderShipperList(shippers, consIndex) {
             const listEl = document.getElementById('shipperList');
@@ -1035,16 +1121,29 @@ currentShipperAllGroups.sort((a, b) => {
         }
 
         window.selectShipper = function(name, consIndex) {
-            selectedShipper = name;
-            const activeNameEl = document.getElementById('activeShipperName');
-            if(activeNameEl) activeNameEl.innerText = name;
-            vesselFilter.value = "ALL";
-            blFilter.value = "ALL";
-            isInTransitFilterActive = false; // Reset filter on shipper change
-            const uniqueShippers = [...new Set(rawSheets.shipper.slice(1).map(row => row[consIndex]))].filter(Boolean).sort();
-            renderShipperList(uniqueShippers, consIndex);
-            processAndRenderReport(consIndex, true); 
-        };
+    selectedShipper = name;
+    const activeNameEl = document.getElementById('activeShipperName');
+    if(activeNameEl) activeNameEl.innerText = name;
+   
+    blFilter.value = "ALL";
+    isInTransitFilterActive = false;
+   
+    window.selectedVessels = [];
+    document.getElementById('vesselDropdownLabel').innerText = "Select Vessels";
+   
+    // नया: पुराना डेटा तुरंत हटाने के लिए
+    document.getElementById('reportRows').innerHTML = '';
+    document.getElementById('reportFooter').innerHTML = '';
+    document.getElementById('railedDetailRows').innerHTML = '';
+    document.getElementById('pendingDetailRows').innerHTML = '';
+    document.getElementById('overallStats').innerHTML = '';
+    document.getElementById('railedBreakdownContainer').classList.add('hidden');
+    document.getElementById('pendingBreakdownContainer').classList.add('hidden');
+   
+    const uniqueShippers = [...new Set(rawSheets.shipper.slice(1).map(row => row[consIndex]))].filter(Boolean).sort();
+    renderShipperList(uniqueShippers, consIndex);
+    processAndRenderReport(consIndex, true);
+};
 
         function processCloudData() {
             trainDateRemarksMap = {};
@@ -1959,7 +2058,6 @@ if (smtpExcelInput) {
             }, 800);
         });
 
-        vesselFilter.addEventListener('change', applyFilters);
         blFilter.addEventListener('change', applyFilters);
         shipperSearch.addEventListener('input', () => {
             const headers = rawSheets.shipper[0];
@@ -2480,8 +2578,110 @@ document.getElementById('saveManualShipperBtn').addEventListener('click', async 
     processCloudData();
     alert(`Success! ${addedCount} containers added.`);
 });
+// --- NEW MULTI-SELECT VESSEL LOGIC ---
+window.selectedVessels = [];
+
+window.toggleVesselMenu = () => {
+    const menu = document.getElementById('vesselDropdownMenu');
+    const btn = document.getElementById('vesselDropdownBtn');
+    if (!menu || !btn) return;
+    
+    menu.classList.toggle('hidden');
+    
+    if (!menu.classList.contains('hidden')) {
+        const rect = btn.getBoundingClientRect();
+        menu.style.position = 'fixed'; // 'absolute' ki jagah 'fixed' karein agar abhi bhi hide ho raha ho
+        menu.style.left = `${rect.left}px`;
+        menu.style.top = `${rect.bottom}px`;
+        menu.style.width = `${rect.width}px`;
+        menu.style.zIndex = '9999'; // Sabse upar rakhne ke liye
+    }
+};
+window.populateVesselFilters = (vesselList) => {
+    const menu = document.getElementById('vesselDropdownMenu');
+    let html = `
+        <div class="flex items-center gap-2 p-2 border-b-2 mb-1 pb-1 bg-blue-50">
+            <input type="checkbox" id="vesselSelectAll" onchange="window.toggleAllVessels(this)" class="w-4 h-4 cursor-pointer">
+            <label for="vesselSelectAll" class="text-[11px] font-black text-blue-900 cursor-pointer uppercase">SELECT ALL VESSELS</label>
+        </div>
+    `;
+    
+    vesselList.forEach(v => {
+        // Vessel se related containers ka status check karein
+        const relatedGroups = currentShipperAllGroups.filter(g => g.vessel === v);
+        
+        let totalUnits = 0;
+        let arrivedUnits = 0;
+        let latestHandover = '-';
+
+        relatedGroups.forEach(g => {
+            totalUnits += g.stats.total;
+            // Arrived units count karne ka logic
+            arrivedUnits += g.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
+        });
+
+        // Date sorting logic (Latest handover nikalne ke liye)
+        const validDates = relatedGroups.map(g => g.handoverDt).filter(d => d && d !== '-' && d !== 'N/A');
+        latestHandover = validDates.length > 0 ? validDates[0] : '-';
+
+        // Highlighting Logic
+        let bgColor = "hover:bg-blue-100"; // Default
+        let textColor = "text-slate-900";
+        let statusBadge = "";
+
+        if (totalUnits > 0 && arrivedUnits === totalUnits) {
+            // Case 1: All Arrived (Green Light)
+            bgColor = "bg-emerald-50 hover:bg-emerald-100";
+            textColor = "text-emerald-800";
+            statusBadge = `<span class="text-[7px] bg-emerald-600 text-white px-1 rounded ml-2">ALL ARRIVED</span>`;
+        } else if (arrivedUnits < totalUnits) {
+            // Case 2: Pending Units (Pink/Rose Highlight)
+            bgColor = "bg-rose-50 hover:bg-rose-100";
+            textColor = "text-rose-800";
+            statusBadge = `<span class="text-[7px] bg-rose-600 text-white px-1 rounded ml-2">PENDING: ${totalUnits - arrivedUnits}</span>`;
+        }
+
+        html += `
+        <div class="flex items-center gap-3 p-2 rounded border-b border-white/50 ${bgColor}">
+            <input type="checkbox" value="${v}" onchange="window.updateSelectedVessels()" class="vessel-checkbox w-4 h-4 cursor-pointer">
+            <label class="text-[12px] font-black ${textColor} cursor-pointer uppercase truncate flex flex-col w-full">
+                <span class="flex justify-between items-center">
+                    ${v} ${statusBadge}
+                </span>
+                <span class="text-[10px] opacity-70 font-black mt-0.5">Handover on: ${latestHandover}</span>
+            </label>
+        </div>`;
+    });
+    menu.innerHTML = html;
+};
+
+window.updateSelectedVessels = () => {
+    const checkboxes = document.querySelectorAll('.vessel-checkbox:checked');
+    window.selectedVessels = Array.from(checkboxes).map(cb => cb.value);
+    
+    const label = document.getElementById('vesselDropdownLabel');
+    if (window.selectedVessels.length === 0) label.innerText = "Select Vessels";
+    else if (window.selectedVessels.length === 1) label.innerText = window.selectedVessels[0];
+    else label.innerText = `${window.selectedVessels.length} Vessels Selected`;
+
+    applyFilters();
+};
+
+window.toggleAllVessels = (master) => {
+    document.querySelectorAll('.vessel-checkbox').forEach(cb => cb.checked = master.checked);
+    window.updateSelectedVessels();
+};
+
+// Bahar click karne par menu band karne ke liye
+document.addEventListener('click', (e) => {
+    const menu = document.getElementById('vesselDropdownMenu');
+    const btn = document.getElementById('vesselDropdownBtn');
+    if (menu && !menu.contains(e.target) && !btn.contains(e.target)) {
+        menu.classList.add('hidden');
+    }
+});	
 initAuth();
-    </script>
+</script>
 <div id="runningTrainsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] hidden flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col border border-slate-300 overflow-hidden">
         <div class="bg-amber-600 p-4 flex justify-between items-center shrink-0">
@@ -2543,15 +2743,10 @@ initAuth();
         <button id="addManualToPreviewBtn" type="button" class="bg-blue-600 text-white px-3 py-1.5 rounded font-bold text-[10px] hover:bg-blue-700">ADD</button>
     </div>
 </div>
-
 <div id="containerPreviewArea" class="mt-4 bg-slate-100 p-3 rounded-lg hidden max-h-40 overflow-y-auto border border-slate-200 custom-scrollbar">
     <p class="text-[8px] font-bold text-slate-500 mb-2 uppercase border-b pb-1">Queue to be Linked:</p>
     <ul id="previewList" class="text-[10px] font-bold text-teal-800 space-y-1"></ul>
-</div>
-            <div id="containerPreviewArea" class="bg-slate-100 p-3 rounded-lg hidden max-h-40 overflow-y-auto border border-slate-200 custom-scrollbar">
-                <p class="text-[8px] font-bold text-slate-500 mb-2 uppercase border-b pb-1">Containers in SMTP:</p>
-                <ul id="previewList" class="text-[10px] font-bold text-teal-800"></ul>
-            </div>
+</div>            
             <button id="saveManualShipperBtn" class="w-full bg-teal-700 hover:bg-teal-800 text-white font-black py-3 rounded-xl shadow-lg transition-all transform active:scale-95 uppercase text-xs">Link & Save to Shipper Tab</button>
         </div>
     </div>
