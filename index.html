@@ -2607,48 +2607,57 @@ window.populateVesselFilters = (vesselList) => {
     `;
     
     vesselList.forEach(v => {
-        // Vessel se related containers ka status check karein
         const relatedGroups = currentShipperAllGroups.filter(g => g.vessel === v);
         
         let totalUnits = 0;
+        let railedUnits = 0;
         let arrivedUnits = 0;
         let latestHandover = '-';
 
         relatedGroups.forEach(g => {
             totalUnits += g.stats.total;
-            // Arrived units count karne ka logic
+            railedUnits += g.stats.railed;
+            // Arrived units count
             arrivedUnits += g.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
         });
 
-        // Date sorting logic (Latest handover nikalne ke liye)
+        // Calculations
+        const inTransit = railedUnits - arrivedUnits;
+        const pendingPort = totalUnits - railedUnits;
+
         const validDates = relatedGroups.map(g => g.handoverDt).filter(d => d && d !== '-' && d !== 'N/A');
         latestHandover = validDates.length > 0 ? validDates[0] : '-';
 
         // Highlighting Logic
-        let bgColor = "hover:bg-blue-100"; // Default
+        let bgColor = "hover:bg-blue-100";
         let textColor = "text-slate-900";
-        let statusBadge = "";
 
-        if (totalUnits > 0 && arrivedUnits === totalUnits) {
-            // Case 1: All Arrived (Green Light)
-            bgColor = "bg-emerald-50 hover:bg-emerald-100";
-            textColor = "text-emerald-800";
-            statusBadge = `<span class="text-[7px] bg-emerald-600 text-white px-1 rounded ml-2">ALL ARRIVED</span>`;
-        } else if (arrivedUnits < totalUnits) {
-            // Case 2: Pending Units (Pink/Rose Highlight)
+        // Agar Port par ek bhi container bacha hai toh Pink highlight priority par rahega
+        if (pendingPort > 0) {
             bgColor = "bg-rose-50 hover:bg-rose-100";
             textColor = "text-rose-800";
-            statusBadge = `<span class="text-[7px] bg-rose-600 text-white px-1 rounded ml-2">PENDING: ${totalUnits - arrivedUnits}</span>`;
+        } else if (inTransit > 0) {
+            bgColor = "bg-amber-50 hover:bg-amber-100"; // Transit ke liye light orange/amber
+            textColor = "text-amber-800";
+        } else if (totalUnits > 0 && arrivedUnits === totalUnits) {
+            bgColor = "bg-emerald-50 hover:bg-emerald-100";
+            textColor = "text-emerald-800";
         }
 
         html += `
-        <div class="flex items-center gap-3 p-2 rounded border-b border-white/50 ${bgColor}">
+        <div class="flex items-center gap-3 p-2 rounded border-b border-white/50 ${bgColor} transition-colors">
             <input type="checkbox" value="${v}" onchange="window.updateSelectedVessels()" class="vessel-checkbox w-4 h-4 cursor-pointer">
             <label class="text-[12px] font-black ${textColor} cursor-pointer uppercase truncate flex flex-col w-full">
-                <span class="flex justify-between items-center">
-                    ${v} ${statusBadge}
+                <span class="flex justify-between items-start">
+                    <span class="truncate pr-2">${v}</span>
+                    <span class="flex flex-col items-end shrink-0 gap-0.5">
+                         <span class="text-[8px] bg-slate-700 text-white px-1 rounded">TOTAL: ${totalUnits}</span>
+                         ${pendingPort > 0 ? `<span class="text-[8px] bg-rose-600 text-white px-1 rounded">PENDING : ${pendingPort}</span>` : ''}
+                         ${inTransit > 0 ? `<span class="text-[8px] bg-amber-600 text-white px-1 rounded">IN-TRANSIT: ${inTransit}</span>` : ''}
+                         ${(pendingPort === 0 && inTransit === 0) ? `<span class="text-[8px] bg-emerald-600 text-white px-1 rounded">ALL ARRIVED</span>` : ''}
+                    </span>
                 </span>
-                <span class="text-[10px] opacity-70 font-black mt-0.5">Handover on: ${latestHandover}</span>
+                <span class="text-[10px] opacity-70 font-black mt-1">Handover on: ${latestHandover}</span>
             </label>
         </div>`;
     });
@@ -2743,10 +2752,12 @@ initAuth();
         <button id="addManualToPreviewBtn" type="button" class="bg-blue-600 text-white px-3 py-1.5 rounded font-bold text-[10px] hover:bg-blue-700">ADD</button>
     </div>
 </div>
+
 <div id="containerPreviewArea" class="mt-4 bg-slate-100 p-3 rounded-lg hidden max-h-40 overflow-y-auto border border-slate-200 custom-scrollbar">
     <p class="text-[8px] font-bold text-slate-500 mb-2 uppercase border-b pb-1">Queue to be Linked:</p>
     <ul id="previewList" class="text-[10px] font-bold text-teal-800 space-y-1"></ul>
-</div>            
+</div>
+            
             <button id="saveManualShipperBtn" class="w-full bg-teal-700 hover:bg-teal-800 text-white font-black py-3 rounded-xl shadow-lg transition-all transform active:scale-95 uppercase text-xs">Link & Save to Shipper Tab</button>
         </div>
     </div>
