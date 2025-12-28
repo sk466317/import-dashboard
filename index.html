@@ -313,17 +313,10 @@
                             <select id="rakeSelect" class="bg-slate-50 border border-slate-300 text-[10px] font-bold rounded-lg px-2 py-1.5 outline-none w-44">
                                 <option value="">Select Rake No</option>
                             </select>
-                            
-                            <div class="flex flex-col">
-                                <span class="text-[7px] font-bold text-blue-700 uppercase ml-1 mb-0.5 tracking-tighter">RAILING_DATE</span>
-                                <input type="text" id="railDateDisplay" placeholder="Rail Date" readonly class="bg-slate-100 border border-slate-200 text-[10px] font-bold rounded-lg px-2 py-1.5 w-32 outline-none text-slate-700">
-                            </div>
-
-                            <div class="h-6 w-px bg-slate-200 mx-1"></div>
-                            
+                                
                             <!-- Arrival Date Box -->
                             <div class="flex items-center gap-1.5">
-                                <input type="text" id="arrivedDateInput" placeholder="Arrival Date (dd-mm-yy hh:mm)" class="bg-blue-50 border border-blue-200 text-[10px] font-bold rounded-lg px-2 py-1.5 w-44 outline-none focus:ring-1 focus:ring-blue-500">
+                                <input type="text" id="arrivedDateInput" placeholder="Arrival Date (dd-mm-yyyy hh:mm)" class="bg-blue-50 border border-blue-200 text-[10px] font-bold rounded-lg px-2 py-1.5 w-44 outline-none focus:ring-1 focus:ring-blue-500">
                                 <button id="updateArrivedBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-bold text-[9px] uppercase transition-all shadow-sm flex items-center gap-1">
                                     <i data-lucide="check-circle" class="w-3 h-3"></i>
                                     Update Arrived
@@ -343,6 +336,16 @@
                         </div>
 
                 <div class="flex items-center gap-2 pl-1">
+<label class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
+    <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
+    UPDATE DOUBLE STACK SUMMARY
+    <input type="file" id="doubleStackExcelInput" class="hidden" accept=".xlsx, .xls">
+</label>
+<label class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
+        <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
+        UPDATE SINGLE STACK SUMMARY
+        <input type="file" id="websiteExcelInput" class="hidden" accept=".xlsx, .xls">
+    </label>
     <button id="addSmtpBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] transition-all flex items-center gap-2 uppercase shadow-sm">
         <i data-lucide="list-plus" class="w-3.5 h-3.5"></i>
         Add SMTP
@@ -353,11 +356,7 @@
         Export CSV
     </button>
 
-    <label class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
-        <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
-        UPDATE RAILOUT
-        <input type="file" id="websiteExcelInput" class="hidden" accept=".xlsx, .xls">
-    </label>
+    
 <button id="saveLocalChangesBtn" class="bg-blue-800 hover:bg-blue-900 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase shadow-md transition-all">
         Save Changes
     </button>
@@ -462,7 +461,6 @@
             <button id="resetBtn" class="hidden text-slate-500 hover:text-red-500 font-bold text-[10px] px-2">Reset</button>
         </div>
     </header>
-
     <main id="mainContent" class="flex-1 flex overflow-hidden">
         <aside class="w-60 bg-blue-200 border-r border-slate-400 flex flex-col shrink-0 no-print" id="sidebarContainer">
             <div class="p-3 border-b border-slate-200">
@@ -540,18 +538,16 @@
 
                     <div class="overflow-x-auto">
                         <table class="w-full text-left text-[10px]">
-                            <thead>
+                                                        <thead>
                                 <tr class="bg-slate-900 text-white font-bold uppercase tracking-wider">
-                                    <th class="px-2 py-2">BL NO</th>
-                                    <th class="px-2 py-2 w-20">LINE</th>
-                                    <th class="px-2 py-2">Disch_Vsl_Name</th>
-                                    <th class="px-2 py-2 text-center w-28 uppercase">Handover Date</th>
-                                    <th class="px-1.5 py-2 text-center bg-slate-800 w-10">20</th>
-                                    <th class="px-1.5 py-2 text-center bg-slate-800 w-10">40</th>
-                                    <th class="px-1.5 py-2 text-center bg-emerald-700 w-24 whitespace-normal uppercase">Railout Done</th>
-                                    <th class="px-1.5 py-2 text-center bg-blue-600 w-20 whitespace-normal uppercase">Arrived</th>
-                                    <th class="px-1.5 py-2 text-center bg-orange-600 w-20 whitespace-normal uppercase">In Transit</th>
-                                    <th class="px-1.5 py-2 text-center bg-rose-700 w-24 whitespace-normal uppercase">Pending Port</th>
+                                    <th class="px-2 py-2 text-[9px] leading-tight">BL NO (LINE) (Total)</th>
+                                    <th class="px-2 py-2 text-[9px] leading-tight">Disch_Vsl_Name / Handover</th>
+                                    <th class="px-1.5 py-2 text-center bg-slate-800 w-20">20</th>
+                                    <th class="px-1.5 py-2 text-center bg-slate-800 w-20">40</th>
+                                    <th class="px-1.5 py-2 text-center bg-emerald-700 w-30 whitespace-normal uppercase">Railout Containers</th>
+                                    <th class="px-1.5 py-2 text-center bg-blue-600 w-30 whitespace-normal uppercase">Arrived Containers</th>
+                                    <th class="px-1.5 py-2 text-center bg-orange-600 w-30 whitespace-normal uppercase">In Transit Containers</th>
+                                    <th class="px-1.5 py-2 text-center bg-rose-700 w-30 whitespace-normal uppercase">Pending Containers at Port</th>
                                 </tr>
                             </thead>
                             <tbody id="reportRows" class="font-bold text-slate-700 row-compact"></tbody>
@@ -712,32 +708,49 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
         // ------------------------------------------
         // 1. DATE & HOISTED FUNCTIONS
         // ------------------------------------------
-        function formatToDDMMYYYY(val) {
-            if (!val || val === '-' || val === 'N/A' || val === '') return val;
+        function formatToDDMMYYYY_HHMM(val) {
+            if (!val) return '';
+
             let date;
             const numVal = parseFloat(val);
-            const looksNumeric = !isNaN(numVal) && isFinite(val) && !String(val).includes('-') && !String(val).includes('/');
-            
-            if (looksNumeric && numVal > 40000) {
-                date = new Date(Math.round((numVal - 25569) * 86400 * 1000));
+
+            // Excel serial date with time (fractional part)
+            if (!isNaN(numVal) && isFinite(numVal) && numVal > 40000) {
+                // Accurate calculation: preserve fractional part for time
+                const utc_days = numVal - 25569;
+                const utc_value = utc_days * 86400 * 1000;
+                const tz_offset = new Date().getTimezoneOffset() * 60 * 1000;
+                date = new Date(utc_value + tz_offset);
             } else if (typeof val === 'number') {
-                date = new Date(Math.round((val - 25569) * 86400 * 1000));
+                const utc_days = val - 25569;
+                const utc_value = utc_days * 86400 * 1000;
+                const tz_offset = new Date().getTimezoneOffset() * 60 * 1000;
+                date = new Date(utc_value + tz_offset);
             } else {
+                // String parsing
                 date = new Date(val);
-                if (isNaN(date.getTime()) && String(val).includes('-')) {
-                    const parts = String(val).split('-');
-                    if (parts.length === 3) {
-                        if (parts[0].length === 4) date = new Date(parts[0], parts[1]-1, parts[2]);
-                        else date = new Date(parts[2], parts[1]-1, parts[0]);
+                if (isNaN(date.getTime())) {
+                    const parts = String(val).split(/[-\/ :]/);
+                    if (parts.length >= 3) {
+                        let day = parseInt(parts[0], 10);
+                        let month = parseInt(parts[1], 10) - 1;
+                        let year = parseInt(parts[2], 10);
+                        if (year < 100) year += 2000;
+                        let hh = parts.length > 3 ? parseInt(parts[3], 10) : 0;
+                        let mm = parts.length > 4 ? parseInt(parts[4], 10) : 0;
+                        date = new Date(year, month, day, hh, mm);
                     }
                 }
             }
-            if (isNaN(date.getTime())) return val;
+
+            if (isNaN(date.getTime())) return String(val);
+
             const day = String(date.getDate()).padStart(2, '0');
             const month = String(date.getMonth() + 1).padStart(2, '0');
             const year = date.getFullYear();
             const hh = String(date.getHours()).padStart(2, '0');
             const mm = String(date.getMinutes()).padStart(2, '0');
+
             return `${day}-${month}-${year} ${hh}:${mm}`;
         }
 
@@ -757,7 +770,43 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
             isInTransitFilterActive = !isInTransitFilterActive;
             applyFilters(); // Re-renders all tables using existing filter chain
         };
+        function formatToDDMMYYYY(val) {
+            if (!val) return '';
+            let date;
+            const numVal = parseFloat(val);
 
+            if (!isNaN(numVal) && isFinite(numVal) && numVal > 40000) {
+                const utc_days = numVal - 25569;
+                const utc_value = utc_days * 86400 * 1000;
+                const tz_offset = new Date().getTimezoneOffset() * 60 * 1000;
+                date = new Date(utc_value + tz_offset);
+            } else if (typeof val === 'number') {
+                const utc_days = val - 25569;
+                const utc_value = utc_days * 86400 * 1000;
+                const tz_offset = new Date().getTimezoneOffset() * 60 * 1000;
+                date = new Date(utc_value + tz_offset);
+            } else {
+                date = new Date(val);
+                if (isNaN(date.getTime())) {
+                    const parts = String(val).split(/[-\/ :]/);
+                    if (parts.length >= 3) {
+                        let day = parseInt(parts[0], 10);
+                        let month = parseInt(parts[1], 10) - 1;
+                        let year = parseInt(parts[2], 10);
+                        if (year < 100) year += 2000;
+                        date = new Date(year, month, day);
+                    }
+                }
+            }
+
+            if (isNaN(date.getTime())) return String(val);
+
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+
+            return `${day}-${month}-${year}`;
+        }
         // ------------------------------------------
         // 2. RENDERING LOGIC
         // ------------------------------------------
@@ -840,43 +889,47 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
                 </div>`;
         }
 
-        function renderMainTable(groups) {
+                function renderMainTable(groups) {
             let g20 = 0, g40 = 0, gR = 0, gA = 0, gT = 0, gP = 0;
             document.getElementById('reportRows').innerHTML = groups.map(bl => {
-                g20 += bl.stats.s20; g40 += bl.stats.s40; gR += bl.stats.railed; gP += bl.stats.pending;
+                g20 += bl.stats.s20; 
+                g40 += bl.stats.s40; 
+                gR += bl.stats.railed; 
+                gP += bl.stats.pending;
                 const arrivedCount = bl.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
                 const inTransitCount = bl.stats.railed - arrivedCount;
                 gA += arrivedCount;
                 gT += inTransitCount;
-                
+               
                 const progressPercent = bl.stats.total > 0 ? Math.round((arrivedCount / bl.stats.total) * 100) : 0;
                 const sizeLabel = `(${bl.stats.total}X${bl.stats.s40 > 0 ? '40' : '20'})`;
-                const vesselDisplay = (!bl.isAnySmtp && bl.stats.railed === 0) ? '<span class="text-rose-600 font-bold italic">NOT Handover</span>' : bl.vessel;
                 
+                // Merged Vessel / Handover
+                const vesselDisplay = (!bl.isAnySmtp && bl.stats.railed === 0) 
+                    ? '<span class="text-rose-600 font-bold italic">NOT Handover</span>' 
+                    : `${bl.vessel} / ${bl.handoverDt}`;
+                
+                // BL with LINE in bracket
+                const blDisplay = `${bl.blNo} (${bl.line})`;
+
                 return `
                     <tr class="border-b border-slate-200 hover:bg-slate-50 transition-colors">
                         <td class="px-2 py-1 border-r border-slate-300 min-w-[160px] relative overflow-hidden group">
-                            <!-- Background Fill % Wise -->
                             <div class="absolute top-0 left-0 h-full bg-green-200/60 transition-all duration-1000 ease-out z-0 pointer-events-none" style="width: ${progressPercent}%"></div>
-                            
-                            <!-- Content Box -->
                             <div class="relative z-10 flex flex-col">
                                 <div class="flex justify-between items-center mb-0.5">
                                     <span class="font-bold text-slate-900 truncate pr-1">
-                                        <span class="text-pink-600 text-[8.5px] font-black mr-1">${progressPercent}%</span> 
-                                        ${bl.blNo} 
+                                        <span class="text-pink-600 text-[8.5px] font-black mr-1">${progressPercent}%</span>
+                                        ${blDisplay}
                                         <span class="text-black-600 text-[9px] uppercase font-bold">${sizeLabel}</span>
                                     </span>
                                 </div>
-                                <!-- Tiny progress separator for extra detail if needed, otherwise hidden -->
                                 <div class="w-full h-0 bg-slate-200/50 rounded-full overflow-hidden">
                                     <div class="h-full bg-green-400" style="width: ${progressPercent}%"></div>
                                 </div>
                             </div>
                         </td>
-                        <td class="px-2 py-1 text-slate-600 border-r border-slate-300 font-bold uppercase truncate">${bl.line}</td>
                         <td class="px-2 py-1 text-slate-700 border-r border-slate-300 font-bold uppercase truncate">${vesselDisplay}</td>
-                        <td class="px-2 py-1 text-slate-500 border-r border-slate-300 text-center font-bold uppercase text-[9px]">${bl.handoverDt}</td>
                         <td class="px-1 py-1 text-center border-r border-slate-300 bg-slate-50/50 ${bl.stats.s20 > 0 ? 'text-slate-800' : 'text-slate-200'}">${bl.stats.s20 || '-'}</td>
                         <td class="px-1 py-1 text-center border-r border-slate-300 bg-slate-50/50 ${bl.stats.s40 > 0 ? 'text-slate-800' : 'text-slate-200'}">${bl.stats.s40 || '-'}</td>
                         <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-emerald-50 text-emerald-700">${bl.stats.railed || '-'}</td>
@@ -886,9 +939,10 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
                     </tr>
                 `;
             }).join('');
+
             document.getElementById('reportFooter').innerHTML = `
                 <tr class="bg-slate-100 text-slate-900">
-                    <td colspan="4" class="px-2 py-1.5 text-right uppercase font-bold text-slate-500 text-[9px]">Grand Totals</td>
+                    <td colspan="2" class="px-2 py-1.5 text-right uppercase font-bold text-slate-500 text-[9px]">Grand Totals</td>
                     <td class="px-1 py-1.5 text-center text-xs font-bold border-r border-slate-300">${g20}</td>
                     <td class="px-1 py-1.5 text-center text-xs font-bold border-r border-slate-300">${g40}</td>
                     <td class="px-1.5 py-1.5 text-center text-xs font-bold text-emerald-700 border-r border-slate-300">${gR}</td>
@@ -1009,7 +1063,7 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
                 if (isRailed) {
                     const trainNo = String(webRow[4] || '').trim();
                     const remark = trainDateRemarksMap[`${trainNo}_${railDateStr}`] || String(webRow[9] || '-').trim();
-                    const formattedRailDate = formatToDDMMYY_HHMM(railDateRaw);
+                    const formattedRailDate = formatToDDMMYYYY_HHMM(railDateRaw);
                     let existingDetail = blGroups[blNo].railedDetails.find(d => d.train === trainNo && d.date === formattedRailDate);
                     if (existingDetail) existingDetail.count++;
                     else blGroups[blNo].railedDetails.push({ train: trainNo || 'Railed', date: formattedRailDate, remark: remark, count: 1 });
@@ -1294,38 +1348,45 @@ currentShipperAllGroups.sort((a, b) => {
         // ------------------------------------------
         // 4. WEBSITE RAKE & ARRIVAL LOGIC
         // ------------------------------------------
-        function populateRakeList() {
+                function populateRakeList() {
             if (!rawSheets.website || rawSheets.website.length <= 1) return;
-            const uniqueRakes = new Map();
+
+            const uniqueRakes = new Map(); // rakeNo → railDate (latest if multiple)
+
             rawSheets.website.slice(1).forEach(row => {
                 const rake = String(row[4] || '').trim();
+                const railDateRaw = row[8];
                 const remark = String(row[9] || '').toUpperCase();
-                // Filter: Only show rakes where Remark contains "RAILOUT FROM"
+
                 if (rake && rake !== "-" && remark.includes("RAILOUT FROM")) {
-                    uniqueRakes.set(rake, row[8]); 
+                    const formattedDate = formatToDDMMYYYY_HHMM(railDateRaw);
+                    // Same rake के multiple entries में latest date रखें (optional, but safe)
+                    if (!uniqueRakes.has(rake) || formattedDate > uniqueRakes.get(rake)) {
+                        uniqueRakes.set(rake, formattedDate);
+                    }
                 }
             });
 
             rakeSelect.innerHTML = '<option value="">Select Rake No</option>';
             [...uniqueRakes.keys()].sort().forEach(rake => {
+                const formattedDate = uniqueRakes.get(rake);
+                const displayText = `${rake}, ::${formattedDate}`;
+
                 const option = document.createElement('option');
                 option.value = rake;
-                option.textContent = rake;
-                option.dataset.raildate = uniqueRakes.get(rake);
+                option.textContent = displayText;
+                option.dataset.raildate = formattedDate; // raw full date for display box
                 rakeSelect.appendChild(option);
             });
         }
-
-        rakeSelect.addEventListener('change', () => {
+                rakeSelect.addEventListener('change', () => {
             const selected = rakeSelect.selectedOptions[0];
             const rakeVal = rakeSelect.value;
-            const rawVal = selected ? (selected.dataset.raildate || '') : '';
-            railDateDisplay.value = rawVal ? formatToDDMMYY_HHMM(rawVal) : '';
-            
-            // Auto-load existing remark for this rake to show in box
+            const rawVal = selected ? (selected.dataset.raildate || '') : '';          
+            // Auto-load existing remark for this rake
             if (rakeVal) {
-                const matchingRow = rawSheets.website.find(row => 
-                    String(row[4]).trim() === rakeVal && 
+                const matchingRow = rawSheets.website.find(row =>
+                    String(row[4]).trim() === rakeVal &&
                     String(row[9] || '').toUpperCase().includes("RAILOUT FROM")
                 );
                 customRemarksInput.value = matchingRow ? matchingRow[9] : '';
@@ -1334,22 +1395,30 @@ currentShipperAllGroups.sort((a, b) => {
             }
         });
 
-        updateArrivedBtn.addEventListener('click', () => {
+                updateArrivedBtn.addEventListener('click', () => {
             const rake = rakeSelect.value;
             const arrivedDate = arrivedDateInput.value.trim();
-            if (!rake) { 
+            if (!rake) {
                 const box = document.createElement('div');
                 box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Please select a Rake No first.</div>`;
                 document.body.appendChild(box);
                 setTimeout(() => box.remove(), 3000);
-                return; 
+                return;
             }
-            if (!arrivedDate) { 
+            if (!arrivedDate) {
                 const box = document.createElement('div');
-                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Please enter Arrival Date.</div>`;
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Please enter Arrival Date (dd-mm-yyyy hh:mm).</div>`;
                 document.body.appendChild(box);
                 setTimeout(() => box.remove(), 3000);
-                return; 
+                return;
+            }
+            // Validation: basic check for full year format
+            if (!/^\d{2}-\d{2}-\d{4} \d{2}:\d{2}$/.test(arrivedDate)) {
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-orange-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Format: dd-mm-yyyy hh:mm (e.g. 28-12-2025 03:05)</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 4000);
+                return;
             }
 
             let updateCount = 0;
@@ -1368,8 +1437,8 @@ currentShipperAllGroups.sort((a, b) => {
                 setTimeout(() => box.remove(), 3000);
                 saveToCloud();
                 processCloudData();
-                window.viewSheetData('website'); 
-                populateRakeList(); 
+                window.viewSheetData('website');
+                populateRakeList();
                 arrivedDateInput.value = '';
             } else {
                 const box = document.createElement('div');
@@ -1708,43 +1777,322 @@ currentShipperAllGroups.sort((a, b) => {
             setTimeout(() => box.remove(), 3000);
             saveToCloud(); processCloudData();
         };
+	
+        // === UPDATE DOUBLE STACK SUMMARY (FULLY FIXED - WORKS WITH HEADER "STACK" & TIME) ===
+        const doubleStackExcelInput = document.getElementById('doubleStackExcelInput');
+        if (doubleStackExcelInput) {
+            doubleStackExcelInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
 
-        const websiteExcelInput = document.getElementById('websiteExcelInput');
-        websiteExcelInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                const bstr = evt.target.result;
-                const wb = XLSX.read(bstr, { type: 'binary' });
-                const ws = wb.Sheets[wb.SheetNames[0]];
-                const rakeNo = ws['H7'] ? String(ws['H7'].v).trim() : '';
-                const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
-                
-                if (jsonData.length < 11) {
-                    const box = document.createElement('div');
-                    box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000]">File format invalid (too few rows).</div>`;
-                    document.body.appendChild(box);
-                    setTimeout(() => box.remove(), 3000);
-                    return;
-                }
+                let excelContainers = [];
+                let commonTrainNo = '';
 
-                const ah11Value = (jsonData[10] && jsonData[10][33]) ? String(jsonData[10][33]).trim() : "";
-                
-                if (ah11Value === "") {
-                    pendingExcelData = jsonData;
-                    pendingRakeNo = rakeNo;
-                    document.getElementById('manualDateModal').classList.remove('hidden');
-                    document.getElementById('manualRailDateInput').focus();
-                    lucide.createIcons();
-                } else {
-                    executeExcelUpdate(rakeNo, null, jsonData);
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const bstr = evt.target.result;
+                        const wb = XLSX.read(bstr, { type: 'binary' });
+                        const ws = wb.Sheets[wb.SheetNames[0]];
+                        const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+                        if (jsonData.length < 2) {
+                            alert("Excel फ़ाइल में डेटा rows नहीं हैं।");
+                            return;
+                        }
+
+                        // Train No. from first data row (Column C, index 2)
+                        commonTrainNo = String(jsonData[1][2] || '').trim().toUpperCase();
+                        if (!commonTrainNo) {
+                            alert("Train No. (Column C) नहीं मिला।");
+                            return;
+                        }
+
+                        // Process all rows (including header if it has value), skip only completely empty
+                        for (let i = 1; i < jsonData.length; i++) {
+                            const row = jsonData[i];
+                            const containerNo = String(row[5] || '').trim().toUpperCase(); // Column F
+                            const stackVal = String(row[27] || '').trim().toUpperCase();   // Column AB
+
+                            if (containerNo && stackVal) {
+                                excelContainers.push({ containerNo, stackVal });
+                            }
+                        }
+
+                        if (excelContainers.length === 0) {
+                            alert("कोई valid container नहीं मिला (Column F या AB में data नहीं)।");
+                            return;
+                        }
+
+                        // Show manual date popup every time
+                        pendingExcelData = { trainNo: commonTrainNo, containers: excelContainers };
+                        document.getElementById('manualDateModal').classList.remove('hidden');
+                        document.getElementById('manualRailDateInput').focus();
+                        document.getElementById('manualRailDateInput').placeholder = "dd-mm-yyyy hh:mm (e.g. 28-12-2025 03:05)";
+                        lucide.createIcons();
+
+                    } catch (err) {
+                        console.error(err);
+                        alert("फ़ाइल पढ़ने में त्रुटि: " + err.message);
+                    }
+                };
+                reader.readAsBinaryString(file);
+                e.target.value = '';
+            });
+        }
+
+        // Process after manual date entry
+        function processDoubleStackUpdate(trainNo, containers, manualDateTime) {
+            if (!manualDateTime) {
+                alert("Departure Date and Time आवश्यक है।");
+                return;
+            }
+
+            const railingDate = manualDateTime.trim();
+
+            // Calculate ETA +4 days
+            const parts = railingDate.split(' ');
+            const datePart = parts[0].split('-');
+            const d = parseInt(datePart[0], 10);
+            const m = parseInt(datePart[1], 10) - 1;
+            const y = parseInt(datePart[2], 10);
+            const railDate = new Date(y, m, d);
+            const etaDate = new Date(railDate);
+            etaDate.setDate(etaDate.getDate() + 4);
+            const ed = String(etaDate.getDate()).padStart(2, '0');
+            const em = String(etaDate.getMonth() + 1).padStart(2, '0');
+            const ey = etaDate.getFullYear();
+            const etaStr = `${ed}-${em}-${ey} 00:00`;
+
+            const remarkFinal = `RAILOUT FROM MUNDRA ON ${railingDate} ETA ${etaStr}`;
+
+            if (!rawSheets.website || rawSheets.website.length === 0) {
+                rawSheets.website = [["UID","SR_NO","BILL_NO","CONTAINER_NO","RAKE_NO","STACK","SOURCE","DESTINATION","RAILING_DATE","REMARKS"]];
+            }
+
+            let updateCount = 0;
+            containers.forEach(item => {
+                const rakeNoFinal = `${trainNo}-${item.stackVal}`;
+                const rowIndex = rawSheets.website.findIndex(row => 
+                    String(row[3] || '').trim().toUpperCase() === item.containerNo
+                );
+                if (rowIndex !== -1) {
+                    rawSheets.website[rowIndex][4] = rakeNoFinal;
+                    rawSheets.website[rowIndex][8] = railingDate;
+                    rawSheets.website[rowIndex][9] = remarkFinal;
+                    updateCount++;
                 }
-            };
-            reader.readAsBinaryString(file);
-            e.target.value = '';
+            });
+
+            window.viewSheetData('website');
+            saveToCloud();
+            processCloudData();
+
+            const box = document.createElement('div');
+            box.innerHTML = `
+                <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-purple-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+                    ✓ सफल! ${updateCount} containers updated<br>
+                    Train: ${trainNo}<br>
+                    Railout: ${railingDate}
+                </div>`;
+            document.body.appendChild(box);
+            setTimeout(() => box.remove(), 6000);
+        }
+
+        // Manual date submit for Double Stack
+        document.getElementById('submitManualDateBtn').addEventListener('click', () => {
+            if (!pendingExcelData || !pendingExcelData.containers) return;
+
+            const dateVal = document.getElementById('manualRailDateInput').value.trim();
+            if (!dateVal) {
+                alert("Departure Date and Time enter करें।");
+                return;
+            }
+
+            document.getElementById('manualDateModal').classList.add('hidden');
+            processDoubleStackUpdate(pendingExcelData.trainNo, pendingExcelData.containers, dateVal);
+
+            pendingExcelData = null;
+            document.getElementById('manualRailDateInput').value = '';
         });
 
+        // Cancel button
+        document.getElementById('cancelManualDateBtn').addEventListener('click', () => {
+            document.getElementById('manualDateModal').classList.add('hidden');
+            pendingExcelData = null;
+            document.getElementById('manualRailDateInput').value = '';
+        });
+        
+                // === UPDATE SINGLE STACK SUMMARY (FIXED TIME PARSING - FULL DATE & TIME) ===
+        const websiteExcelInput = document.getElementById('websiteExcelInput');
+        if (websiteExcelInput) {
+            websiteExcelInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const bstr = evt.target.result;
+                        const wb = XLSX.read(bstr, { type: 'binary' });
+                        const ws = wb.Sheets[wb.SheetNames[0]];
+                        const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+                        if (jsonData.length < 11) {
+                            alert("Excel फ़ाइल में पर्याप्त rows नहीं हैं।");
+                            return;
+                        }
+
+                        // Rake No. from H7
+                        const rakeNo = ws['H7'] ? String(ws['H7'].v).trim().toUpperCase() : '';
+                        if (!rakeNo) {
+                            alert("Rake No. (H7) नहीं मिला।");
+                            return;
+                        }
+
+                        // Raw date from AH11 (row 11, column AH index 33)
+                        const rawExcelDate = jsonData[10][33];
+
+                        // Use our robust full format function
+                        const formattedDate = formatToDDMMYYYY_HHMM(rawExcelDate);
+
+                        if (!formattedDate || formattedDate.includes('NaN')) {
+                            // Fallback to manual if parsing fails
+                            pendingExcelData = { rakeNo, jsonData };
+                            pendingRakeNo = rakeNo;
+                            document.getElementById('manualDateModal').classList.remove('hidden');
+                            document.getElementById('manualRailDateInput').focus();
+                            document.getElementById('manualRailDateInput').placeholder = "dd-mm-yyyy hh:mm (e.g. 28-12-2025 03:05)";
+                            lucide.createIcons();
+                            return;
+                        }
+
+                        // Calculate ETA +4 days
+                        let etaStr = '';
+                        try {
+                            // Extract date part for ETA calculation
+                            const datePart = formattedDate.split(' ')[0];
+                            const [d, m, y] = datePart.split('-').map(Number);
+                            const railDate = new Date(y, m - 1, d);
+                            const etaDate = new Date(railDate);
+                            etaDate.setDate(etaDate.getDate() + 4);
+                            const ed = String(etaDate.getDate()).padStart(2, '0');
+                            const em = String(etaDate.getMonth() + 1).padStart(2, '0');
+                            const ey = etaDate.getFullYear();
+                            etaStr = ` ETA ${ed}-${em}-${ey} 00:00`;
+                        } catch (_) {}
+
+                        const remarkFinal = `RAILOUT FROM MUNDRA ON ${formattedDate}${etaStr}`;
+
+                        let updateCount = 0;
+                        // Process all containers from row 11 onwards (typical data start)
+                        for (let i = 10; i < jsonData.length; i++) {
+                            const row = jsonData[i];
+                            const contNo = String(row[2] || '').trim().toUpperCase(); // Column C
+                            if (!contNo) continue;
+
+                            const rowIndex = rawSheets.website.findIndex(w => 
+                                String(w[3] || '').trim().toUpperCase() === contNo
+                            );
+
+                            if (rowIndex !== -1) {
+                                rawSheets.website[rowIndex][4] = rakeNo;
+                                rawSheets.website[rowIndex][8] = formattedDate; // Full date & time
+                                rawSheets.website[rowIndex][9] = remarkFinal;
+                                updateCount++;
+                            }
+                        }
+
+                        window.viewSheetData('website');
+                        saveToCloud();
+                        processCloudData();
+
+                        const box = document.createElement('div');
+                        box.innerHTML = `
+                            <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+                                ✓ सफल! ${updateCount} containers updated<br>
+                                Rake: ${rakeNo}<br>
+                                Date & Time: ${formattedDate}
+                            </div>`;
+                        document.body.appendChild(box);
+                        setTimeout(() => box.remove(), 6000);
+
+                    } catch (err) {
+                        console.error(err);
+                        alert("त्रुटि: " + err.message);
+                    }
+                };
+                reader.readAsBinaryString(file);
+                e.target.value = '';
+            });
+        }
+
+        // Manual date submit (already exists, but ensure it uses full year format)
+        document.getElementById('submitManualDateBtn').addEventListener('click', () => {
+            if (!pendingExcelData || !pendingRakeNo) return;
+
+            const dateVal = document.getElementById('manualRailDateInput').value.trim();
+            if (!dateVal) {
+                alert("Date & Time enter करें।");
+                return;
+            }
+
+            const formattedDate = dateVal; // already in dd-mm-yyyy hh:mm
+
+            // Calculate ETA
+            const parts = dateVal.split(' ');
+            const datePart = parts[0].split('-');
+            const d = parseInt(datePart[0]);
+            const m = parseInt(datePart[1]) - 1;
+            const y = parseInt(datePart[2]);
+            const etaDate = new Date(y, m, d);
+            etaDate.setDate(etaDate.getDate() + 4);
+            const ed = String(etaDate.getDate()).padStart(2, '0');
+            const em = String(etaDate.getMonth() + 1).padStart(2, '0');
+            const ey = etaDate.getFullYear();
+            const etaStr = ` ETA ${ed}-${em}-${ey} 00:00`;
+
+            const remarkFinal = `RAILOUT FROM MUNDRA ON ${formattedDate}${etaStr}`;
+            let updateCount = 0;
+
+            pendingExcelData.containers.forEach(contNo => {
+                const rowIndex = rawSheets.website.findIndex(row => 
+                    String(row[3] || '').trim().toUpperCase() === contNo
+                );
+                if (rowIndex !== -1) {
+                    rawSheets.website[rowIndex][4] = pendingRakeNo;
+                    rawSheets.website[rowIndex][8] = formattedDate;
+                    rawSheets.website[rowIndex][9] = remarkFinal;
+                    updateCount++;
+                }
+            });
+
+            document.getElementById('manualDateModal').classList.add('hidden');
+            window.viewSheetData('website');
+            saveToCloud();
+            processCloudData();
+
+            const box = document.createElement('div');
+            box.innerHTML = `
+                <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+                    ✓ सफल! ${updateCount} containers updated<br>
+                    Rake: ${pendingRakeNo}<br>
+                    Date: ${formattedDate}
+                </div>`;
+            document.body.appendChild(box);
+            setTimeout(() => box.remove(), 6000);
+
+            pendingExcelData = null;
+            pendingRakeNo = null;
+            document.getElementById('manualRailDateInput').value = '';
+        });
+
+        // Cancel button
+        document.getElementById('cancelManualDateBtn').addEventListener('click', () => {
+            document.getElementById('manualDateModal').classList.add('hidden');
+            pendingExcelData = null;
+            document.getElementById('manualRailDateInput').value = '';
+        });
         // ------------------------------------------
         // SHIPPER EXCEL IMPORT LOGIC (Strict Cell Reference A, B, C, D)
         // ------------------------------------------
@@ -2124,161 +2472,227 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
         resultBox.classList.add('hidden');
     }
 });
-document.getElementById('downloadWebsiteCsvBtn').addEventListener('click', () => {
-    const data = rawSheets.website;
-    if (!data || data.length === 0) {
-        alert("No website data available to export!");
-        return;
-    }
-
-    // Data ko process karke CSV format mein convert karna
-    const csvContent = data.map((row, rowIndex) => {
-        // Headers (rowIndex 0) ko as it is rakhenge, baaki rows ki date format karenge
-        return row.map((cell, colIndex) => {
-            let val = cell === null || cell === undefined ? "" : String(cell);
-            
-            // Agar ye RAILING_DATE column hai (Index 8 / Column I) aur header nahi hai
-            if (colIndex === 8 && rowIndex > 0 && val !== "") {
-                val = formatToDDMMYY_HHMM(val); // Aapka existing function use kiya
+        document.getElementById('downloadWebsiteCsvBtn').addEventListener('click', () => {
+            const data = rawSheets.website;
+            if (!data || data.length === 0) {
+                alert("No website data available to export!");
+                return;
             }
 
-            // Agar cell mein comma hai toh use quotes mein dalna zaroori hai
-            if (val.includes(",")) val = `"${val}"`;
-            return val;
-        }).join(",");
-    }).join("\n");
+            // Safe formatting function for CSV (handles invalid dates)
+            const safeFormatDate = (val) => {
+                if (!val) return "";
+                const formatted = formatToDDMMYYYY_HHMM(val);
+                if (formatted && !formatted.includes('NaN') && formatted.includes('-') && formatted.includes(' ')) {
+                    // Convert full format to dd-mm-yy hh:mm
+                    const parts = formatted.split(' ');
+                    const datePart = parts[0].split('-');
+                    if (datePart.length === 3) {
+                        const yy = datePart[2].slice(-2); // Last 2 digits of year
+                        return `${datePart[0]}-${datePart[1]}-${yy} ${parts[1]}`;
+                    }
+                }
+                return String(val); // Fallback to original if invalid
+            };
 
-    // File download logic
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    const dateStr = new Date().toLocaleDateString().replace(/\//g, '-');
-    link.setAttribute("href", url);
-    link.setAttribute("download", `IMPORT Data.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-});// --- PASTE KHATAM ---
-// --- FINAL STYLED XLSX EXPORT (BLUE HEADERS & BORDERS) ---
-document.getElementById('downloadBtn').addEventListener('click', async () => {
-    if (!currentShipperAllGroups || currentShipperAllGroups.length === 0) {
-        alert("No data visible on screen to export.");
-        return;
-    }
+            const csvContent = data.map((row, rowIndex) => {
+                return row.map((cell, colIndex) => {
+                    let val = cell === null || cell === undefined ? "" : String(cell);
 
-    const customerName = (selectedShipper || "Selected Customer").toUpperCase();
-    const visibleBLs = currentShipperAllGroups.map(g => g.blNo);
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Container Report');
+                    // Only format RAILING_DATE column (Index 8)
+                    if (colIndex === 8 && rowIndex > 0 && val !== "") {
+                        val = safeFormatDate(val);
+                    }
 
-    // --- Data Mapping ---
-    const excelToDDMMYYYY = (val) => {
-        if (!val || val === '-') return '-';
-        let date;
-        if (!isNaN(val) && parseFloat(val) > 40000) {
-            date = new Date(Math.round((val - 25569) * 86400 * 1000));
-        } else {
-            const parts = String(val).split(/[-.\/]/);
-            if (parts.length >= 3) {
-                let d = parseInt(parts[0]), m = parseInt(parts[1]) - 1, y = parseInt(parts[2]);
-                if (y < 100) y += 2000;
-                date = new Date(y, m, d);
-            }
-        }
-        if (!date || isNaN(date.getTime())) return String(val);
-        return `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`;
-    };
+                    // Quote if contains comma
+                    if (val.includes(",")) val = `"${val}"`;
+                    return val;
+                }).join(",");
+            }).join("\n");
 
-    const strToDateObj = (str) => {
-        if (!str || str === '-' || !str.includes('-') || str === 'Not Arrived') return null;
-        const p = str.split('-'); return new Date(p[2], p[1] - 1, p[0]);
-    };
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `IMPORT_Data_${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
 
-    const diffDays = (d1, d2) => {
-        if (!d1 || !d2) return "0";
-        const diff = d2.getTime() - d1.getTime();
-        return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
-    };
-
-    // 1. Add Customer Name
-    const titleRow = worksheet.addRow([customerName]);
-    titleRow.font = { name: 'Arial', size: 14, bold: true };
-    worksheet.addRow([]); // Blank Space
-
-    // 2. Add Headers
-    const headers = [
-        "BL_No.", "CONT_Nos.", "Size", "Disch_Vsl_Name", 
-        "Handover Date", "Railout Date", "Arrival Date", "Gate out Date", 
-        "Handover to Railout (Days)", "Railout to Arrival (Days)", "Arrival to Gateout (Days)"
-    ];
-    const headerRow = worksheet.addRow(headers);
-
-    // Style Header (Blue Background, White Text, Thin Border)
-    headerRow.eachCell((cell) => {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
-        cell.font = { color: { argb: 'FFFFFFFF' }, bold: true, size: 10 };
-        cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
-    });
-
-    // 3. Add Data Rows
-    const smtpHeaders = rawSheets.smtp[0];
-    const sContIdx = smtpHeaders.findIndex(h => /CONT/i.test(String(h))) !== -1 ? smtpHeaders.findIndex(h => /CONT/i.test(String(h))) : 2;
-    const sBlIdx = smtpHeaders.findIndex(h => /BL/i.test(String(h))) !== -1 ? smtpHeaders.findIndex(h => /BL/i.test(String(h))) : 9;
-    const sSizeIdx = smtpHeaders.findIndex(h => /SIZE/i.test(String(h)));
-    const sVslIdx = 5; 
-    const sTpIdx = smtpHeaders.findIndex(h => /TP_SUBMITTING/i.test(String(h))) !== -1 ? smtpHeaders.findIndex(h => /TP_SUBMITTING/i.test(String(h))) : 18;
-    const sGateOutIdx = 26; 
-
-    const filteredSmtpRows = rawSheets.smtp.slice(1).filter(row => visibleBLs.includes(String(row[sBlIdx] || '').trim()));
-
-    filteredSmtpRows.forEach(sRow => {
-        const contNo = String(sRow[sContIdx] || '').trim();
-        const webRow = rawSheets.website.find(w => String(w[3] || '').trim() === contNo);
-        const hDt = excelToDDMMYYYY(sRow[sTpIdx]);
-        const gDt = excelToDDMMYYYY(sRow[sGateOutIdx]);
-
-        let rDt = '', aDt = '';
-        if (webRow) {
-            rDt = excelToDDMMYYYY(webRow[8]);
-            const rem = String(webRow[9] || '').toUpperCase();
-            if (rem.includes("TRAIN ARRIVED")) {
-                const m = rem.match(/\d{2}[-./]\d{2}[-./]\d{2,4}/);
-                if (m) aDt = excelToDDMMYYYY(m[0]);
-            } else if (rem.includes("RAILOUT")) aDt = "Not Arrived";
-        }
-
-        const rowData = [
-            String(sRow[sBlIdx] || ''), contNo, sRow[sSizeIdx] || '', String(sRow[sVslIdx] || ''),
-            hDt, rDt, aDt, gDt,
-            diffDays(strToDateObj(hDt), strToDateObj(rDt)),
-            diffDays(strToDateObj(rDt), strToDateObj(aDt)),
-            diffDays(strToDateObj(aDt), strToDateObj(gDt))
-        ];
-
-        const dataRow = worksheet.addRow(rowData);
-        dataRow.eachCell((cell) => {
-            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
-            cell.font = { name: 'Arial', size: 9 };
-            cell.alignment = { vertical: 'middle', horizontal: 'left' };
+            // Success notification
+            const box = document.createElement('div');
+            box.innerHTML = `
+                <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+                    ✓ CSV Export सफल! ${data.length - 1} rows downloaded
+                </div>`;
+            document.body.appendChild(box);
+            setTimeout(() => box.remove(), 4000);
         });
-    });
 
-    // Column Widths
-    worksheet.columns.forEach(col => { col.width = 18; });
-    worksheet.getColumn(4).width = 25; // Vessel Name Column
+// --- FINAL STYLED XLSX EXPORT (BLUE HEADERS & BORDERS) ---
+                document.getElementById('downloadBtn').addEventListener('click', async () => {
+            if (!currentShipperAllGroups || currentShipperAllGroups.length === 0) {
+                alert("No data visible on screen to export.");
+                return;
+            }
+            const customerName = (selectedShipper || "Selected Customer").toUpperCase();
+            const visibleBLs = currentShipperAllGroups.map(g => g.blNo);
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Container Report');
 
-    // Generate & Download File
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = window.URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `${customerName.replace(/\s+/g, '_')}_Report.xlsx`;
-    anchor.click();
-    window.URL.revokeObjectURL(url);
-});
+            // Helper functions
+            const excelToDDMMYYYY = (val) => {
+                if (!val || val === '-') return '-';
+                let date;
+                if (!isNaN(val) && parseFloat(val) > 40000) {
+                    date = new Date(Math.round((val - 25569) * 86400 * 1000));
+                } else {
+                    const parts = String(val).split(/[-.\/]/);
+                    if (parts.length >= 3) {
+                        let d = parseInt(parts[0]), m = parseInt(parts[1]) - 1, y = parseInt(parts[2]);
+                        if (y < 100) y += 2000;
+                        date = new Date(y, m, d);
+                    }
+                }
+                if (!date || isNaN(date.getTime())) return String(val);
+                return `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`;
+            };
+
+            const extractETADate = (remark) => {
+                if (!remark || remark === '-') return '-';
+                const etaMatch = String(remark).match(/ETA\s+(\d{2}-\d{2}-\d{4})/);
+                return etaMatch ? etaMatch[1] : '-';
+            };
+
+            const strToDateObj = (str) => {
+                if (!str || str === '-' || !str.includes('-') || str === 'Not Arrived') return null;
+                const p = str.split('-');
+                return new Date(p[2], p[1] - 1, p[0]);
+            };
+
+            const diffDays = (d1, d2) => {
+                if (!d1 || !d2) return "0";
+                const diff = d2.getTime() - d1.getTime();
+                return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
+            };
+
+            // Title
+            const titleRow = worksheet.addRow([customerName]);
+            titleRow.font = { name: 'Arial', size: 14, bold: true };
+            worksheet.addRow([]); // Blank
+
+            // Headers
+            const headers = [
+                "BL_No. (Total)", "Train No / Rake", "ETA",
+                "CONT_Nos.", "Size", "Disch_Vsl_Name",
+                "Handover Date", "Railout Date", "Arrival Date", "Gate out Date",
+                "Handover to Railout (Days)", "Railout to Arrival (Days)", "Arrival to Gateout (Days)"
+            ];
+            const headerRow = worksheet.addRow(headers);
+            headerRow.eachCell((cell) => {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
+                cell.font = { color: { argb: 'FFFFFFFF' }, bold: true, size: 10 };
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+                cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            });
+
+            // Collect all rows with BL info
+            let exportRows = [];
+
+            const smtpHeaders = rawSheets.smtp[0];
+            const sContIdx = smtpHeaders.findIndex(h => /CONT/i.test(String(h))) !== -1 ? smtpHeaders.findIndex(h => /CONT/i.test(String(h))) : 2;
+            const sBlIdx = smtpHeaders.findIndex(h => /BL/i.test(String(h))) !== -1 ? smtpHeaders.findIndex(h => /BL/i.test(String(h))) : 9;
+            const sSizeIdx = smtpHeaders.findIndex(h => /SIZE/i.test(String(h)));
+            const sVslIdx = 5;
+            const sTpIdx = smtpHeaders.findIndex(h => /TP_SUBMITTING/i.test(String(h))) !== -1 ? smtpHeaders.findIndex(h => /TP_SUBMITTING/i.test(String(h))) : 18;
+            const sGateOutIdx = 26;
+
+            const filteredSmtpRows = rawSheets.smtp.slice(1).filter(row => visibleBLs.includes(String(row[sBlIdx] || '').trim()));
+
+            filteredSmtpRows.forEach(sRow => {
+                const contNo = String(sRow[sContIdx] || '').trim();
+                const webRow = rawSheets.website.find(w => String(w[3] || '').trim() === contNo);
+
+                const blNo = String(sRow[sBlIdx] || '');
+                const totalForBL = currentShipperAllGroups.find(g => g.blNo === blNo)?.stats.total || 0;
+                const blDisplay = `${blNo} (${totalForBL})`;
+
+                let trainRake = '-';
+                let etaDate = '-';
+
+                if (webRow) {
+                    trainRake = String(webRow[4] || '').trim();
+                    const remark = String(webRow[9] || '').trim();
+                    etaDate = extractETADate(remark);
+                }
+
+                const hDt = excelToDDMMYYYY(sRow[sTpIdx]);
+                const gDt = excelToDDMMYYYY(sRow[sGateOutIdx]);
+                let rDt = '-', aDt = '-';
+                if (webRow) {
+                    rDt = excelToDDMMYYYY(webRow[8]);
+                    const remUpper = String(webRow[9] || '').toUpperCase();
+                    if (remUpper.includes("TRAIN ARRIVED")) {
+                        const m = remUpper.match(/\d{2}[-./]\d{2}[-./]\d{2,4}/);
+                        if (m) aDt = excelToDDMMYYYY(m[0]);
+                    } else if (remUpper.includes("RAILOUT")) {
+                        aDt = "Not Arrived";
+                    }
+                }
+
+                exportRows.push({
+                    blDisplay,
+                    trainRake,
+                    etaDate,
+                    contNo,
+                    size: sRow[sSizeIdx] || '',
+                    vessel: String(sRow[sVslIdx] || ''),
+                    hDt,
+                    rDt,
+                    aDt,
+                    gDt,
+                    handoverToRailout: diffDays(strToDateObj(hDt), strToDateObj(rDt)),
+                    railoutToArrival: diffDays(strToDateObj(rDt), strToDateObj(aDt)),
+                    arrivalToGateout: diffDays(strToDateObj(aDt), strToDateObj(gDt)),
+                    sortKey: blNo // For sorting
+                });
+            });
+
+            // Sort by BL No. (ascending)
+            exportRows.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+            // Add sorted rows to worksheet
+            exportRows.forEach(row => {
+                const rowData = [
+                    row.blDisplay, row.trainRake, row.etaDate,
+                    row.contNo, row.size, row.vessel,
+                    row.hDt, row.rDt, row.aDt, row.gDt,
+                    row.handoverToRailout, row.railoutToArrival, row.arrivalToGateout
+                ];
+                const dataRow = worksheet.addRow(rowData);
+                dataRow.eachCell((cell) => {
+                    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+                    cell.font = { name: 'Arial', size: 9 };
+                    cell.alignment = { vertical: 'middle', horizontal: 'left' };
+                });
+            });
+
+            // Column widths
+            worksheet.columns.forEach(col => { col.width = 18; });
+            worksheet.getColumn(4).width = 20; // CONT_Nos.
+            worksheet.getColumn(6).width = 25; // Vessel
+
+            // Download
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = window.URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `${customerName.replace(/\s+/g, '_')}_Report.xlsx`;
+            anchor.click();
+            window.URL.revokeObjectURL(url);
+        });
 // --- HIND TERMINALS AUTO SEARCH LOGIC ---
 window.searchHTPL = function(blNumber) {
     const form = document.createElement('form');
@@ -2597,72 +3011,72 @@ window.toggleVesselMenu = () => {
         menu.style.zIndex = '9999'; // Sabse upar rakhne ke liye
     }
 };
-window.populateVesselFilters = (vesselList) => {
-    const menu = document.getElementById('vesselDropdownMenu');
-    let html = `
-        <div class="flex items-center gap-2 p-2 border-b-2 mb-1 pb-1 bg-blue-50">
-            <input type="checkbox" id="vesselSelectAll" onchange="window.toggleAllVessels(this)" class="w-4 h-4 cursor-pointer">
-            <label for="vesselSelectAll" class="text-[11px] font-black text-blue-900 cursor-pointer uppercase">SELECT ALL VESSELS</label>
-        </div>
-    `;
-    
-    vesselList.forEach(v => {
-        const relatedGroups = currentShipperAllGroups.filter(g => g.vessel === v);
-        
-        let totalUnits = 0;
-        let railedUnits = 0;
-        let arrivedUnits = 0;
-        let latestHandover = '-';
-
-        relatedGroups.forEach(g => {
-            totalUnits += g.stats.total;
-            railedUnits += g.stats.railed;
-            // Arrived units count
-            arrivedUnits += g.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
-        });
-
-        // Calculations
-        const inTransit = railedUnits - arrivedUnits;
-        const pendingPort = totalUnits - railedUnits;
-
-        const validDates = relatedGroups.map(g => g.handoverDt).filter(d => d && d !== '-' && d !== 'N/A');
-        latestHandover = validDates.length > 0 ? validDates[0] : '-';
-
-        // Highlighting Logic
-        let bgColor = "hover:bg-blue-100";
-        let textColor = "text-slate-900";
-
-        // Agar Port par ek bhi container bacha hai toh Pink highlight priority par rahega
-        if (pendingPort > 0) {
-            bgColor = "bg-rose-50 hover:bg-rose-100";
-            textColor = "text-rose-800";
-        } else if (inTransit > 0) {
-            bgColor = "bg-amber-50 hover:bg-amber-100"; // Transit ke liye light orange/amber
-            textColor = "text-amber-800";
-        } else if (totalUnits > 0 && arrivedUnits === totalUnits) {
-            bgColor = "bg-emerald-50 hover:bg-emerald-100";
-            textColor = "text-emerald-800";
-        }
-
-        html += `
-        <div class="flex items-center gap-3 p-2 rounded border-b border-white/50 ${bgColor} transition-colors">
-            <input type="checkbox" value="${v}" onchange="window.updateSelectedVessels()" class="vessel-checkbox w-4 h-4 cursor-pointer">
-            <label class="text-[12px] font-black ${textColor} cursor-pointer uppercase truncate flex flex-col w-full">
-                <span class="flex justify-between items-start">
-                    <span class="truncate pr-2">${v}</span>
-                    <span class="flex flex-col items-end shrink-0 gap-0.5">
-                         <span class="text-[8px] bg-slate-700 text-white px-1 rounded">TOTAL: ${totalUnits}</span>
-                         ${pendingPort > 0 ? `<span class="text-[8px] bg-rose-600 text-white px-1 rounded">PENDING : ${pendingPort}</span>` : ''}
-                         ${inTransit > 0 ? `<span class="text-[8px] bg-amber-600 text-white px-1 rounded">IN-TRANSIT: ${inTransit}</span>` : ''}
-                         ${(pendingPort === 0 && inTransit === 0) ? `<span class="text-[8px] bg-emerald-600 text-white px-1 rounded">ALL ARRIVED</span>` : ''}
-                    </span>
-                </span>
-                <span class="text-[10px] opacity-70 font-black mt-1">Handover on: ${latestHandover}</span>
-            </label>
-        </div>`;
-    });
-    menu.innerHTML = html;
-};
+        window.populateVesselFilters = (vesselList) => {
+            const menu = document.getElementById('vesselDropdownMenu');
+            let html = `
+                <div class="flex items-center gap-2 p-2 border-b-2 mb-1 pb-1 bg-blue-50">
+                    <input type="checkbox" id="vesselSelectAll" onchange="window.toggleAllVessels(this)" class="w-4 h-4 cursor-pointer">
+                    <label for="vesselSelectAll" class="text-[11px] font-black text-blue-900 cursor-pointer uppercase">SELECT ALL VESSELS</label>
+                </div>
+            `;
+           
+            vesselList.forEach(v => {
+                const relatedGroups = currentShipperAllGroups.filter(g => g.vessel === v);
+               
+                let totalUnits = 0;
+                let railedUnits = 0;
+                let arrivedUnits = 0;
+                let latestHandover = '-';
+                relatedGroups.forEach(g => {
+                    totalUnits += g.stats.total;
+                    railedUnits += g.stats.railed;
+                    // Arrived units count (TRAIN ARRIVED remark वाले)
+                    arrivedUnits += g.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
+                    // Latest handover date
+                    if (g.handoverDt && g.handoverDt !== '-' && g.handoverDt !== 'N/A') {
+                        if (latestHandover === '-' || g.handoverDt > latestHandover) {
+                            latestHandover = g.handoverDt;
+                        }
+                    }
+                });
+                
+                const inTransit = railedUnits - arrivedUnits;
+                const pendingPort = totalUnits - railedUnits;
+                
+                // Highlighting Logic
+                let bgColor = "hover:bg-blue-100";
+                let textColor = "text-slate-900";
+                if (pendingPort > 0) {
+                    bgColor = "bg-rose-50 hover:bg-rose-100";
+                    textColor = "text-rose-800";
+                } else if (inTransit > 0) {
+                    bgColor = "bg-amber-50 hover:bg-amber-100";
+                    textColor = "text-amber-800";
+                } else if (totalUnits > 0 && arrivedUnits === totalUnits) {
+                    bgColor = "bg-emerald-50 hover:bg-emerald-100";
+                    textColor = "text-emerald-800";
+                }
+                
+                html += `
+                <div class="flex items-center gap-3 p-2 rounded border-b border-white/50 ${bgColor} transition-colors">
+                    <input type="checkbox" value="${v}" onchange="window.updateSelectedVessels()" class="vessel-checkbox w-4 h-4 cursor-pointer">
+                    <label class="text-[12px] font-black ${textColor} cursor-pointer uppercase truncate flex flex-col w-full">
+                        <span class="flex justify-between items-start">
+                            <span class="truncate pr-2">${v}</span>
+                            <span class="flex flex-col items-end shrink-0 gap-0.5">
+                                 <span class="text-[8px] bg-slate-700 text-white px-1 rounded">TOTAL: ${totalUnits}</span>
+                                 ${arrivedUnits > 0 ? `<span class="text-[8px] bg-blue-600 text-white px-1 rounded">ARRIVED: ${arrivedUnits}</span>` : ''}
+                                 ${pendingPort > 0 ? `<span class="text-[8px] bg-rose-600 text-white px-1 rounded">PENDING: ${pendingPort}</span>` : ''}
+                                 ${inTransit > 0 ? `<span class="text-[8px] bg-amber-600 text-white px-1 rounded">IN-TRANSIT: ${inTransit}</span>` : ''}
+                                 ${(pendingPort === 0 && inTransit === 0 && arrivedUnits === totalUnits) ? `<span class="text-[8px] bg-emerald-600 text-white px-1 rounded">ALL ARRIVED</span>` : ''}
+                            </span>
+                        </span>
+                        <span class="text-[10px] opacity-70 font-black mt-1">Handover on: ${latestHandover}</span>
+                    </label>
+                </div>`;
+            });
+            menu.innerHTML = html;
+        };
 
 window.updateSelectedVessels = () => {
     const checkboxes = document.querySelectorAll('.vessel-checkbox:checked');
