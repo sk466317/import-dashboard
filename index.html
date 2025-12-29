@@ -1,3 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logistics Report Pro | Professional Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Screenshot logic -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+    <!-- Firebase Libraries -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global Firebase state attachment to window
+        window.fb = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, getDoc, onSnapshot };
+    </script>
+
+    <style>
+        body { 
+            font-family: Arial, Helvetica, sans-serif; 
+            letter-spacing: -0.01em; 
+            background-color: #CBD5E1; 
+        }
+        .font-arial-black {
+            font-family: "Arial Black", Gadget, sans-serif;
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        
+        @keyframes status-pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.15); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-status-icon svg {
+            animation: status-pulse 2s infinite ease-in-out;
+        }
+
+        @media print {
+            .no-print { display: none; }
+            body { background: white; padding: 0; }
+            .report-paper { border: none !important; box-shadow: none !important; width: 100% !important; margin: 0 !important; }
+        }
+
+        table { border-collapse: collapse; width: 100%; table-layout: auto; border: 1px solid #1e3a8a33; }
+        th, td { border: 1px solid #1e3a8a33; word-wrap: break-word; line-height: 1.2; padding: 4px 6px; }
+        
+        .report-box {
+    border: 1px solid #94a3b8; 
+    background-color: white;
+    border-radius: 0.75rem;
+    overflow: visible !important; /* hidden ki jagah visible karein */
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    position: relative;
+    z-index: 10;
+}
+
+        .font-bold { font-weight: 700; }
+        .compact-header { padding-top: 0.4rem; padding-bottom: 0.4rem; }
+        .row-compact td { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+
+        .filter-select {
+            background-color: #eff6ff; 
+            border: 2px solid #1d4ed8; 
+            border-radius: 0.375rem;
+            padding: 0.15rem 1.5rem 0.15rem 0.5rem;
+            font-size: 9px;
+            font-weight: 800;
+            color: #1d4ed8; 
+            text-transform: uppercase;
+            outline: none;
+            cursor: pointer;
+            min-width: 130px;
+            transition: all 0.2s;
+        }
+        .filter-select:focus { 
+            border-color: #1e40af;
+            box-shadow: 0 0 0 2px rgba(30, 64, 175, 0.1);
+        }
+
+        /* Login Screen Styles */
+        #loginScreen {
+            position: fixed;
+            inset: 0;
+            background-color: #0f172a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease;
+        }
+        #loginScreen.hidden {
+            display: none !important;
+            pointer-events: none;
+        }
+
+        /* Update Data Modal Styles */
+        #updateModal {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0,0,0,0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9998;
+            padding: 20px;
+        }
+        
+        /* Manual Date Entry Modal - Highest Priority Layering */
+        #manualDateModal {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0,0,0,0.75);
+            backdrop-filter: blur(6px); /* Blurs everything behind, including other modals */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 99999; /* Set to very high value to always be on top */
+            padding: 20px;
+        }
+        
+        #updateModal.hidden, #manualDateModal.hidden {
+            display: none !important;
+        }
+        
+        .editable-cell:focus {
+            background-color: #fef9c3;
+            outline: 2px solid #eab308;
+            border-radius: 2px;
+        }
+
+        .delete-row-btn:hover {
+            color: #e11d48;
+            transform: scale(1.1);
+        }
+/* Progress Bar Style */
+#saveProgressContainer {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 4px;
+    background: rgba(255,255,255,0.1); z-index: 100000; display: none;
+}
+#saveProgressBar {
+    height: 100%;
+    width: 0%;
+    background: #22c55e;
+    transition: width 0.3s ease;
+}
+
+/* Vessel Dropdown को क्लिक योग्य बनाने तथा header से ऊपर रखने के लिए */
+.relative.inline-block.w-64 {
+    position: relative !important;
+    z-index: 600 !important;  /* header से अधिक */
+    pointer-events: auto !important;
+}
+
+#vesselDropdownBtn {
+    position: relative !important;
+    z-index: 601 !important;
+    pointer-events: auto !important;
+    cursor: pointer !important;
+}
+
+#vesselDropdownMenu {
+    position: absolute !important;
+    z-index: 1000 !important; /* Isse 602 se badha kar 1000 karein */
+    background-color: white !important;
+    border: 2px solid #1d4ed8 !important;
+    border-radius: 0.375rem !important;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2) !important;
+    max-height: 50vh !important;
+    overflow-y: auto !important;
+    width: 100% !important;
+    left: 0 !important;
+    top: calc(100% + 8px) !important;
+    padding: 8px !important;
+    pointer-events: auto !important;
+}
+
+/* Table header का z-index कम रखें तथा background solid */
+.report-box .overflow-x-auto {
+    position: relative;
+    z-index: 50;
+    overflow: visible !important; /* Isse table ke bahr dropdown dikhega */
+}
+
+.report-box table thead {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 10 !important;  /* Isse 100 se kam karke 10 kar dein */
+    background-color: #0f172a !important;
+}
+#railedBreakdownContainer, 
+#pendingBreakdownContainer {
+    position: relative;
+    z-index: 1 !important; /* Inhe sabse niche rakha gaya hai */
+}
+    </style>
+</head>
+<body class="text-slate-900 h-screen flex flex-col overflow-hidden">
+<div id="saveProgressContainer"><div id="saveProgressBar"></div></div>
+<div id="savingOverlay" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100000] hidden flex flex-col items-center justify-center">
+    <div class="bg-white p-8 rounded-2xl shadow-2xl flex flex-col items-center gap-4 border-4 border-blue-600">
+        <div class="relative w-20 h-20">
+            <div class="absolute inset-0 border-4 border-blue-100 rounded-full"></div>
+            <div id="savingSpinner" class="absolute inset-0 border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
+        </div>
+        <div class="text-center">
+            <h3 class="text-xl font-black text-slate-800 uppercase tracking-tight">Data Saving...</h3>
+            <p id="savingProgressText" class="text-blue-600 font-bold text-lg">0%</p>
+        </div>
+        <p class="text-[10px] text-red-600 font-bold uppercase tracking-widest">Please do not close or refresh this page</p>
+    </div>
+</div>
+    <!-- Login Screen Overlay -->
+    <div id="loginScreen">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm border border-slate-200">
+            <div class="flex flex-col items-center mb-6">
+                <div class="bg-blue-700 p-3 rounded-2xl text-white shadow-lg mb-4">
+                    <i data-lucide="lock" class="w-8 h-8"></i>
+                </div>
+                <h2 class="text-xl font-bold text-slate-800 uppercase tracking-tight">Secured Access</h2>
+                <p class="text-slate-500 text-xs font-semibold">Enter password to continue</p>
+            </div>
+            <div class="space-y-4">
+                <input type="password" id="loginPassword" placeholder="••••••••" class="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl font-bold text-center tracking-widest focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+                <button id="authBtn" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 rounded-xl shadow-lg transition-all transform active:scale-95">
+                    AUTHENTICATE
+                </button>
+                <div id="loginError" class="text-rose-600 text-[10px] font-bold text-center hidden uppercase">Invalid Password! Please try again.</div>
+            </div>
+            <div class="mt-8 text-center">
+                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Hind Terminals Import Dashboard v2.0(Generated by: Vikram Singh)</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Update Data Modal -->
+    <div id="updateModal" class="hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-[98vw] h-[95vh] flex flex-col border border-slate-300 overflow-hidden">
+            <div class="bg-slate-900 p-4 flex justify-between items-center shrink-0">
+                <div class="flex items-center gap-3 text-white">
+                    <i data-lucide="database" class="w-5 h-5 text-red-500"></i>
+                    <h2 class="font-bold uppercase tracking-tight text-sm">Update & View Source Data</h2>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button id="deleteAllRowsBtn" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg font-bold text-[9px] uppercase transition-all flex items-center gap-1.5 shadow-sm active:scale-95">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        Complete Data Delete
+                    </button>
+                    <button id="closeModalBtn" class="text-slate-400 hover:text-white transition-colors">
+                        <i data-lucide="x" class="w-6 h-6"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="p-3 bg-slate-100 border-b border-slate-200 flex flex-col gap-3 shrink-0">
+                <div class="flex items-center justify-between flex-wrap gap-4">
+                    <div class="flex gap-2">
+                        <button id="tabShipper" class="sheet-tab-btn px-4 py-2 bg-white border border-slate-300 rounded-lg font-bold text-[10px] uppercase hover:bg-blue-50 transition-all" data-sheet="shipper">SHIPPER</button>
+                        <button id="tabSmtp" class="sheet-tab-btn px-4 py-2 bg-white border border-slate-300 rounded-lg font-bold text-[10px] uppercase hover:bg-blue-50 transition-all" data-sheet="smtp">SMTP</button>
+                        <button id="tabWebsite" class="sheet-tab-btn px-4 py-2 bg-white border border-slate-300 rounded-lg font-bold text-[10px] uppercase hover:bg-blue-50 transition-all" data-sheet="website">WEBSITE</button>
+                    </div>
+<button id="openAddShipperBtn" class="bg-slate-900 hover:bg-black text-white px-4 py-2 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-lg">
+    <i data-lucide="user-plus" class="w-3.5 h-3.5"></i> Add Shipper
+</button>
+                    <!-- Shipper Tab Context Tools -->
+                    <div id="shipperUpdateSection" class="hidden items-center gap-3 bg-white p-2 rounded-xl border border-slate-300 shadow-sm flex-wrap">
+                        <label class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
+                            <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
+                            UPLOAD SHIPPER EXCEL
+                            <input type="file" id="shipperExcelInput" class="hidden" accept=".xlsx, .xls">
+                        </label>
+                        <p class="text-[9px] font-bold text-slate-400 italic">Expected Headers: A=CONT_Nos., B=Size, C=BL_No., D=Consignee</p>
+                    </div>
+
+                    <!-- SMTP Tab Context Tools -->
+                    <div id="smtpUpdateSection" class="hidden items-center gap-3 bg-white p-2 rounded-xl border border-slate-300 shadow-sm flex-wrap">
+    
+    <label class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase shrink-0">
+        <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
+        UPLOAD SMTP EXCEL
+        <input type="file" id="smtpExcelInput" class="hidden" accept=".xlsx, .xls">
+    </label>
+
+    <button onclick="document.getElementById('saveLocalChangesBtn').click()" class="px-4 py-1.5 bg-blue-700 text-white rounded-lg font-bold text-[10px] uppercase hover:bg-blue-800 shadow-md transition-all shrink-0">
+        Save Changes
+    </button>
+
+    <label class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase shrink-0">
+        <i data-lucide="truck" class="w-3.5 h-3.5"></i>
+        Update Gate Out
+        <input type="file" id="gateOutExcelInput" class="hidden" accept=".xlsx, .xls">
+    </label>
+
+    <label id="scanningBtnLabel" class="bg-pink-600 hover:bg-pink-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase shrink-0">
+        <i data-lucide="scan" class="w-3.5 h-3.5"></i>
+        Update Scanning
+        <input type="file" id="scanningExcelInput" class="hidden" accept=".xlsx, .xls">
+    </label>
+
+    <p class="text-[9px] font-bold text-slate-400 italic block w-full sm:w-auto">Filter: KILARAIPUR/LUDHIANA containers only.</p>
+</div>
+
+                    <!-- Website Tab Context Tools -->
+                    <div id="websiteUpdateSection" class="hidden items-center gap-3 bg-white p-2 rounded-xl border border-slate-300 shadow-sm flex-wrap">
+                        <div class="flex items-center gap-2 border-r border-slate-200 pr-3">
+                            <select id="rakeSelect" class="bg-slate-50 border border-slate-300 text-[10px] font-bold rounded-lg px-2 py-1.5 outline-none w-44">
+                                <option value="">Select Rake No</option>
+                            </select>
+                                
+                            <!-- Arrival Date Box -->
+                            <div class="flex items-center gap-1.5">
+                                <input type="text" id="arrivedDateInput" placeholder="Arrival Date (dd-mm-yyyy hh:mm)" class="bg-blue-50 border border-blue-200 text-[10px] font-bold rounded-lg px-2 py-1.5 w-44 outline-none focus:ring-1 focus:ring-blue-500">
+                                <button id="updateArrivedBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-bold text-[9px] uppercase transition-all shadow-sm flex items-center gap-1">
+                                    <i data-lucide="check-circle" class="w-3 h-3"></i>
+                                    Update Arrived
+                                </button>
+                            </div>
+
+                            <div class="h-6 w-px bg-slate-200 mx-1"></div>
+
+                            <!-- Remarks Update Box (Updated with Larger Width) -->
+                            <div class="flex items-center gap-1.5">
+                                <input type="text" id="customRemarksInput" placeholder="Edit Remarks for selected Rake..." class="bg-amber-50 border border-amber-200 text-[10px] font-bold rounded-lg px-2 py-1.5 w-96 outline-none focus:ring-1 focus:ring-amber-500">
+                                <button id="updateCustomRemarksBtn" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg font-bold text-[9px] uppercase transition-all shadow-sm flex items-center gap-1">
+                                    <i data-lucide="edit-3" class="w-3 h-3"></i>
+                                    Update Remarks
+                                </button>
+                            </div>
+                        </div>
+
+                <div class="flex items-center gap-2 pl-1">
+<label class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
+    <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
+    UPDATE DOUBLE STACK SUMMARY
+    <input type="file" id="doubleStackExcelInput" class="hidden" accept=".xlsx, .xls">
+</label>
+<label class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
+        <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
+        UPDATE SINGLE STACK SUMMARY
+        <input type="file" id="websiteExcelInput" class="hidden" accept=".xlsx, .xls">
+    </label>
+    <button id="addSmtpBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] transition-all flex items-center gap-2 uppercase shadow-sm">
+        <i data-lucide="list-plus" class="w-3.5 h-3.5"></i>
+        Add SMTP
+    </button>
+    
+    <button id="downloadWebsiteCsvBtn" class="bg-slate-700 hover:bg-slate-800 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] transition-all flex items-center gap-2 uppercase shadow-sm">
+        <i data-lucide="download-cloud" class="w-3.5 h-3.5"></i>
+        Export CSV
+    </button>
+
+    
+<button id="saveLocalChangesBtn" class="bg-blue-800 hover:bg-blue-900 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase shadow-md transition-all">
+        Save Changes
+    </button>
+    <button onclick="window.hideModal()" class="bg-red-800 hover:bg-slate-300 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all shadow-sm">
+        Close
+    </button>
+</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-auto p-4 custom-scrollbar bg-slate-50">
+                <div id="sheetDataContainer" class="bg-white rounded-lg border border-slate-200 min-w-full overflow-x-auto">
+                    <div class="p-20 text-center text-slate-400 flex flex-col items-center">
+                        <i data-lucide="table" class="w-12 h-12 mb-2 opacity-20"></i>
+                        <p class="font-bold text-xs uppercase tracking-widest">Select a sheet to view its contents</p>
+                    </div>
+                </div>
+            </div>
+            
+           <div class="p-3 bg-white border-t border-slate-200 flex justify-between items-center shrink-0">
+    <p class="text-[9px] font-bold text-red-700 uppercase italic">Changes are local until "Save Changes" is clicked.</p>
+    
+    <div class="flex gap-2 hidden">
+        <button id="saveLocalChangesBtn" ...>Save Changes</button>
+        <button id="closeModalBtnFooter" ...>Close</button>
+    </div>
+</div>
+        </div>
+    </div>
+
+    <!-- Manual Date Entry Modal -->
+    <div id="manualDateModal" class="hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 border-4 border-blue-600 relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-1 bg-blue-600"></div>
+            <div class="flex items-center gap-3 mb-4 text-blue-700">
+                <i data-lucide="calendar-plus" class="w-6 h-6"></i>
+                <h3 class="font-bold uppercase text-sm tracking-tight">Manual Railout Date Entry</h3>
+            </div>
+            <p class="text-slate-600 text-[11px] font-bold mb-5 uppercase leading-relaxed">Excel data (Cell AH11) is empty. Please enter the Railout Date manually below to calculate ETA remarks.</p>
+            <div class="space-y-4">
+                <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <label class="text-[9px] font-black text-slate-400 uppercase mb-1.5 block">Format: dd-mm-yy hh:mm</label>
+                    <input type="text" id="manualRailDateInput" placeholder="21-12-25 03:00" class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-blue-500 shadow-inner">
+                </div>
+                <div class="flex gap-2 mt-2">
+                    <button id="submitManualDateBtn" class="flex-1 bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 rounded-lg text-[10px] uppercase shadow-lg transition-all transform active:scale-95">Update Remarks</button>
+                    <button id="cancelManualDateBtn" class="px-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3 rounded-lg text-[10px] uppercase transition-all active:scale-95">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-400 px-6 compact-header flex justify-between items-center shadow-sm shrink-0 no-print">
+        <div class="flex items-center gap-3">
+            <div class="bg-blue-700 p-1.5 rounded-lg text-white shadow-md">
+                <i data-lucide="ship" class="w-4 h-4"></i>
+            </div>
+            <div>
+                <h1 class="text-md font-bold text-slate-800 tracking-tight uppercase">Import Dashbord</h1>
+                <p class="text-[8px] font-bold text-blue-600 uppercase tracking-widest leading-none">Hind Terminals Pvt Ltd</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <div id="cloudStatus" class="text-[9px] font-bold text-slate-400 px-2 flex items-center gap-1">
+                <span id="cloudIndicator" class="w-2 h-2 rounded-full bg-slate-300"></span>
+                <span id="cloudLabel">Connecting...</span>
+            </div>
+
+            <!-- Update Data Button -->
+            <button id="openUpdateModalBtn" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-md font-bold text-[10px] transition-all flex items-center gap-1.5 shadow-sm">
+                <i data-lucide="database" class="w-3 h-3"></i>
+                UPDATE DATA
+            </button>
+            <button id="runningTrainsBtn" class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-md font-bold text-[10px] transition-all flex items-center gap-1.5 shadow-sm">
+    <i data-lucide="train" class="w-3.5 h-3.5"></i>
+    RUNNING TRAINS
+</button>
+            <!-- Image Save Button -->
+            <button id="saveImageBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-md font-bold text-[10px] transition-all flex items-center gap-1.5 shadow-sm">
+                <i data-lucide="image" class="w-3 h-3"></i>
+                SAVE PNG
+            </button>
+
+            <button id="refreshBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md font-bold text-[10px] transition-all flex items-center gap-1.5 shadow-sm">
+                <i data-lucide="refresh-cw" class="w-3 h-3" id="refreshIcon"></i>
+                REFRESH
+            </button>
+            <div id="upload-section">
+                <label class="bg-slate-900 hover:bg-black text-white px-3 py-1.5 rounded-md font-bold text-[10px] cursor-pointer transition-all flex items-center gap-1.5 shadow-sm">
+                    <i data-lucide="plus" class="w-3 h-3"></i>
+                    UPLOAD
+                    <input type="file" id="fileInput" class="hidden" accept=".xlsx, .xls">
+                </label>
+            </div>
+            <button id="downloadBtn" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-md font-bold text-[10px] transition-all flex items-center gap-1.5 shadow-sm">
+                <i data-lucide="download" class="w-3 h-3"></i>
+                EXPORT
+            </button>
+            <button id="resetBtn" class="hidden text-slate-500 hover:text-red-500 font-bold text-[10px] px-2">Reset</button>
+        </div>
+    </header>
+    <main id="mainContent" class="flex-1 flex overflow-hidden">
+        <aside class="w-60 bg-blue-200 border-r border-slate-400 flex flex-col shrink-0 no-print" id="sidebarContainer">
+            <div class="p-3 border-b border-slate-200">
+                <div class="relative">
+                    <i data-lucide="search" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400"></i>
+                    <input type="text" id="shipperSearch" placeholder="Search HKR Shippers" class="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-[10px] font-bold outline-none focus:ring-2 focus:ring-green-800 shadow-sm">
+                </div>
+            </div>
+<div class="p-3 border-b border-slate-400 bg-blue-200/50">
+    <div class="relative mb-2">
+        <i data-lucide="search" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-blue-600"></i>
+        <input type="text" id="smtpBlSearch" placeholder="Search By B/L No " class="w-full pl-8 pr-3 py-1.5 bg-white border border-blue-400 rounded-lg text-[10px] font-bold outline-none focus:ring-2 focus:ring-orange-800 shadow-sm">
+    </div>
+    <div id="smtpConsigneeBox" class="p-2 bg-white rounded-lg border-2 border-blue-400 hidden cursor-pointer hover:bg-blue-600 hover:text-white transition-all shadow-md group">
+        <p class="text-[7px] text-blue-500 font-bold uppercase group-hover:text-blue-100">Found Consignee (SMTP):</p>
+        <p id="smtpConsigneeName" class="text-[9px] font-black break-words uppercase"></p>
+        <p class="text-[6px] mt-1 italic opacity-70">Click to generate SMTP report</p>
+    </div>
+</div>
+<div class="p-3 border-b border-slate-200 bg-blue-50 hidden">
+    <div class="relative mb-2">
+        <i data-lucide="search" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-blue-500"></i>
+        <input type="text" id="blDataSearch" placeholder="Search BL No..." class="w-full pl-8 pr-3 py-1.5 bg-white border border-blue-300 rounded-lg text-[10px] font-bold outline-none focus:ring-1 focus:ring-blue-500">
+    </div>
+    <div id="consigneeDisplay" class="p-2 bg-white rounded border border-blue-200 hidden cursor-pointer hover:bg-blue-100 transition-all active:scale-95 shadow-sm" title="Click to view report">
+    <p class="text-[7px] text-blue-500 font-bold uppercase flex items-center gap-1">
+        <i data-lucide="external-link" class="w-2 h-2"></i> View Report for:
+    </p>
+    <p id="consigneeValue" class="text-[9px] font-black text-slate-800 break-words uppercase"></p>
+</div>
+
+</div>
+            <div id="shipperList" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1"></div>
+        </aside>
+
+        <section id="mainSectionArea" class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 print:p-0 bg-slate-200">
+            <div id="emptyState" class="h-full flex flex-col items-center justify-center text-center p-12 bg-white rounded-2xl border border-slate-400 shadow-lg no-print mx-auto max-w-lg mt-20">
+                <i data-lucide="file-spreadsheet" class="w-12 h-12 text-slate-300 mb-3"></i>
+                <h2 class="text-lg font-bold text-slate-800 uppercase tracking-tight">System Ready</h2>
+                <p class="text-slate-500 text-xs font-bold">Please upload a file or wait for cloud sync.</p>
+            </div>
+
+            <!-- Dashboard Content -->
+            <div id="reportContainer" class="hidden space-y-5 max-w-[1300px] mx-auto p-4 bg-slate-200">
+                <!-- Statistics Section -->
+                <div id="overallStats" class="grid grid-cols-6 gap-3 font-arial-black text-center"></div>
+
+                <div class="report-box print:border-none print:shadow-none bg-white">
+                    <div class="px-5 py-2 bg-white border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full">
+                            <h2 id="activeShipperName" class="text-sm font-bold text-slate-900 tracking-tight uppercase shrink-0"></h2>
+                            <div class="flex items-center gap-4 no-print">
+                                <div class="flex items-center gap-2">
+                                    <label class="text-[9px] font-extrabold text-blue-700 uppercase tracking-tight">Vessel Wise:</label>
+                                  <div class="relative inline-block w-64">  <!-- w-44 से w-64 करें -->
+    <button id="vesselDropdownBtn" onclick="window.toggleVesselMenu()" class="filter-select w-full flex justify-between items-center px-2">
+        <span id="vesselDropdownLabel">Select Vessels</span>
+        <i data-lucide="chevron-down" class="w-3 h-3 ml-1"></i>
+    </button>
+    <div id="vesselDropdownMenu" class="hidden absolute left-0 top-full mt-1 w-full bg-white border-2 border-blue-700 rounded-lg shadow-2xl z-[100] max-h-60 overflow-y-auto p-2 custom-scrollbar">
+        <!-- content -->
+    </div>
+</div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <label class="text-[9px] font-extrabold text-blue-700 uppercase tracking-tight">BL Wise:</label>
+                                    <select id="blFilter" class="filter-select">
+                                        <option value="ALL">All BLs</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <span id="currentTime" class="text-[9px] font-bold text-slate-500 uppercase shrink-0"></span>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-[10px]">
+                                                        <thead>
+                                <tr class="bg-slate-900 text-white font-bold uppercase tracking-wider">
+                                    <th class="px-2 py-2 text-[9px] leading-tight">BL NO (LINE) (Total)</th>
+                                    <th class="px-2 py-2 text-[9px] leading-tight">Disch_Vsl_Name / Handover</th>
+                                    <th class="px-1.5 py-2 text-center bg-slate-800 w-20">20</th>
+                                    <th class="px-1.5 py-2 text-center bg-slate-800 w-20">40</th>
+                                    <th class="px-1.5 py-2 text-center bg-emerald-700 w-30 whitespace-normal uppercase">Railout Containers</th>
+                                    <th class="px-1.5 py-2 text-center bg-blue-600 w-30 whitespace-normal uppercase">Arrived Containers</th>
+                                    <th class="px-1.5 py-2 text-center bg-orange-600 w-30 whitespace-normal uppercase">In Transit Containers</th>
+                                    <th class="px-1.5 py-2 text-center bg-rose-700 w-30 whitespace-normal uppercase">Pending Containers at Port</th>
+                                </tr>
+                            </thead>
+                            <tbody id="reportRows" class="font-bold text-slate-700 row-compact"></tbody>
+                            <tfoot id="reportFooter" class="bg-slate-100 font-bold text-slate-900 border-t border-slate-300"></tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-5 pb-10">
+                    <div id="railedBreakdownContainer" class="report-box bg-white">
+                        <div class="bg-emerald-600 px-4 py-1.5 flex justify-between items-center">
+                            <div class="flex items-center gap-2 text-white animate-status-icon">
+                                <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>
+                                <h3 id="railedShipmentsHeading" class="font-bold uppercase tracking-widest text-[9px]">Railed Out Shipments</h3>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-[9px]">
+                                <thead class="bg-emerald-50 text-white font-bold uppercase">
+                                    <tr>
+                                        <th class="px-3 py-2">BL (Containers/Line)</th>
+                                        <th class="px-3 py-2 text-center w-24 whitespace-normal uppercase">Railout Done</th>
+                                        <th class="px-3 py-2">Train No / Rake</th>
+                                        <th class="px-3 py-2 text-center w-28">Railout Date</th>
+                                        <th class="px-3 py-2 uppercase">Current Train Location and ETA</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="railedDetailRows" class="font-bold text-slate-600 row-compact"></tbody>
+                                <tfoot id="railedDetailFooter" class="bg-emerald-50 text-emerald-900 font-bold uppercase border-t border-emerald-200"></tfoot>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div id="pendingBreakdownContainer" class="report-box bg-white">
+                        <div class="bg-rose-600 px-4 py-1.5 flex justify-between items-center text-white">
+                            <div class="flex items-center gap-2 animate-status-icon">
+                                <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+                                <h3 class="font-bold uppercase tracking-widest text-[9px]">Pending B/L</h3>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-[9px]">
+                                <thead class="bg-rose-50 text-white font-bold uppercase">
+                                    <tr>
+                                        <th class="px-3 py-2">BL (Containers/Line)</th>
+                                        <th class="px-3 py-2">Remarks </th>
+                                        <th class="px-3 py-2 text-center w-24">PENDING</th>
+                                        <th class="px-3 py-2 uppercase">Vessel</th>
+                                        <th class="px-3 py-2 text-center w-28 uppercase">Handover Date</th>
+                                        <th class="px-3 py-2 uppercase">Current Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="pendingDetailRows" class="font-bold text-slate-600 row-compact"></tbody>
+                                <tfoot id="pendingDetailFooter" class="bg-rose-50 text-rose-900 font-bold uppercase border-t border-rose-200"></tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script type="module">
+// New BL Search & Report Trigger Logic
+document.getElementById('blDataSearch').addEventListener('input', (e) => {
+    const searchVal = e.target.value.trim().toUpperCase();
+    const displayBox = document.getElementById('consigneeDisplay');
+    const valueEl = document.getElementById('consigneeValue');
+
+    if (searchVal.length > 3 && rawSheets.smtp.length > 1) {
+        // SMTP: Cell 10 (Index 9) = BL No, Cell 25 (Index 24) = Consignee
+        const match = rawSheets.smtp.find(row => String(row[9] || '').toUpperCase().includes(searchVal));
+        
+        if (match && match[24]) {
+            const consigneeName = String(match[24]).trim();
+            valueEl.innerText = consigneeName;
+            displayBox.classList.remove('hidden');
+            
+            // Jab Consignee Box par click ho
+            displayBox.onclick = () => {
+                const headers = rawSheets.shipper[0];
+                // Shipper sheet mein Consignee column ka index dhundo
+                const consIndexInShipper = headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE'));
+                
+                if (consIndexInShipper !== -1) {
+                    // Report generate karne wala main function call karein
+                    window.selectShipper(consigneeName, consIndexInShipper);
+                    
+                    // Search box reset karein (Optional)
+                    e.target.value = ''; 
+                    displayBox.classList.add('hidden');
+                } else {
+                    alert("Consignee column not found in Shipper sheet!");
+                }
+            };
+        } else {
+            displayBox.classList.add('hidden');
+        }
+    } else {
+        displayBox.classList.add('hidden');
+    }
+});
+        // ==========================================
+        // Firebase Configuration (Consolidated)
+        // ==========================================
+        const MY_CUSTOM_CONFIG = {
+            apiKey: "AIzaSyBo1ZvNlwQN_s3k7XmyaD_-q0ikydEijFs",
+            authDomain: "logistic-c6a6a.firebaseapp.com",
+            projectId: "logistic-c6a6a",
+            storageBucket: "logistic-c6a6a.firebasestorage.app",
+            messagingSenderId: "270575499830",
+            appId: "1:270575499830:web:cc280133d6cdde224b7697",
+            measurementId: "G-YQ30N12NF7"
+        };
+
+        const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, getDoc, onSnapshot } = window.fb;
+        
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : MY_CUSTOM_CONFIG;
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : "logistic-c6a6a-dashboard";
+        let isCloudEnabled = true;
+
+        // UI & State References
+        const cloudIndicator = document.getElementById('cloudIndicator');
+        const cloudLabel = document.getElementById('cloudLabel');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const refreshIcon = document.getElementById('refreshIcon');
+        const saveImageBtn = document.getElementById('saveImageBtn');
+        const openUpdateModalBtn = document.getElementById('openUpdateModalBtn');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const closeModalBtnFooter = document.getElementById('closeModalBtnFooter');
+        const saveLocalChangesBtn = document.getElementById('saveLocalChangesBtn');
+        const authBtn = document.getElementById('authBtn');
+        const loginScreen = document.getElementById('loginScreen');
+        const blFilter = document.getElementById('blFilter');
+        const shipperSearch = document.getElementById('shipperSearch');
+        const fileInput = document.getElementById('fileInput');
+
+        // Website Tools
+        const rakeSelect = document.getElementById('rakeSelect');
+        const railDateDisplay = document.getElementById('railDateDisplay');
+        const arrivedDateInput = document.getElementById('arrivedDateInput');
+        const updateArrivedBtn = document.getElementById('updateArrivedBtn');
+        const customRemarksInput = document.getElementById('customRemarksInput');
+        const updateCustomRemarksBtn = document.getElementById('updateCustomRemarksBtn');
+
+        let rawSheets = { shipper: [], smtp: [], website: [] };
+        let selectedShipper = null;
+        let currentSheetInView = null;
+        let trainDateRemarksMap = {}; 
+        let currentShipperAllGroups = []; 
+        let isInTransitFilterActive = false; // New global filter state
+
+        lucide.createIcons();
+
+        // ------------------------------------------
+        // 1. DATE & HOISTED FUNCTIONS
+        // ------------------------------------------
+        function formatToDDMMYYYY_HHMM(val) {
+            if (!val) return '';
+
+            let date;
+            const numVal = parseFloat(val);
+
+            // Excel serial date with time (fractional part)
+            if (!isNaN(numVal) && isFinite(numVal) && numVal > 40000) {
+                // Accurate calculation: preserve fractional part for time
+                const utc_days = numVal - 25569;
+                const utc_value = utc_days * 86400 * 1000;
+                const tz_offset = new Date().getTimezoneOffset() * 60 * 1000;
+                date = new Date(utc_value + tz_offset);
+            } else if (typeof val === 'number') {
+                const utc_days = val - 25569;
+                const utc_value = utc_days * 86400 * 1000;
+                const tz_offset = new Date().getTimezoneOffset() * 60 * 1000;
+                date = new Date(utc_value + tz_offset);
+            } else {
+                // String parsing
+                date = new Date(val);
+                if (isNaN(date.getTime())) {
+                    const parts = String(val).split(/[-\/ :]/);
+                    if (parts.length >= 3) {
+                        let day = parseInt(parts[0], 10);
+                        let month = parseInt(parts[1], 10) - 1;
+                        let year = parseInt(parts[2], 10);
+                        if (year < 100) year += 2000;
+                        let hh = parts.length > 3 ? parseInt(parts[3], 10) : 0;
+                        let mm = parts.length > 4 ? parseInt(parts[4], 10) : 0;
+                        date = new Date(year, month, day, hh, mm);
+                    }
+                }
+            }
+
+            if (isNaN(date.getTime())) return String(val);
+
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            const hh = String(date.getHours()).padStart(2, '0');
+            const mm = String(date.getMinutes()).padStart(2, '0');
+
+            return `${day}-${month}-${year} ${hh}:${mm}`;
+        }
+
+        function formatToDDMMYY_HHMM(val) {
+            const f = formatToDDMMYYYY(val);
+            if (!f || !f.includes('-') || f.length < 10) return f;
+            return f.substring(0, 6) + f.substring(8);
+        }
+
+        // Globalized helper to close modal
+        window.hideModal = function() {
+            document.getElementById('updateModal').classList.add('hidden');
+        };
+
+        // Toggle logic for In Transit filter
+        window.toggleInTransitFilter = function() {
+            isInTransitFilterActive = !isInTransitFilterActive;
+            applyFilters(); // Re-renders all tables using existing filter chain
+        };
+        function formatToDDMMYYYY(val) {
+            if (!val) return '';
+            let date;
+            const numVal = parseFloat(val);
+
+            if (!isNaN(numVal) && isFinite(numVal) && numVal > 40000) {
+                const utc_days = numVal - 25569;
+                const utc_value = utc_days * 86400 * 1000;
+                const tz_offset = new Date().getTimezoneOffset() * 60 * 1000;
+                date = new Date(utc_value + tz_offset);
+            } else if (typeof val === 'number') {
+                const utc_days = val - 25569;
+                const utc_value = utc_days * 86400 * 1000;
+                const tz_offset = new Date().getTimezoneOffset() * 60 * 1000;
+                date = new Date(utc_value + tz_offset);
+            } else {
+                date = new Date(val);
+                if (isNaN(date.getTime())) {
+                    const parts = String(val).split(/[-\/ :]/);
+                    if (parts.length >= 3) {
+                        let day = parseInt(parts[0], 10);
+                        let month = parseInt(parts[1], 10) - 1;
+                        let year = parseInt(parts[2], 10);
+                        if (year < 100) year += 2000;
+                        date = new Date(year, month, day);
+                    }
+                }
+            }
+
+            if (isNaN(date.getTime())) return String(val);
+
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+
+            return `${day}-${month}-${year}`;
+        }
+        // ------------------------------------------
+        // 2. RENDERING LOGIC
+        // ------------------------------------------
+         function applyFilters() {
+    if (!currentShipperAllGroups.length) return;
+    let filtered = [...currentShipperAllGroups];
+
+    // Vessel filter
+    if (window.selectedVessels && window.selectedVessels.length > 0) {
+        filtered = filtered.filter(g => {
+            // Data mein agar vessel '-' ya empty hai, toh usse 'NOT HANDOVER' maano
+            const normalizedVessel = (g.vessel && g.vessel !== '-' && g.vessel !== '') ? g.vessel : 'NOT HANDOVER';
+            return window.selectedVessels.includes(normalizedVessel);
+        });
+    }
+
+    // BL filter
+    const bVal = blFilter.value;
+    if (bVal !== "ALL") filtered = filtered.filter(g => g.blNo === bVal);
+
+    renderStats(filtered);
+    renderMainTable(filtered);
+    renderDetailedBreakdown(filtered);
+}
+
+        function renderStats(groups) {
+            const t20 = groups.reduce((acc, b) => acc + b.stats.s20, 0);
+            const t40 = groups.reduce((acc, b) => acc + b.stats.s40, 0);
+            const r20 = groups.reduce((acc, b) => acc + b.stats.r20, 0);
+            const r40 = groups.reduce((acc, b) => acc + b.stats.r40, 0);
+            const p20 = groups.reduce((acc, b) => acc + b.stats.p20, 0);
+            const p40 = groups.reduce((acc, b) => acc + b.stats.p40, 0);
+            
+            let totalArrived = 0;
+            groups.forEach(bl => {
+                bl.railedDetails.forEach(d => {
+                    if (/TRAIN ARRIVED/i.test(d.remark)) {
+                        totalArrived += d.count;
+                    }
+                });
+            });
+            const totalRailed = r20 + r40;
+            const totalInTransit = totalRailed - totalArrived;
+
+            const formatSubCount = (c20, c40, colorClass) => {
+                let parts = [];
+                if (c20 > 0) parts.push(`<span class="${colorClass}">(${c20} <span class="text-[8px]">x</span> 20")</span>`);
+                if (c40 > 0) parts.push(`<span class="${colorClass}">(${c40} <span class="text-[8px]">x</span> 40")</span>`);
+                return parts.join(' ');
+            };
+            const subColor = "text-blue-900 font-bold text-[12px]";
+            
+            // Note: Added border-blue-600 and ring logic for active filter state on In Transit box
+            document.getElementById('overallStats').innerHTML = `
+		<div class="bg-white p-2 rounded-xl border-b-4 border-b-pink-600 border border-slate-400 shadow-sm flex flex-col items-center">
+                    <span class="text-[7px] font-bold text-blue-500 uppercase tracking-widest">Total B/L</span>
+                    <span class="text-xl font-bold text-blue-600 mt-0.5 leading-none">${groups.length}</span>
+
+                </div>
+                <div class="bg-white p-2 rounded-xl border-b-4 border-b-orange-500 border border-slate-400 shadow-sm flex flex-col items-center">
+                    <span class="text-[7px] font-bold text-slate-400 uppercase tracking-widest">Total Containers</span>
+                    <span class="text-lg font-bold text-slate-900">${t20 + t40}</span>
+                    <div class="mt-0.5">${formatSubCount(t20, t40, subColor)}</div>
+                </div>
+                <div class="bg-emerald-50 p-2 rounded-xl border-b-4 border-b-emerald-500 border border-slate-400 shadow-sm flex flex-col items-center">
+                    <span class="text-[7px] font-bold text-emerald-600 uppercase tracking-widest">Railout Done</span>
+                    <span class="text-lg font-bold text-emerald-700">${totalRailed}</span>
+                    <div class="mt-0.5">${formatSubCount(r20, r40, subColor)}</div>
+                </div>
+                <div class="bg-blue-50 p-2 rounded-xl border-b-4 border-b-blue-600 border border-slate-400 shadow-sm flex flex-col items-center">
+                    <span class="text-[7px] font-bold text-blue-600 uppercase tracking-widest">Arrived</span>
+                    <span class="text-lg font-bold text-blue-700">${totalArrived}</span>
+                    <span class="text-[8px] font-bold text-slate-400 mt-1 uppercase">Units Received</span>
+                </div>
+                <div onclick="window.toggleInTransitFilter()" class="cursor-pointer bg-amber-50 p-2 rounded-xl border-b-4 border-b-amber-500 border border-slate-400 shadow-sm flex flex-col items-center transition-all hover:bg-amber-100 ${isInTransitFilterActive ? 'ring-4 ring-blue-500 ring-opacity-50 border-blue-500' : ''}">
+                    <span class="text-[7px] font-bold text-amber-600 uppercase tracking-widest">${isInTransitFilterActive ? 'Filtering Mundra...' : 'In Transit'}</span>
+                    <span class="text-lg font-bold text-amber-700">${totalInTransit}</span>
+                    <span class="text-[8px] font-bold text-slate-400 mt-1 uppercase">Click to Filter</span>
+                </div>
+                <div class="bg-rose-50 p-2 rounded-xl border-b-4 border-b-rose-500 border border-slate-400 shadow-sm flex flex-col items-center">
+                    <span class="text-[7px] font-bold text-rose-600 uppercase tracking-widest">Pending</span>
+                    <span class="text-lg font-bold text-rose-700">${p20 + p40}</span>
+                    <div class="mt-0.5">${formatSubCount(p20, p40, subColor)}</div>
+                </div>`;
+        }
+
+                function renderMainTable(groups) {
+            let g20 = 0, g40 = 0, gR = 0, gA = 0, gT = 0, gP = 0;
+            document.getElementById('reportRows').innerHTML = groups.map(bl => {
+                g20 += bl.stats.s20; 
+                g40 += bl.stats.s40; 
+                gR += bl.stats.railed; 
+                gP += bl.stats.pending;
+                const arrivedCount = bl.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
+                const inTransitCount = bl.stats.railed - arrivedCount;
+                gA += arrivedCount;
+                gT += inTransitCount;
+               
+                const progressPercent = bl.stats.total > 0 ? Math.round((arrivedCount / bl.stats.total) * 100) : 0;
+                const sizeLabel = `(${bl.stats.total}X${bl.stats.s40 > 0 ? '40' : '20'})`;
+                
+                // Merged Vessel / Handover
+                const vesselDisplay = (!bl.isAnySmtp && bl.stats.railed === 0) 
+                    ? '<span class="text-rose-600 font-bold italic">NOT Handover</span>' 
+                    : `${bl.vessel} / ${bl.handoverDt}`;
+                
+                // BL with LINE in bracket
+                const blDisplay = `${bl.blNo} (${bl.line})`;
+
+                return `
+                    <tr class="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+                        <td class="px-2 py-1 border-r border-slate-300 min-w-[160px] relative overflow-hidden group">
+                            <div class="absolute top-0 left-0 h-full bg-green-200/60 transition-all duration-1000 ease-out z-0 pointer-events-none" style="width: ${progressPercent}%"></div>
+                            <div class="relative z-10 flex flex-col">
+                                <div class="flex justify-between items-center mb-0.5">
+                                    <span class="font-bold text-slate-900 truncate pr-1">
+                                        <span class="text-pink-600 text-[8.5px] font-black mr-1">${progressPercent}%</span>
+                                        ${blDisplay}
+                                        <span class="text-black-600 text-[9px] uppercase font-bold">${sizeLabel}</span>
+                                    </span>
+                                </div>
+                                <div class="w-full h-0 bg-slate-200/50 rounded-full overflow-hidden">
+                                    <div class="h-full bg-green-400" style="width: ${progressPercent}%"></div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-2 py-1 text-slate-700 border-r border-slate-300 font-bold uppercase truncate">${vesselDisplay}</td>
+                        <td class="px-1 py-1 text-center border-r border-slate-300 bg-slate-50/50 ${bl.stats.s20 > 0 ? 'text-slate-800' : 'text-slate-200'}">${bl.stats.s20 || '-'}</td>
+                        <td class="px-1 py-1 text-center border-r border-slate-300 bg-slate-50/50 ${bl.stats.s40 > 0 ? 'text-slate-800' : 'text-slate-200'}">${bl.stats.s40 || '-'}</td>
+                        <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-emerald-50 text-emerald-700">${bl.stats.railed || '-'}</td>
+                        <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-blue-50 text-blue-700">${arrivedCount || '-'}</td>
+                        <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-orange-50 text-orange-700">${inTransitCount || '-'}</td>
+                        <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-rose-50 text-rose-700">${bl.stats.pending || '-'}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            document.getElementById('reportFooter').innerHTML = `
+                <tr class="bg-slate-100 text-slate-900">
+                    <td colspan="2" class="px-2 py-1.5 text-right uppercase font-bold text-slate-500 text-[9px]">Grand Totals</td>
+                    <td class="px-1 py-1.5 text-center text-xs font-bold border-r border-slate-300">${g20}</td>
+                    <td class="px-1 py-1.5 text-center text-xs font-bold border-r border-slate-300">${g40}</td>
+                    <td class="px-1.5 py-1.5 text-center text-xs font-bold text-emerald-700 border-r border-slate-300">${gR}</td>
+                    <td class="px-1.5 py-1.5 text-center text-xs font-bold text-blue-700 border-r border-slate-300">${gA}</td>
+                    <td class="px-1.5 py-1.5 text-center text-xs font-bold text-orange-700 border-r border-slate-300">${gT}</td>
+                    <td class="px-1.5 py-1.5 text-center text-xs font-bold text-rose-700">${gP}</td>
+                </tr>
+            `;
+        }
+
+        function renderDetailedBreakdown(groups) {
+            const railedGroups = groups.filter(g => g.stats.railed > 0);
+            const pendingGroups = groups.filter(g => g.stats.pending > 0);
+            let totalRailedUnits = 0, totalPendingUnits = 0;
+
+            // Header Update for Railed Shipments when filter is active
+            const headingEl = document.getElementById('railedShipmentsHeading');
+            if (headingEl) {
+                headingEl.innerText = isInTransitFilterActive ? "Railed Out Shipments (Filtered: Mundra Railout)" : "Railed Out Shipments";
+            }
+
+            if (railedGroups.length === 0) document.getElementById('railedBreakdownContainer').classList.add('hidden');
+            else {
+                document.getElementById('railedBreakdownContainer').classList.remove('hidden');
+                let rHtml = '';
+                railedGroups.forEach(bl => {
+                    // Logic to filter rows by RAILOUT FROM MUNDRA if active
+                    let detailsToShow = bl.railedDetails;
+                    if (isInTransitFilterActive) {
+                        detailsToShow = detailsToShow.filter(d => /RAILOUT FROM MUNDRA/i.test(d.remark));
+                    }
+
+                    if (detailsToShow.length > 0) {
+                        let blTotal = 0;
+                        detailsToShow.forEach((detail, idx) => {
+                            totalRailedUnits += detail.count;
+                            blTotal += detail.count;
+                            const isArrived = /TRAIN ARRIVED/i.test(detail.remark);
+                            const remarkClass = isArrived ? 'bg-yellow-100 text-slate-900' : 'text-slate-500';
+                            rHtml += `<tr class="border-b border-slate-200 hover:bg-emerald-50/30">`;
+                            if (idx === 0) rHtml += `<td rowspan="${detailsToShow.length}" class="px-3 py-1 font-bold text-slate-900 border-r border-slate-300 align-top">
+    <a href="javascript:void(0)" onclick="searchHTPL('${bl.blNo}')" class="text-blue-1000 hover:underline cursor-pointer">
+        ${bl.blNo}
+    </a>
+    <span class="text-blue-500 text-[10px] uppercase font-bold ml-1">(${bl.stats.total} / ${bl.line})</span>
+</td>`
+                            rHtml += `<td class="px-3 py-1 text-center font-bold text-emerald-700 bg-emerald-50 border-r border-slate-300">${detail.count}</td><td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${detail.train}</td><td class="px-3 py-1 text-center text-blue-600 font-bold border-r border-slate-300 uppercase whitespace-nowrap">${detail.date}</td><td class="px-3 py-1 ${remarkClass} text-[9px] font-bold">${detail.remark}</td></tr>`;
+                        });
+                        rHtml += `<tr class="bg-blue-100/60 font-bold border-b border-blue-200"><td class="px-3 py-1 text-blue-800 uppercase text-[8px]">Group Total</td><td class="px-3 py-1 text-center text-blue-900 border-r border-blue-200">${blTotal}</td><td colspan="3"></td></tr>`;
+                    }
+                });
+                document.getElementById('railedDetailRows').innerHTML = rHtml;
+                document.getElementById('railedDetailFooter').innerHTML = `<tr class="bg-emerald-50 text-emerald-800 font-bold"><td class="px-3 py-1.5 text-right uppercase text-[9px]">Grand Total (Viewed)</td><td class="px-3 py-1.5 text-center text-[11px] border-r border-emerald-200">${totalRailedUnits}</td><td colspan="3"></td></tr>`;
+            }
+
+            if (pendingGroups.length === 0) document.getElementById('pendingBreakdownContainer').classList.add('hidden');
+            else {
+                document.getElementById('pendingBreakdownContainer').classList.remove('hidden');
+                let pHtml = '';
+                pendingGroups.forEach(bl => {
+                    totalPendingUnits += bl.stats.pending;
+                    const statusLabel = bl.isAnySmtp ? `<span class="text-blue-600 uppercase font-bold text-[9px]">${bl.handoverDt}</span>` : '<span class="text-rose-600 uppercase font-bold text-[9px]">Pending Handover</span>';
+                    const bRem = bl.smtpBRemarks.join(' | ');
+                    const isUrgent = /scan|scanning|damage/i.test(bRem);
+                    pHtml += `<tr class="border-b border-slate-200 hover:bg-rose-50/30"><td class="px-3 py-1 font-bold text-slate-900 border-r border-slate-300">${bl.blNo} <span class="text-blue-500 text-[8px] uppercase font-bold">(${bl.stats.total} / ${bl.line})</span></td><td class="px-3 py-1 text-slate-600 font-bold border-r border-slate-300 text-[8px] uppercase ${isUrgent ? 'text-rose-700 font-bold' : ''}">${bRem || '-'}</td><td class="px-3 py-1 text-center font-bold text-rose-700 bg-rose-50/50 border-r border-slate-300">${bl.stats.pending}</td><td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${bl.vessel}</td><td class="px-3 py-1 text-center font-bold uppercase border-r border-slate-300">${statusLabel}</td><td class="px-3 py-1 text-slate-500 text-[9px] font-bold">${bl.pendingRemarks.join(' | ') || 'Awaiting dispatch'}</td></tr>`;
+                });
+                document.getElementById('pendingDetailRows').innerHTML = pHtml;
+                document.getElementById('pendingDetailFooter').innerHTML = `<tr class="bg-rose-50 text-rose-800 font-bold"><td colspan="2" class="px-3 py-1.5 text-right uppercase text-[9px]">Total Pending Units</td><td class="px-3 py-1.5 text-center text-[11px] border-r border-rose-200">${totalPendingUnits}</td><td colspan="3"></td></tr>`;
+            }
+            lucide.createIcons();
+        }
 function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
             // Check karein ki data Shipper se lena hai ya SMTP se
             const dataSource = (consIndex === 24) ? rawSheets.smtp : rawSheets.shipper;
@@ -162,4 +1182,2060 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
                 // 7. *** CRITICAL FIX: APPLY FILTERS IMMEDIATELY ***
                 applyFilters();
             }
+        }        function renderShipperList(shippers, consIndex) {
+            const listEl = document.getElementById('shipperList');
+            const filter = shipperSearch.value.toLowerCase();
+            listEl.innerHTML = shippers
+                .filter(s => String(s).toLowerCase().includes(filter))
+                .map(name => `
+                    <button class="shipper-select-btn w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold uppercase transition-all flex items-center justify-between group ${selectedShipper === name ? 'bg-blue-700 text-white shadow-lg' : 'text-slate-900 hover:bg-slate-100'}" data-name="${name.replace(/'/g, "\\'")}">
+                        <span class="truncate">${name}</span>
+                        <i data-lucide="chevron-right" class="w-3 h-3 ${selectedShipper === name ? 'opacity-100' : 'opacity-0'}"></i>
+                    </button>
+                `).join('');
+            lucide.createIcons();
+            document.querySelectorAll('.shipper-select-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const name = e.currentTarget.getAttribute('data-name');
+                    window.selectShipper(name, consIndex);
+                });
+            });
         }
+
+        window.selectShipper = function(name, consIndex) {
+    selectedShipper = name;
+    const activeNameEl = document.getElementById('activeShipperName');
+    if(activeNameEl) activeNameEl.innerText = name;
+   
+    blFilter.value = "ALL";
+    isInTransitFilterActive = false;
+   
+    window.selectedVessels = [];
+    document.getElementById('vesselDropdownLabel').innerText = "Select Vessels";
+   
+    // नया: पुराना डेटा तुरंत हटाने के लिए
+    document.getElementById('reportRows').innerHTML = '';
+    document.getElementById('reportFooter').innerHTML = '';
+    document.getElementById('railedDetailRows').innerHTML = '';
+    document.getElementById('pendingDetailRows').innerHTML = '';
+    document.getElementById('overallStats').innerHTML = '';
+    document.getElementById('railedBreakdownContainer').classList.add('hidden');
+    document.getElementById('pendingBreakdownContainer').classList.add('hidden');
+   
+    const uniqueShippers = [...new Set(rawSheets.shipper.slice(1).map(row => row[consIndex]))].filter(Boolean).sort();
+    renderShipperList(uniqueShippers, consIndex);
+    processAndRenderReport(consIndex, true);
+};
+
+        function processCloudData() {
+            trainDateRemarksMap = {};
+            if (rawSheets.website && rawSheets.website.length > 1) {
+                rawSheets.website.slice(1).forEach(row => {
+                    const train = String(row[4] || '').trim(); 
+                    const railDateRaw = row[8]; 
+                    const railDate = String(railDateRaw || '').trim(); 
+                    const remark = String(row[9] || '').trim(); 
+                    if (train && railDate && remark && remark !== '-') {
+                        trainDateRemarksMap[`${train}_${railDate}`] = remark;
+                    }
+                });
+            }
+            if (rawSheets.shipper && rawSheets.shipper.length) initDashboard();
+        }
+
+        function initDashboard() {
+            const emptyState = document.getElementById('emptyState');
+            const reportContainer = document.getElementById('reportContainer');
+            emptyState.classList.add('hidden');
+            reportContainer.classList.remove('hidden');
+            if(document.getElementById('downloadBtn')) document.getElementById('downloadBtn').classList.remove('hidden');
+            if(document.getElementById('resetBtn')) document.getElementById('resetBtn').classList.remove('hidden');
+
+            const headers = rawSheets.shipper[0];
+            if(!headers) return;
+            const consIndex = headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE'));
+            renderShipperList([...new Set(rawSheets.shipper.slice(1).map(row => row[consIndex]))].filter(Boolean).sort(), consIndex);
+            
+            if (!selectedShipper) {
+                 const firstShipper = [...new Set(rawSheets.shipper.slice(1).map(row => row[consIndex]))].filter(Boolean).sort()[0];
+                 if(firstShipper) window.selectShipper(firstShipper, consIndex);
+            } else {
+                 processAndRenderReport(consIndex, true);
+            }
+        }
+
+        async function loadFromCloud() {
+    if (!isCloudEnabled || !auth.currentUser) return;
+    cloudLabel.innerText = "Loading...";
+    refreshIcon.classList.add('animate-spin');
+
+    try {
+        const metaRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_meta', 'latest');
+        const metaSnap = await getDoc(metaRef);
+        
+        if (metaSnap.exists()) {
+            const { chunkCount } = metaSnap.data();
+            if (chunkCount === 0) {
+                cloudLabel.innerText = "Online (No Data)";
+                refreshIcon.classList.remove('animate-spin');
+                return;
+            }
+
+            let fullStr = "";
+            // Loop through each chunk
+            for (let i = 0; i < chunkCount; i++) {
+                const chunkRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_chunks', `chunk_${i}`);
+                const chunkSnap = await getDoc(chunkRef);
+                if (chunkSnap.exists()) {
+                    fullStr += chunkSnap.data().data;
+                }
+            }
+
+            if (fullStr) {
+                rawSheets = JSON.parse(fullStr);
+                processCloudData();
+            }
+            cloudLabel.innerText = "Online";
+        } else {
+            cloudLabel.innerText = "No Cloud Data";
+        }
+    } catch (e) { 
+        console.error("Cloud Load Error:", e); 
+        cloudLabel.innerText = "Load Error";
+    } finally {
+        refreshIcon.classList.remove('animate-spin');
+    }
+}
+       async function saveToCloud() {
+    if (!isCloudEnabled || !auth.currentUser) return;
+    
+    const overlay = document.getElementById('savingOverlay');
+    const progressText = document.getElementById('savingProgressText');
+    
+    overlay.classList.remove('hidden');
+
+    try {
+        const str = JSON.stringify(rawSheets);
+        // Optimized Chunk Size for Firestore Safety
+        const chunkSize = 500000; 
+        const chunkCount = Math.ceil(str.length / chunkSize);
+        
+        // ... baaki ka logic same rahega
+        
+        // Step 1: Upload Chunks first
+        for (let i = 0; i < chunkCount; i++) {
+            const progress = Math.round(((i + 1) / chunkCount) * 100);
+            progressText.innerText = progress + "%";
+            
+            const chunk = str.substring(i * chunkSize, (i + 1) * chunkSize);
+            const chunkRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_chunks', `chunk_${i}`);
+            await setDoc(chunkRef, { data: chunk });
+        }
+        
+        // Step 2: ONLY update Meta after all chunks are successful
+        const metaRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_meta', 'latest');
+        await setDoc(metaRef, { 
+            chunkCount: chunkCount, 
+            updatedAt: new Date().toISOString() 
+        });
+        
+        cloudLabel.innerText = "Connected";
+    } catch (e) {
+        console.error("Save Error:", e);
+        alert("Critical Error: Data save nahi ho paya. Internet check karein.");
+    } finally {
+        setTimeout(() => {
+            overlay.classList.add('hidden');
+            window.removeEventListener('beforeunload', preventClose);
+        }, 500);
+    }
+}
+
+
+        // ------------------------------------------
+        // 3. LOGIN & MODAL CONTROLS
+        // ------------------------------------------
+        const handleLogin = () => {
+            const passwordField = document.getElementById('loginPassword');
+            const input = passwordField.value;
+            const error = document.getElementById('loginError');
+            if (input === "16111980") {
+                sessionStorage.setItem('isLoggedIn', 'true');
+                loginScreen.style.opacity = '0';
+                setTimeout(() => {
+                    loginScreen.classList.add('hidden');
+                    lucide.createIcons();
+                }, 500);
+            } else {
+                error.classList.remove('hidden');
+                passwordField.value = '';
+                passwordField.focus();
+            }
+        };
+
+        // ------------------------------------------
+        // 4. WEBSITE RAKE & ARRIVAL LOGIC
+        // ------------------------------------------
+                function populateRakeList() {
+            if (!rawSheets.website || rawSheets.website.length <= 1) return;
+
+            const uniqueRakes = new Map(); // rakeNo → railDate (latest if multiple)
+
+            rawSheets.website.slice(1).forEach(row => {
+                const rake = String(row[4] || '').trim();
+                const railDateRaw = row[8];
+                const remark = String(row[9] || '').toUpperCase();
+
+                if (rake && rake !== "-" && remark.includes("RAILOUT FROM")) {
+                    const formattedDate = formatToDDMMYYYY_HHMM(railDateRaw);
+                    // Same rake के multiple entries में latest date रखें (optional, but safe)
+                    if (!uniqueRakes.has(rake) || formattedDate > uniqueRakes.get(rake)) {
+                        uniqueRakes.set(rake, formattedDate);
+                    }
+                }
+            });
+
+            rakeSelect.innerHTML = '<option value="">Select Rake No</option>';
+            [...uniqueRakes.keys()].sort().forEach(rake => {
+                const formattedDate = uniqueRakes.get(rake);
+                const displayText = `${rake}, ::${formattedDate}`;
+
+                const option = document.createElement('option');
+                option.value = rake;
+                option.textContent = displayText;
+                option.dataset.raildate = formattedDate; // raw full date for display box
+                rakeSelect.appendChild(option);
+            });
+        }
+                rakeSelect.addEventListener('change', () => {
+            const selected = rakeSelect.selectedOptions[0];
+            const rakeVal = rakeSelect.value;
+            const rawVal = selected ? (selected.dataset.raildate || '') : '';          
+            // Auto-load existing remark for this rake
+            if (rakeVal) {
+                const matchingRow = rawSheets.website.find(row =>
+                    String(row[4]).trim() === rakeVal &&
+                    String(row[9] || '').toUpperCase().includes("RAILOUT FROM")
+                );
+                customRemarksInput.value = matchingRow ? matchingRow[9] : '';
+            } else {
+                customRemarksInput.value = '';
+            }
+        });
+
+                updateArrivedBtn.addEventListener('click', () => {
+            const rake = rakeSelect.value;
+            const arrivedDate = arrivedDateInput.value.trim();
+            if (!rake) {
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Please select a Rake No first.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 3000);
+                return;
+            }
+            if (!arrivedDate) {
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Please enter Arrival Date (dd-mm-yyyy hh:mm).</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 3000);
+                return;
+            }
+            // Validation: basic check for full year format
+            if (!/^\d{2}-\d{2}-\d{4} \d{2}:\d{2}$/.test(arrivedDate)) {
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-orange-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Format: dd-mm-yyyy hh:mm (e.g. 28-12-2025 03:05)</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 4000);
+                return;
+            }
+
+            let updateCount = 0;
+            rawSheets.website.slice(1).forEach((row) => {
+                const currentRemark = String(row[9] || '').toUpperCase();
+                if (String(row[4]).trim() === rake && currentRemark.includes("RAILOUT FROM")) {
+                    row[9] = `TRAIN ARRIVED ON ${arrivedDate},`;
+                    updateCount++;
+                }
+            });
+
+            if (updateCount > 0) {
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Success! ${updateCount} containers updated for Rake ${rake}.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 3000);
+                saveToCloud();
+                processCloudData();
+                window.viewSheetData('website');
+                populateRakeList();
+                arrivedDateInput.value = '';
+            } else {
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">No matching containers found.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 3000);
+            }
+        });
+
+        updateCustomRemarksBtn.addEventListener('click', () => {
+            const rake = rakeSelect.value;
+            const newRemark = customRemarksInput.value.trim();
+            if (!rake) { 
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Please select a Rake No first.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 3000);
+                return; 
+            }
+            if (!newRemark) { 
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Please enter new Remarks.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 3000);
+                return; 
+            }
+
+            let updateCount = 0;
+            rawSheets.website.slice(1).forEach((row) => {
+                const currentRemark = String(row[9] || '').toUpperCase();
+                // Logic: Only update if RAKE_NO matches AND remark contains "RAILOUT FROM"
+                if (String(row[4]).trim() === rake && currentRemark.includes("RAILOUT FROM")) {
+                    row[9] = newRemark;
+                    updateCount++;
+                }
+            });
+
+            if (updateCount > 0) {
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-amber-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Remarks updated for ${updateCount} containers in Rake ${rake}.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 3000);
+                saveToCloud();
+                processCloudData();
+                window.viewSheetData('website'); 
+            } else {
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">No matching 'RAILOUT' containers found for this rake.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 3000);
+            }
+        });
+
+        // ------------------------------------------
+        // 5. UPDATE MODAL VIEW LOGIC & DELETE ROW
+        // ------------------------------------------
+        window.deleteRow = (index) => {
+            if (!currentSheetInView) return;
+            if (index === 0) return; // Prevent deleting header
+
+            if (confirm(`Are you sure you want to delete this row from ${currentSheetInView.toUpperCase()}?`)) {
+                rawSheets[currentSheetInView].splice(index, 1);
+                window.viewSheetData(currentSheetInView);
+                saveToCloud();
+                processCloudData();
+                
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000]">Row deleted.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 2000);
+            }
+        };
+
+        document.getElementById('deleteAllRowsBtn').addEventListener('click', () => {
+            if (!currentSheetInView) {
+                alert("Please select a sheet first.");
+                return;
+            }
+            if (confirm(`DANGER: Are you sure you want to delete ALL data entries from ${currentSheetInView.toUpperCase()}? Header row will be kept.`)) {
+                if (rawSheets[currentSheetInView] && rawSheets[currentSheetInView].length > 0) {
+                    const header = rawSheets[currentSheetInView][0];
+                    rawSheets[currentSheetInView] = [header];
+                    window.viewSheetData(currentSheetInView);
+                    saveToCloud();
+                    processCloudData();
+                    
+                    const box = document.createElement('div');
+                    box.innerHTML = `<div class="fixed top-20 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[100000]">All data rows in ${currentSheetInView} deleted.</div>`;
+                    document.body.appendChild(box);
+                    setTimeout(() => box.remove(), 3000);
+                }
+            }
+        });
+
+    window.viewSheetData = (sheetName) => {
+    currentSheetInView = sheetName;
+    const container = document.getElementById('sheetDataContainer');
+    const data = rawSheets[sheetName];
+    
+    const webSection = document.getElementById('websiteUpdateSection');
+    const smtpSection = document.getElementById('smtpUpdateSection');
+    const shipperSection = document.getElementById('shipperUpdateSection');
+        
+    const addShipperBtn = document.getElementById('openAddShipperBtn');
+    if (sheetName === 'shipper') {
+        addShipperBtn.classList.remove('hidden');
+    } else {
+        addShipperBtn.classList.add('hidden');
+    }
+    
+            if (sheetName === 'website') {
+                webSection.classList.remove('hidden');
+                webSection.classList.add('flex');
+                smtpSection.classList.add('hidden');
+                smtpSection.classList.remove('flex');
+                shipperSection.classList.add('hidden');
+                shipperSection.classList.remove('flex');
+                populateRakeList();
+            } else if (sheetName === 'smtp') {
+                smtpSection.classList.remove('hidden');
+                smtpSection.classList.add('flex');
+                webSection.classList.add('hidden');
+                webSection.classList.remove('flex');
+                shipperSection.classList.add('hidden');
+                shipperSection.classList.remove('flex');
+            } else if (sheetName === 'shipper') {
+                shipperSection.classList.remove('hidden');
+                shipperSection.classList.add('flex');
+                webSection.classList.add('hidden');
+                webSection.classList.remove('flex');
+                smtpSection.classList.add('hidden');
+                smtpSection.classList.remove('flex');
+            } else {
+                webSection.classList.add('hidden');
+                webSection.classList.remove('flex');
+                smtpSection.classList.add('hidden');
+                smtpSection.classList.remove('flex');
+                shipperSection.classList.add('hidden');
+                shipperSection.classList.remove('flex');
+            }
+
+            document.querySelectorAll('.sheet-tab-btn').forEach(btn => {
+                if (btn.getAttribute('data-sheet') === sheetName) {
+                    btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+                    btn.classList.remove('bg-white', 'text-slate-700');
+                } else {
+                    btn.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+                    btn.classList.add('bg-white', 'text-slate-700');
+                }
+            });
+
+            if (!data || data.length === 0) {
+                container.innerHTML = `<div class="p-10 text-center font-bold text-slate-400 uppercase text-[10px]">No data found in ${sheetName}</div>`;
+                return;
+            }
+
+            let html = `<table id="editableTable" class="min-w-full text-[9px] uppercase">`;
+            data.forEach((row, rowIndex) => {
+                const isHeader = rowIndex === 0;
+                const rowClass = isHeader ? 'bg-slate-800 text-white font-bold sticky top-0' : 'border-b border-slate-200 hover:bg-slate-50';
+                html += `<tr class="${rowClass}">`;
+                
+                // Add Delete Action Column
+                if (isHeader) {
+                    html += `<th class="px-2 py-1.5 border-r border-slate-200 w-10 text-center">ACTION</th>`;
+                } else {
+                    html += `<td class="px-2 py-1.5 border-r border-slate-200 text-center">
+                                <button onclick="window.deleteRow(${rowIndex})" class="delete-row-btn text-rose-500 transition-all">
+                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                </button>
+                             </td>`;
+                }
+
+                const maxCols = Math.max(...data.map(r => r.length));
+                for(let colIndex = 0; colIndex < maxCols; colIndex++) {
+                if (sheetName === 'smtp') {
+                        const allowedIndices = [1, 2, 3, 5, 9, 17, 18, 22, 23, 24, 26];
+                        if (!allowedIndices.includes(colIndex)) continue; 
+                    }
+
+                    const content = row[colIndex] !== undefined && row[colIndex] !== null ? row[colIndex] : '';
+                    html += `<td class="px-2 py-1.5 border-r border-slate-200 truncate max-w-[200px] ${!isHeader ? 'editable-cell' : ''}" 
+                                ${!isHeader ? 'contenteditable="true"' : ''} 
+                                data-row="${rowIndex}" data-col="${colIndex}">${content}</td>`;
+                }
+                html += `</tr>`;
+            });
+            html += `</table>`;
+            container.innerHTML = html;
+            lucide.createIcons();
+        };
+
+        // ------------------------------------------
+        // 6. MAIN APP INITIALIZATION & EVENTS
+        // ------------------------------------------
+        const initAuth = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    try { await signInWithCustomToken(auth, __initial_auth_token); } catch (e) { await signInAnonymously(auth); }
+                } else { await signInAnonymously(auth); }
+            } catch (error) {
+                cloudLabel.innerText = "Auth Error";
+                cloudIndicator.className = "w-2 h-2 rounded-full bg-red-500";
+            }
+        };
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                cloudIndicator.className = "w-2 h-2 rounded-full bg-emerald-500";
+                cloudLabel.innerText = "Online";
+                loadFromCloud();
+                const currentTimeEl = document.getElementById('currentTime');
+                if (currentTimeEl) currentTimeEl.innerText = formatToDDMMYYYY(new Date());
+            }
+        });
+
+        authBtn.addEventListener('click', handleLogin);
+        document.getElementById('loginPassword').addEventListener('keypress', (e) => { if (e.key === 'Enter') handleLogin(); });
+
+        document.getElementById('tabShipper').addEventListener('click', () => window.viewSheetData('shipper'));
+        document.getElementById('tabSmtp').addEventListener('click', () => window.viewSheetData('smtp'));
+        document.getElementById('tabWebsite').addEventListener('click', () => window.viewSheetData('website'));
+
+        openUpdateModalBtn.addEventListener('click', () => {
+            document.getElementById('updateModal').classList.remove('hidden');
+            lucide.createIcons();
+        });
+
+        closeModalBtn.addEventListener('click', window.hideModal);
+        closeModalBtnFooter.addEventListener('click', window.hideModal);
+
+        saveLocalChangesBtn.addEventListener('click', () => {
+            if (!currentSheetInView) return;
+            const cells = document.querySelectorAll('#editableTable .editable-cell');
+            cells.forEach(cell => {
+                const r = parseInt(cell.getAttribute('data-row'));
+                const c = parseInt(cell.getAttribute('data-col'));
+                if (!rawSheets[currentSheetInView][r]) rawSheets[currentSheetInView][r] = [];
+                rawSheets[currentSheetInView][r][c] = cell.innerText.trim();
+            });
+            saveToCloud(); processCloudData();
+            saveLocalChangesBtn.innerHTML = 'CHANGES SAVED!';
+            setTimeout(() => { saveLocalChangesBtn.innerHTML = 'Save Changes'; }, 2000);
+        });
+
+        const addSmtpBtn = document.getElementById('addSmtpBtn');
+        addSmtpBtn.addEventListener('click', () => {
+            if (!rawSheets.smtp || rawSheets.smtp.length <= 1) { 
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">SMTP data is empty.</div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 3000);
+                return; 
+            }
+            if (!rawSheets.website || rawSheets.website.length === 0) rawSheets.website = [["UID", "SR_NO", "BILL_NO", "CONTAINER_NO", "RAKE_NO", "STACK", "SOURCE", "DESTINATION", "RAILING_DATE", "REMARKS"]];
+            const smtpHeaders = rawSheets.smtp[0];
+            const sContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT'));
+            const sBlIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL'));
+            const sTpIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('TP_SUBMITTING')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('TP_SUBMITTING')) : 18;
+
+            let addedCount = 0;
+            rawSheets.smtp.slice(1).forEach(sRow => {
+                const contNo = String(sRow[sContIdx] || '').trim();
+                if (!contNo) return;
+                const alreadyExists = rawSheets.website.some(w => String(w[3] || '').trim() === contNo);
+                if (!alreadyExists) {
+                    const blNo = String(sRow[sBlIdx] || '').trim();
+                    const tpDate = formatToDDMMYYYY(sRow[sTpIdx]);
+                    rawSheets.website.push([103, rawSheets.website.length, blNo, contNo, "-", "Lower", "Mundra", "KILARAIPUR", "Pending", `CONTAINER HANDOVER TO HTPL ON ${tpDate}`]);
+                    addedCount++;
+                }
+            });
+            window.viewSheetData('website');
+            const box = document.createElement('div');
+            box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">${addedCount} containers added to Website list.</div>`;
+            document.body.appendChild(box);
+            setTimeout(() => box.remove(), 3000);
+            saveToCloud(); processCloudData();
+        });
+
+        // Temporary storage for excel processing
+        let pendingExcelData = null;
+        let pendingRakeNo = null;
+
+        const executeExcelUpdate = (rakeNo, railDateVal, jsonData) => {
+            let matchCount = 0;
+            jsonData.slice(10).forEach(exRow => {
+                const contNo = String(exRow[2] || '').trim(); 
+                const rawExcelDate = railDateVal || exRow[33]; 
+                const railDateFormatted = formatToDDMMYY_HHMM(rawExcelDate); 
+                
+                if (contNo && rawSheets.website) {
+                    const webMatchIndex = rawSheets.website.findIndex(w => String(w[3] || '').trim() === contNo);
+                    if (webMatchIndex !== -1) {
+                        let dateObj = null;
+                        const numVal = parseFloat(rawExcelDate);
+                        
+                        if (!isNaN(numVal) && isFinite(rawExcelDate) && numVal > 40000) {
+                            dateObj = new Date(Math.round((numVal - 25569) * 86400 * 1000));
+                        } else if (rawExcelDate) {
+                            const parts = String(rawExcelDate).split(/[-/ :]/);
+                            if (parts.length >= 3) {
+                                let d = parseInt(parts[0]);
+                                let m = parseInt(parts[1]) - 1;
+                                let y = parseInt(parts[2]);
+                                if (y < 100) y += 2000;
+                                let hh = parseInt(parts[3] || 0);
+                                let mm = parseInt(parts[4] || 0);
+                                dateObj = new Date(y, m, d, hh, mm);
+                            } else {
+                                dateObj = new Date(rawExcelDate);
+                            }
+                        }
+
+                        let etaString = '';
+                        if (dateObj && !isNaN(dateObj.getTime())) {
+                            const newDate = new Date(dateObj.getTime());
+                            newDate.setDate(newDate.getDate() + 4);
+                            const d = String(newDate.getDate()).padStart(2, '0');
+                            const m = String(newDate.getMonth() + 1).padStart(2, '0');
+                            const y = newDate.getFullYear();
+                            etaString = ` ETA ${d}-${m}-${y} 00:00`;
+                        }
+
+                        rawSheets.website[webMatchIndex][4] = rakeNo;
+                        rawSheets.website[webMatchIndex][8] = railDateFormatted;
+                        rawSheets.website[webMatchIndex][9] = `RAILOUT FROM MUNDRA ON ${railDateFormatted}${etaString}`;
+                        matchCount++;
+                    }
+                }
+            });
+            window.viewSheetData('website');
+            const box = document.createElement('div');
+            box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">${matchCount} containers updated successfully.</div>`;
+            document.body.appendChild(box);
+            setTimeout(() => box.remove(), 3000);
+            saveToCloud(); processCloudData();
+        };
+	
+        // === UPDATE DOUBLE STACK SUMMARY (FULLY FIXED - WORKS WITH HEADER "STACK" & TIME) ===
+        const doubleStackExcelInput = document.getElementById('doubleStackExcelInput');
+        if (doubleStackExcelInput) {
+            doubleStackExcelInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                let excelContainers = [];
+                let commonTrainNo = '';
+
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const bstr = evt.target.result;
+                        const wb = XLSX.read(bstr, { type: 'binary' });
+                        const ws = wb.Sheets[wb.SheetNames[0]];
+                        const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+                        if (jsonData.length < 2) {
+                            alert("Excel फ़ाइल में डेटा rows नहीं हैं।");
+                            return;
+                        }
+
+                        // Train No. from first data row (Column C, index 2)
+                        commonTrainNo = String(jsonData[1][2] || '').trim().toUpperCase();
+                        if (!commonTrainNo) {
+                            alert("Train No. (Column C) नहीं मिला।");
+                            return;
+                        }
+
+                        // Process all rows (including header if it has value), skip only completely empty
+                        for (let i = 1; i < jsonData.length; i++) {
+                            const row = jsonData[i];
+                            const containerNo = String(row[5] || '').trim().toUpperCase(); // Column F
+                            const stackVal = String(row[27] || '').trim().toUpperCase();   // Column AB
+
+                            if (containerNo && stackVal) {
+                                excelContainers.push({ containerNo, stackVal });
+                            }
+                        }
+
+                        if (excelContainers.length === 0) {
+                            alert("कोई valid container नहीं मिला (Column F या AB में data नहीं)।");
+                            return;
+                        }
+
+                        // Show manual date popup every time
+                        pendingExcelData = { trainNo: commonTrainNo, containers: excelContainers };
+                        document.getElementById('manualDateModal').classList.remove('hidden');
+                        document.getElementById('manualRailDateInput').focus();
+                        document.getElementById('manualRailDateInput').placeholder = "dd-mm-yyyy hh:mm (e.g. 28-12-2025 03:05)";
+                        lucide.createIcons();
+
+                    } catch (err) {
+                        console.error(err);
+                        alert("फ़ाइल पढ़ने में त्रुटि: " + err.message);
+                    }
+                };
+                reader.readAsBinaryString(file);
+                e.target.value = '';
+            });
+        }
+
+        // Process after manual date entry
+        function processDoubleStackUpdate(trainNo, containers, manualDateTime) {
+            if (!manualDateTime) {
+                alert("Departure Date and Time आवश्यक है।");
+                return;
+            }
+
+            const railingDate = manualDateTime.trim();
+
+            // Calculate ETA +4 days
+            const parts = railingDate.split(' ');
+            const datePart = parts[0].split('-');
+            const d = parseInt(datePart[0], 10);
+            const m = parseInt(datePart[1], 10) - 1;
+            const y = parseInt(datePart[2], 10);
+            const railDate = new Date(y, m, d);
+            const etaDate = new Date(railDate);
+            etaDate.setDate(etaDate.getDate() + 4);
+            const ed = String(etaDate.getDate()).padStart(2, '0');
+            const em = String(etaDate.getMonth() + 1).padStart(2, '0');
+            const ey = etaDate.getFullYear();
+            const etaStr = `${ed}-${em}-${ey} 00:00`;
+
+            const remarkFinal = `RAILOUT FROM MUNDRA ON ${railingDate} ETA ${etaStr}`;
+
+            if (!rawSheets.website || rawSheets.website.length === 0) {
+                rawSheets.website = [["UID","SR_NO","BILL_NO","CONTAINER_NO","RAKE_NO","STACK","SOURCE","DESTINATION","RAILING_DATE","REMARKS"]];
+            }
+
+            let updateCount = 0;
+            containers.forEach(item => {
+                const rakeNoFinal = `${trainNo}-${item.stackVal}`;
+                const rowIndex = rawSheets.website.findIndex(row => 
+                    String(row[3] || '').trim().toUpperCase() === item.containerNo
+                );
+                if (rowIndex !== -1) {
+                    rawSheets.website[rowIndex][4] = rakeNoFinal;
+                    rawSheets.website[rowIndex][8] = railingDate;
+                    rawSheets.website[rowIndex][9] = remarkFinal;
+                    updateCount++;
+                }
+            });
+
+            window.viewSheetData('website');
+            saveToCloud();
+            processCloudData();
+
+            const box = document.createElement('div');
+            box.innerHTML = `
+                <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-purple-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+                    ✓ सफल! ${updateCount} containers updated<br>
+                    Train: ${trainNo}<br>
+                    Railout: ${railingDate}
+                </div>`;
+            document.body.appendChild(box);
+            setTimeout(() => box.remove(), 6000);
+        }
+
+        // Manual date submit for Double Stack
+        document.getElementById('submitManualDateBtn').addEventListener('click', () => {
+            if (!pendingExcelData || !pendingExcelData.containers) return;
+
+            const dateVal = document.getElementById('manualRailDateInput').value.trim();
+            if (!dateVal) {
+                alert("Departure Date and Time enter करें।");
+                return;
+            }
+
+            document.getElementById('manualDateModal').classList.add('hidden');
+            processDoubleStackUpdate(pendingExcelData.trainNo, pendingExcelData.containers, dateVal);
+
+            pendingExcelData = null;
+            document.getElementById('manualRailDateInput').value = '';
+        });
+
+        // Cancel button
+        document.getElementById('cancelManualDateBtn').addEventListener('click', () => {
+            document.getElementById('manualDateModal').classList.add('hidden');
+            pendingExcelData = null;
+            document.getElementById('manualRailDateInput').value = '';
+        });
+        
+                // === UPDATE SINGLE STACK SUMMARY (FIXED TIME PARSING - FULL DATE & TIME) ===
+        const websiteExcelInput = document.getElementById('websiteExcelInput');
+        if (websiteExcelInput) {
+            websiteExcelInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const bstr = evt.target.result;
+                        const wb = XLSX.read(bstr, { type: 'binary' });
+                        const ws = wb.Sheets[wb.SheetNames[0]];
+                        const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+                        if (jsonData.length < 11) {
+                            alert("Excel फ़ाइल में पर्याप्त rows नहीं हैं।");
+                            return;
+                        }
+
+                        // Rake No. from H7
+                        const rakeNo = ws['H7'] ? String(ws['H7'].v).trim().toUpperCase() : '';
+                        if (!rakeNo) {
+                            alert("Rake No. (H7) नहीं मिला।");
+                            return;
+                        }
+
+                        // Raw date from AH11 (row 11, column AH index 33)
+                        const rawExcelDate = jsonData[10][33];
+
+                        // Use our robust full format function
+                        const formattedDate = formatToDDMMYYYY_HHMM(rawExcelDate);
+
+                        if (!formattedDate || formattedDate.includes('NaN')) {
+                            // Fallback to manual if parsing fails
+                            pendingExcelData = { rakeNo, jsonData };
+                            pendingRakeNo = rakeNo;
+                            document.getElementById('manualDateModal').classList.remove('hidden');
+                            document.getElementById('manualRailDateInput').focus();
+                            document.getElementById('manualRailDateInput').placeholder = "dd-mm-yyyy hh:mm (e.g. 28-12-2025 03:05)";
+                            lucide.createIcons();
+                            return;
+                        }
+
+                        // Calculate ETA +4 days
+                        let etaStr = '';
+                        try {
+                            // Extract date part for ETA calculation
+                            const datePart = formattedDate.split(' ')[0];
+                            const [d, m, y] = datePart.split('-').map(Number);
+                            const railDate = new Date(y, m - 1, d);
+                            const etaDate = new Date(railDate);
+                            etaDate.setDate(etaDate.getDate() + 4);
+                            const ed = String(etaDate.getDate()).padStart(2, '0');
+                            const em = String(etaDate.getMonth() + 1).padStart(2, '0');
+                            const ey = etaDate.getFullYear();
+                            etaStr = ` ETA ${ed}-${em}-${ey} 00:00`;
+                        } catch (_) {}
+
+                        const remarkFinal = `RAILOUT FROM MUNDRA ON ${formattedDate}${etaStr}`;
+
+                        let updateCount = 0;
+                        // Process all containers from row 11 onwards (typical data start)
+                        for (let i = 10; i < jsonData.length; i++) {
+                            const row = jsonData[i];
+                            const contNo = String(row[2] || '').trim().toUpperCase(); // Column C
+                            if (!contNo) continue;
+
+                            const rowIndex = rawSheets.website.findIndex(w => 
+                                String(w[3] || '').trim().toUpperCase() === contNo
+                            );
+
+                            if (rowIndex !== -1) {
+                                rawSheets.website[rowIndex][4] = rakeNo;
+                                rawSheets.website[rowIndex][8] = formattedDate; // Full date & time
+                                rawSheets.website[rowIndex][9] = remarkFinal;
+                                updateCount++;
+                            }
+                        }
+
+                        window.viewSheetData('website');
+                        saveToCloud();
+                        processCloudData();
+
+                        const box = document.createElement('div');
+                        box.innerHTML = `
+                            <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+                                ✓ सफल! ${updateCount} containers updated<br>
+                                Rake: ${rakeNo}<br>
+                                Date & Time: ${formattedDate}
+                            </div>`;
+                        document.body.appendChild(box);
+                        setTimeout(() => box.remove(), 6000);
+
+                    } catch (err) {
+                        console.error(err);
+                        alert("त्रुटि: " + err.message);
+                    }
+                };
+                reader.readAsBinaryString(file);
+                e.target.value = '';
+            });
+        }
+
+        // Manual date submit (already exists, but ensure it uses full year format)
+        document.getElementById('submitManualDateBtn').addEventListener('click', () => {
+            if (!pendingExcelData || !pendingRakeNo) return;
+
+            const dateVal = document.getElementById('manualRailDateInput').value.trim();
+            if (!dateVal) {
+                alert("Date & Time enter करें।");
+                return;
+            }
+
+            const formattedDate = dateVal; // already in dd-mm-yyyy hh:mm
+
+            // Calculate ETA
+            const parts = dateVal.split(' ');
+            const datePart = parts[0].split('-');
+            const d = parseInt(datePart[0]);
+            const m = parseInt(datePart[1]) - 1;
+            const y = parseInt(datePart[2]);
+            const etaDate = new Date(y, m, d);
+            etaDate.setDate(etaDate.getDate() + 4);
+            const ed = String(etaDate.getDate()).padStart(2, '0');
+            const em = String(etaDate.getMonth() + 1).padStart(2, '0');
+            const ey = etaDate.getFullYear();
+            const etaStr = ` ETA ${ed}-${em}-${ey} 00:00`;
+
+            const remarkFinal = `RAILOUT FROM MUNDRA ON ${formattedDate}${etaStr}`;
+            let updateCount = 0;
+
+            pendingExcelData.containers.forEach(contNo => {
+                const rowIndex = rawSheets.website.findIndex(row => 
+                    String(row[3] || '').trim().toUpperCase() === contNo
+                );
+                if (rowIndex !== -1) {
+                    rawSheets.website[rowIndex][4] = pendingRakeNo;
+                    rawSheets.website[rowIndex][8] = formattedDate;
+                    rawSheets.website[rowIndex][9] = remarkFinal;
+                    updateCount++;
+                }
+            });
+
+            document.getElementById('manualDateModal').classList.add('hidden');
+            window.viewSheetData('website');
+            saveToCloud();
+            processCloudData();
+
+            const box = document.createElement('div');
+            box.innerHTML = `
+                <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+                    ✓ सफल! ${updateCount} containers updated<br>
+                    Rake: ${pendingRakeNo}<br>
+                    Date: ${formattedDate}
+                </div>`;
+            document.body.appendChild(box);
+            setTimeout(() => box.remove(), 6000);
+
+            pendingExcelData = null;
+            pendingRakeNo = null;
+            document.getElementById('manualRailDateInput').value = '';
+        });
+
+        // Cancel button
+        document.getElementById('cancelManualDateBtn').addEventListener('click', () => {
+            document.getElementById('manualDateModal').classList.add('hidden');
+            pendingExcelData = null;
+            document.getElementById('manualRailDateInput').value = '';
+        });
+        // ------------------------------------------
+        // SHIPPER EXCEL IMPORT LOGIC (Strict Cell Reference A, B, C, D)
+        // ------------------------------------------
+        const shipperExcelInput = document.getElementById('shipperExcelInput');
+shipperExcelInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+        const bstr = evt.target.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
+       
+        if (jsonData.length < 2) {
+            alert("Excel में कोई डेटा रो नहीं मिली।");
+            return;
+        }
+        const contIdx = 0;   // Excel: A = CONT_Nos.
+        const sizeIdx = 1;   // Excel: B = Size
+        const blIdx = 2;     // Excel: C = BL_No.
+        const consIdx = 3;   // Excel: D = Consignee
+
+        const internalHeaders = rawSheets.shipper[0];
+        if (!internalHeaders) {
+            alert("SHIPPER sheet structure is missing headers.");
+            return;
+        }
+        const internalContIdx = 0;
+        const internalSizeIdx = internalHeaders.findIndex(h => /SIZE/i.test(String(h)));
+        const internalBlIdx = internalHeaders.findIndex(h => /BL/i.test(String(h)));
+        const internalConsIdx = internalHeaders.findIndex(h => /CONSIGNEE/i.test(String(h)));
+
+        let addedCount = 0;
+        let updatedCount = 0;
+        let skipCount = 0;
+
+        jsonData.slice(1).forEach(exRow => {
+            const contNo = String(exRow[contIdx] || '').trim();
+            if (!contNo) {
+                skipCount++;
+                return;
+            }
+
+            // मौजूदा रो का इंडेक्स खोजें (कंटेनर नंबर के आधार पर)
+            const existingIndex = rawSheets.shipper.findIndex(row => 
+                String(row[internalContIdx] || '').trim() === contNo
+            );
+
+            if (existingIndex === -1) {
+                // नई रो जोड़ें
+                let newRow = new Array(internalHeaders.length).fill("");
+                newRow[internalContIdx] = contNo;
+                if (internalBlIdx !== -1) newRow[internalBlIdx] = String(exRow[blIdx] || '').trim();
+                if (internalSizeIdx !== -1) newRow[internalSizeIdx] = String(exRow[sizeIdx] || '').trim();
+                if (internalConsIdx !== -1) newRow[internalConsIdx] = String(exRow[consIdx] || '').trim();
+                rawSheets.shipper.push(newRow);
+                addedCount++;
+            } else {
+                // मौजूदा रो को ओवरराइट/अपडेट करें
+                if (internalBlIdx !== -1) rawSheets.shipper[existingIndex][internalBlIdx] = String(exRow[blIdx] || '').trim();
+                if (internalSizeIdx !== -1) rawSheets.shipper[existingIndex][internalSizeIdx] = String(exRow[sizeIdx] || '').trim();
+                if (internalConsIdx !== -1) rawSheets.shipper[existingIndex][internalConsIdx] = String(exRow[consIdx] || '').trim();
+                updatedCount++;
+            }
+        });
+
+        window.viewSheetData('shipper');  // सही टैब दिखाएं
+        saveToCloud();                    // ऑटोमैटिक क्लाउड सेव
+        processCloudData();               // रिपोर्ट अपडेट
+
+        const box = document.createElement('div');
+        box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">
+            Shipper Update Complete: ${addedCount} added, ${updatedCount} updated, ${skipCount} skipped.
+        </div>`;
+        document.body.appendChild(box);
+        setTimeout(() => box.remove(), 5000);
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = '';  // इनपुट रीसेट
+});
+
+        // --- DIRECT MAPPING GATE OUT LOGIC (YAHAN SE ALAG RAKHEIN) ---
+        const gateOutExcelInput = document.getElementById('gateOutExcelInput');
+        if (gateOutExcelInput) {
+            gateOutExcelInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                if (!rawSheets || !rawSheets.smtp || rawSheets.smtp.length <= 1) {
+                    alert("❌ ERROR: SMTP Data nahi mila. Pehle SMTP Excel upload karein.");
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const bstr = evt.target.result;
+                        const wb = XLSX.read(bstr, { type: 'binary' });
+                        const ws = wb.Sheets[wb.SheetNames[0]];
+                        const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+
+                        const smtpData = rawSheets.smtp;
+                        const sContIdx = 2; // Column C
+                        const gateOutColIdx = 26; // Column AA
+
+                        let updateCount = 0;
+                        let excelRowsProcessed = 0;
+
+                        if (smtpData[0].length <= gateOutColIdx) {
+                            while (smtpData[0].length <= gateOutColIdx) {
+                                smtpData[0].push(smtpData[0].length === gateOutColIdx ? "PONUMBER" : "");
+                            }
+                        }
+
+                        jsonData.forEach((exRow) => {
+                            const exContNo = String(exRow[0] || '').trim().toUpperCase();
+                            const exGateDate = String(exRow[1] || '').trim();
+
+                            if (exContNo && exGateDate) {
+                                excelRowsProcessed++;
+                                for (let i = 1; i < smtpData.length; i++) {
+                                    const smtpCont = String(smtpData[i][sContIdx] || '').trim().toUpperCase();
+                                    if (smtpCont === exContNo) {
+                                        while (smtpData[i].length <= gateOutColIdx) smtpData[i].push("");
+                                        smtpData[i][gateOutColIdx] = exGateDate;
+                                        updateCount++;
+                                    }
+                                }
+                            }
+                        });
+
+                        if (updateCount > 0) {
+                            rawSheets.smtp = smtpData;
+                            window.viewSheetData('smtp');
+                            alert(`✅ SUCCESS!\nContainers Updated: ${updateCount}`);
+                            saveToCloud();
+                        } else {
+                            alert(`❌ NO MATCH!\nExcel read kiya par SMTP Column C se match nahi mila.`);
+                        }
+                    } catch (err) {
+                        alert("Error: " + err.message);
+                    }
+                };
+                reader.readAsBinaryString(file);
+                e.target.value = ''; 
+            });
+        }
+// --- SCANNING UPDATE LOGIC ---
+const scanningExcelInput = document.getElementById('scanningExcelInput');
+if (scanningExcelInput) {
+    scanningExcelInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (!rawSheets || !rawSheets.smtp || rawSheets.smtp.length <= 1) {
+            alert("❌ ERROR: SMTP Data nahi mila.");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const bstr = evt.target.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+                const smtpData = rawSheets.smtp;
+                const sContIdx = 2;       // SMTP Index 2 = Column C (Container No)
+                const terminalColIdx = 1; // SMTP Index 1 = Column B (Terminals)
+
+                let updateCount = 0;
+
+                jsonData.forEach((exRow) => {
+                    // Excel Cell B (Index 1) = Container Number
+                    const exContNo = String(exRow[1] || '').trim().toUpperCase();
+
+                    if (exContNo) {
+                        for (let i = 1; i < smtpData.length; i++) {
+                            const smtpCont = String(smtpData[i][sContIdx] || '').trim().toUpperCase();
+                            
+                            if (smtpCont === exContNo) {
+                                smtpData[i][terminalColIdx] = "Under Scanning";
+                                updateCount++;
+                            }
+                        }
+                    }
+                });
+
+                if (updateCount > 0) {
+                    rawSheets.smtp = smtpData;
+                    window.viewSheetData('smtp'); // Refresh table view
+                    
+                    // Success Alert
+                    const box = document.createElement('div');
+                    box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-pink-600 text-white px-8 py-4 rounded-xl shadow-2xl z-[100000] font-bold uppercase text-[10px] animate-bounce">
+                        ✅ Success: ${updateCount} Containers marked as Under Scanning
+                    </div>`;
+                    document.body.appendChild(box);
+                    setTimeout(() => box.remove(), 4000);
+
+                    saveToCloud();
+                    processCloudData();
+                } else {
+                    alert("❌ Match Nahi Mila: Excel ke Column B ke containers SMTP se match nahi huye.");
+                }
+            } catch (err) {
+                alert("Critical Error: " + err.message);
+            }
+        };
+        reader.readAsBinaryString(file);
+        e.target.value = ''; // Reset input
+    });
+}
+        // ------------------------------------------
+        // SMTP EXCEL IMPORT LOGIC
+        // ------------------------------------------
+        // --- AUTO-TRANSFER SMTP & WEBSITE LOGIC ---
+const smtpExcelInput = document.getElementById('smtpExcelInput');
+if (smtpExcelInput) {
+    smtpExcelInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            const bstr = evt.target.result;
+            const wb = XLSX.read(bstr, { type: 'binary' });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
+            
+            if (jsonData.length < 2) return;
+
+            let addedCount = 0;
+            let transferCount = 0;
+            const activeIndices = [1, 2, 3, 5, 9, 11, 17, 18, 22, 23, 24, 26]; // 11 added for location check
+
+            if (!rawSheets.website || rawSheets.website.length === 0) {
+                rawSheets.website = [["UID", "SR_NO", "BILL_NO", "CONTAINER_NO", "RAKE_NO", "STACK", "SOURCE", "DESTINATION", "RAILING_DATE", "REMARKS"]];
+            }
+
+            jsonData.slice(1).forEach(exRow => {
+                const contNo = String(exRow[2] || '').trim();
+                const cellLValue = String(exRow[11] || '').toUpperCase(); 
+
+                if (contNo && (cellLValue.includes("KILARAIPUR") || cellLValue.includes("LUDHIANA"))) {
+                    // 1. Update SMTP
+                    const alreadyInSmtp = rawSheets.smtp.some(s => String(s[2] || '').trim() === contNo);
+                    if (!alreadyInSmtp) {
+                        let optimizedRow = new Array(27).fill(""); 
+                        activeIndices.forEach(i => { optimizedRow[i] = exRow[i] !== undefined ? exRow[i] : ""; });
+                        rawSheets.smtp.push(optimizedRow);
+                        addedCount++;
+                    }
+
+                    // 2. Auto-Transfer to Website
+                    const alreadyInWebsite = rawSheets.website.some(w => String(w[3] || '').trim() === contNo);
+                    if (!alreadyInWebsite) {
+                        const blNo = String(exRow[9] || '').trim();
+                        const rawTpDate = exRow[18] || exRow[17];
+                        const tpDateFormatted = formatToDDMMYYYY(rawTpDate);
+                        
+                        rawSheets.website.push([
+                            103, rawSheets.website.length, blNo, contNo, "-", "Lower", "Mundra", "KILARAIPUR", "Pending", 
+                            `CONTAINER HANDOVER TO HTPL ON ${tpDateFormatted}`
+                        ]);
+                        transferCount++;
+                    }
+                }
+            });
+
+            window.viewSheetData('smtp');
+            alert(`SUCCESS: SMTP ${addedCount} added & Website ${transferCount} synced.`);
+            saveToCloud(); 
+            processCloudData();
+        };
+        reader.readAsBinaryString(file);
+        e.target.value = ''; 
+    });
+}
+
+        // Manual Date Modal Events
+        document.getElementById('submitManualDateBtn').addEventListener('click', () => {
+            const dateVal = document.getElementById('manualRailDateInput').value.trim();
+            if (!dateVal) {
+                document.getElementById('manualRailDateInput').classList.add('ring-2', 'ring-rose-500');
+                return;
+            }
+            document.getElementById('manualRailDateInput').classList.remove('ring-2', 'ring-rose-500');
+            document.getElementById('manualDateModal').classList.add('hidden');
+            executeExcelUpdate(pendingRakeNo, dateVal, pendingExcelData);
+            document.getElementById('manualRailDateInput').value = '';
+        });
+
+        document.getElementById('cancelManualDateBtn').addEventListener('click', () => {
+            document.getElementById('manualDateModal').classList.add('hidden');
+            pendingExcelData = null;
+            pendingRakeNo = null;
+        });
+
+        refreshBtn.addEventListener('click', () => { loadFromCloud(); });
+        saveImageBtn.addEventListener('click', () => {
+            if (!selectedShipper || !rawSheets.shipper.length) return;
+            const area = document.getElementById('reportContainer');
+            const btn = document.getElementById('saveImageBtn');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i> SAVING...';
+            lucide.createIcons();
+            setTimeout(() => {
+                html2canvas(area, {
+                    backgroundColor: "#e2e8f0", scale: 3, useCORS: true, allowTaint: true,
+                    onclone: (clonedDoc) => {
+                        const clonedArea = clonedDoc.getElementById('reportContainer');
+                        clonedArea.style.display = 'block';
+                        clonedArea.style.padding = '40px';
+                        const noPrints = clonedDoc.querySelectorAll('.no-print');
+                        noPrints.forEach(el => { if (el.id !== 'overallStats') el.style.display = 'none'; });
+                    }
+                }).then(canvas => {
+                    const link = document.createElement('a');
+                    link.download = `LOGISTICS_REPORT_${selectedShipper}.png`;
+                    link.href = canvas.toDataURL('image/png', 1.0);
+                    link.click();
+                    btn.innerHTML = originalHTML;
+                    lucide.createIcons();
+                });
+            }, 800);
+        });
+
+        blFilter.addEventListener('change', applyFilters);
+        shipperSearch.addEventListener('input', () => {
+            const headers = rawSheets.shipper[0];
+            if(!headers) return;
+            const consIndex = headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE'));
+            renderShipperList([...new Set(rawSheets.shipper.slice(1).map(row => row[consIndex]))].filter(Boolean).sort(), consIndex);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const bstr = evt.target.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const findSheet = (name) => wb.SheetNames.find(s => s.toUpperCase() === name.toUpperCase());
+                rawSheets = {
+                    shipper: XLSX.utils.sheet_to_json(wb.Sheets[findSheet('SHIPPER')], {header: 1}),
+                    smtp: XLSX.utils.sheet_to_json(wb.Sheets[findSheet('SMTP')], {header: 1}),
+                    website: XLSX.utils.sheet_to_json(wb.Sheets[findSheet('WEBSITE')], {header: 1})
+                };
+                saveToCloud(); processCloudData();
+            };
+            reader.readAsBinaryString(file);
+        });
+// Yaha se paste karein (Line 809 ke paas)
+
+// --- NEW SMTP SEARCH & REPORT LOGIC ---
+document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
+    const searchVal = e.target.value.trim().toUpperCase();
+    const resultBox = document.getElementById('smtpConsigneeBox');
+    const nameDisplay = document.getElementById('smtpConsigneeName');
+
+    if (searchVal.length >= 4 && rawSheets.smtp && rawSheets.smtp.length > 1) {
+        const match = rawSheets.smtp.find(row => String(row[9] || '').toUpperCase().includes(searchVal));
+        if (match && match[24]) {
+            const foundConsignee = String(match[24]).trim();
+            nameDisplay.innerText = foundConsignee;
+            resultBox.classList.remove('hidden');
+
+            resultBox.onclick = () => {
+                selectedShipper = foundConsignee; 
+                document.getElementById('activeShipperName').innerText = foundConsignee + " (BL: " + searchVal + ")";
+                document.getElementById('emptyState').classList.add('hidden');
+                document.getElementById('reportContainer').classList.remove('hidden');
+
+                // Generate SMTP report (24 is index for Consignee)
+                processAndRenderReport(24, true); 
+
+                // LOCK to searched BL
+                setTimeout(() => {
+                    blFilter.value = searchVal;
+                    applyFilters();
+                }, 100);
+                
+                e.target.value = '';
+                resultBox.classList.add('hidden');
+            };
+        } else {
+            resultBox.classList.remove('hidden');
+            nameDisplay.innerText = "No BL Found in SMTP";
+        }
+    } else {
+        resultBox.classList.add('hidden');
+    }
+});
+        document.getElementById('downloadWebsiteCsvBtn').addEventListener('click', () => {
+            const data = rawSheets.website;
+            if (!data || data.length === 0) {
+                alert("No website data available to export!");
+                return;
+            }
+
+            // Safe formatting function for CSV (handles invalid dates)
+            const safeFormatDate = (val) => {
+                if (!val) return "";
+                const formatted = formatToDDMMYYYY_HHMM(val);
+                if (formatted && !formatted.includes('NaN') && formatted.includes('-') && formatted.includes(' ')) {
+                    // Convert full format to dd-mm-yy hh:mm
+                    const parts = formatted.split(' ');
+                    const datePart = parts[0].split('-');
+                    if (datePart.length === 3) {
+                        const yy = datePart[2].slice(-2); // Last 2 digits of year
+                        return `${datePart[0]}-${datePart[1]}-${yy} ${parts[1]}`;
+                    }
+                }
+                return String(val); // Fallback to original if invalid
+            };
+
+            const csvContent = data.map((row, rowIndex) => {
+                return row.map((cell, colIndex) => {
+                    let val = cell === null || cell === undefined ? "" : String(cell);
+
+                    // Only format RAILING_DATE column (Index 8)
+                    if (colIndex === 8 && rowIndex > 0 && val !== "") {
+                        val = safeFormatDate(val);
+                    }
+
+                    // Quote if contains comma
+                    if (val.includes(",")) val = `"${val}"`;
+                    return val;
+                }).join(",");
+            }).join("\n");
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `IMPORT_Data_${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            // Success notification
+            const box = document.createElement('div');
+            box.innerHTML = `
+                <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+                    ✓ CSV Export सफल! ${data.length - 1} rows downloaded
+                </div>`;
+            document.body.appendChild(box);
+            setTimeout(() => box.remove(), 4000);
+        });
+
+// --- FINAL STYLED XLSX EXPORT (BLUE HEADERS & BORDERS) ---
+                document.getElementById('downloadBtn').addEventListener('click', async () => {
+            if (!currentShipperAllGroups || currentShipperAllGroups.length === 0) {
+                alert("No data visible on screen to export.");
+                return;
+            }
+            const customerName = (selectedShipper || "Selected Customer").toUpperCase();
+            const visibleBLs = currentShipperAllGroups.map(g => g.blNo);
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Container Report');
+
+            // Helper functions
+            const excelToDDMMYYYY = (val) => {
+                if (!val || val === '-') return '-';
+                let date;
+                if (!isNaN(val) && parseFloat(val) > 40000) {
+                    date = new Date(Math.round((val - 25569) * 86400 * 1000));
+                } else {
+                    const parts = String(val).split(/[-.\/]/);
+                    if (parts.length >= 3) {
+                        let d = parseInt(parts[0]), m = parseInt(parts[1]) - 1, y = parseInt(parts[2]);
+                        if (y < 100) y += 2000;
+                        date = new Date(y, m, d);
+                    }
+                }
+                if (!date || isNaN(date.getTime())) return String(val);
+                return `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`;
+            };
+
+            const extractETADate = (remark) => {
+                if (!remark || remark === '-') return '-';
+                const etaMatch = String(remark).match(/ETA\s+(\d{2}-\d{2}-\d{4})/);
+                return etaMatch ? etaMatch[1] : '-';
+            };
+
+            const strToDateObj = (str) => {
+                if (!str || str === '-' || !str.includes('-') || str === 'Not Arrived') return null;
+                const p = str.split('-');
+                return new Date(p[2], p[1] - 1, p[0]);
+            };
+
+            const diffDays = (d1, d2) => {
+                if (!d1 || !d2) return "0";
+                const diff = d2.getTime() - d1.getTime();
+                return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
+            };
+
+            // Title
+            const titleRow = worksheet.addRow([customerName]);
+            titleRow.font = { name: 'Arial', size: 14, bold: true };
+            worksheet.addRow([]); // Blank
+
+            // Headers
+            const headers = [
+                "BL_No. (Total)", "Train No / Rake", "ETA",
+                "CONT_Nos.", "Size", "Disch_Vsl_Name",
+                "Handover Date", "Railout Date", "Arrival Date", "Gate out Date",
+                "Handover to Railout (Days)", "Railout to Arrival (Days)", "Arrival to Gateout (Days)"
+            ];
+            const headerRow = worksheet.addRow(headers);
+            headerRow.eachCell((cell) => {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
+                cell.font = { color: { argb: 'FFFFFFFF' }, bold: true, size: 10 };
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+                cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            });
+
+            // Collect all rows with BL info
+            let exportRows = [];
+
+            const smtpHeaders = rawSheets.smtp[0];
+            const sContIdx = smtpHeaders.findIndex(h => /CONT/i.test(String(h))) !== -1 ? smtpHeaders.findIndex(h => /CONT/i.test(String(h))) : 2;
+            const sBlIdx = smtpHeaders.findIndex(h => /BL/i.test(String(h))) !== -1 ? smtpHeaders.findIndex(h => /BL/i.test(String(h))) : 9;
+            const sSizeIdx = smtpHeaders.findIndex(h => /SIZE/i.test(String(h)));
+            const sVslIdx = 5;
+            const sTpIdx = smtpHeaders.findIndex(h => /TP_SUBMITTING/i.test(String(h))) !== -1 ? smtpHeaders.findIndex(h => /TP_SUBMITTING/i.test(String(h))) : 18;
+            const sGateOutIdx = 26;
+
+            const filteredSmtpRows = rawSheets.smtp.slice(1).filter(row => visibleBLs.includes(String(row[sBlIdx] || '').trim()));
+
+            filteredSmtpRows.forEach(sRow => {
+                const contNo = String(sRow[sContIdx] || '').trim();
+                const webRow = rawSheets.website.find(w => String(w[3] || '').trim() === contNo);
+
+                const blNo = String(sRow[sBlIdx] || '');
+                const totalForBL = currentShipperAllGroups.find(g => g.blNo === blNo)?.stats.total || 0;
+                const blDisplay = `${blNo} (${totalForBL})`;
+
+                let trainRake = '-';
+                let etaDate = '-';
+
+                if (webRow) {
+                    trainRake = String(webRow[4] || '').trim();
+                    const remark = String(webRow[9] || '').trim();
+                    etaDate = extractETADate(remark);
+                }
+
+                const hDt = excelToDDMMYYYY(sRow[sTpIdx]);
+                const gDt = excelToDDMMYYYY(sRow[sGateOutIdx]);
+                let rDt = '-', aDt = '-';
+                if (webRow) {
+                    rDt = excelToDDMMYYYY(webRow[8]);
+                    const remUpper = String(webRow[9] || '').toUpperCase();
+                    if (remUpper.includes("TRAIN ARRIVED")) {
+                        const m = remUpper.match(/\d{2}[-./]\d{2}[-./]\d{2,4}/);
+                        if (m) aDt = excelToDDMMYYYY(m[0]);
+                    } else if (remUpper.includes("RAILOUT")) {
+                        aDt = "Not Arrived";
+                    }
+                }
+
+                exportRows.push({
+                    blDisplay,
+                    trainRake,
+                    etaDate,
+                    contNo,
+                    size: sRow[sSizeIdx] || '',
+                    vessel: String(sRow[sVslIdx] || ''),
+                    hDt,
+                    rDt,
+                    aDt,
+                    gDt,
+                    handoverToRailout: diffDays(strToDateObj(hDt), strToDateObj(rDt)),
+                    railoutToArrival: diffDays(strToDateObj(rDt), strToDateObj(aDt)),
+                    arrivalToGateout: diffDays(strToDateObj(aDt), strToDateObj(gDt)),
+                    sortKey: blNo // For sorting
+                });
+            });
+
+            // Sort by BL No. (ascending)
+            exportRows.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+            // Add sorted rows to worksheet
+            exportRows.forEach(row => {
+                const rowData = [
+                    row.blDisplay, row.trainRake, row.etaDate,
+                    row.contNo, row.size, row.vessel,
+                    row.hDt, row.rDt, row.aDt, row.gDt,
+                    row.handoverToRailout, row.railoutToArrival, row.arrivalToGateout
+                ];
+                const dataRow = worksheet.addRow(rowData);
+                dataRow.eachCell((cell) => {
+                    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+                    cell.font = { name: 'Arial', size: 9 };
+                    cell.alignment = { vertical: 'middle', horizontal: 'left' };
+                });
+            });
+
+            // Column widths
+            worksheet.columns.forEach(col => { col.width = 18; });
+            worksheet.getColumn(4).width = 20; // CONT_Nos.
+            worksheet.getColumn(6).width = 25; // Vessel
+
+            // Download
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = window.URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `${customerName.replace(/\s+/g, '_')}_Report.xlsx`;
+            anchor.click();
+            window.URL.revokeObjectURL(url);
+        });
+// --- HIND TERMINALS AUTO SEARCH LOGIC ---
+window.searchHTPL = function(blNumber) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'https://www.hindterminals.com/Container%20Tracking%20System/Import/Search%20Function/search.php';
+    form.target = '_blank'; 
+
+    const inputBL = document.createElement('input');
+    inputBL.type = 'hidden';
+    inputBL.name = 'Bill_NO'; // HTPL ki website ka field name
+    inputBL.value = blNumber;
+    form.appendChild(inputBL);
+
+    const inputSubmit = document.createElement('input');
+    inputSubmit.type = 'hidden';
+    inputSubmit.name = 'search1'; // HTPL ka submit button name
+    inputSubmit.value = 'Search';
+    form.appendChild(inputSubmit);
+
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+};
+// ... Iske upar aapka sara purana code (downloadBtn logic etc.) khatam ho raha hoga ...
+
+// *******************************************************************
+// IS LINE KE THEEK UPAR PASTE KAREIN (Running Trains Logic)
+// *******************************************************************
+
+document.getElementById('runningTrainsBtn').addEventListener('click', () => {
+    const modal = document.getElementById('runningTrainsModal');
+    const tableBody = document.getElementById('runningTrainsBody');
+    
+    const tableHeader = modal.querySelector('thead tr');
+    tableHeader.innerHTML = `
+        <th class="p-3 border">Train No</th>
+        <th class="p-3 border">Railout Date</th>
+        <th class="p-3 border text-left">Shipper Name</th>
+        <th class="p-2 border w-12 text-center bg-slate-700">20"</th>
+        <th class="p-2 border w-12 text-center bg-slate-700">40"</th>
+        <th class="p-2 border w-16 text-center bg-blue-900">TEU</th>
+        <th class="p-3 border text-left">ETA</th>
+    `;
+
+    tableBody.innerHTML = ""; 
+
+    if (!rawSheets.website || rawSheets.website.length <= 1) {
+        alert("No tracking data available.");
+        return;
+    }
+
+    // --- LOGIC: Fetch Shipper & Size directly from SMTP/Shipper ---
+    const getShipperName = (blNo) => {
+        if (!rawSheets.shipper || rawSheets.shipper.length <= 1) return "OTHER SHIPPERS";
+        const match = rawSheets.shipper.find(r => String(r[2] || '').trim().toUpperCase() === String(blNo).trim().toUpperCase());
+        return (match && match[3]) ? String(match[3]).trim().toUpperCase() : "OTHER SHIPPERS";
+    };
+
+    // Naya Function: SMTP Sheet se Container No ke base par Size fetch karega
+    const getSizeFromSMTP = (contNo) => {
+        if (!rawSheets.smtp || rawSheets.smtp.length <= 1) return 20;
+        // SMTP: Column C (Index 2) is Container, Column D (Index 3) is Size
+        const row = rawSheets.smtp.find(r => String(r[2] || '').trim().toUpperCase() === String(contNo).trim().toUpperCase());
+        if (row) {
+            const sizeVal = String(row[3] || '');
+            return sizeVal.includes('40') ? 40 : 20;
+        }
+        return 20; // Default
+    };
+
+    const extractETA = (remark) => {
+        const upperRem = String(remark).toUpperCase();
+        if (upperRem.includes("ETA")) {
+            const parts = upperRem.split("ETA");
+            return "ETA " + parts[1].trim();
+        }
+        return remark;
+    };
+
+    let trainGroups = {};
+
+    rawSheets.website.slice(1).forEach(row => {
+        const remark = String(row[9] || '').toUpperCase();
+        if (remark.includes("RAILOUT FROM") && !remark.includes("ARRIVED")) {
+            const trainNo = row[4] || "N/A";
+            const railDate = row[8] || "N/A";
+            const contNo = row[3] || ""; // Website tab se Container Number
+            const blNo = row[2] || "N/A";
+            
+            const shipperName = getShipperName(blNo);
+            const size = getSizeFromSMTP(contNo); // SMTP se size liya
+            const etaOnly = extractETA(row[9]);
+            
+            const trainKey = `${trainNo}_${railDate}`;
+
+            if (!trainGroups[trainKey]) {
+                trainGroups[trainKey] = { trainNo, railDate, eta: etaOnly, shippers: {} };
+            }
+
+            if (!trainGroups[trainKey].shippers[shipperName]) {
+                trainGroups[trainKey].shippers[shipperName] = { c20: 0, c40: 0 };
+            }
+            
+            if (size === 20) trainGroups[trainKey].shippers[shipperName].c20++;
+            else if (size === 40) trainGroups[trainKey].shippers[shipperName].c40++;
+        }
+    });
+
+    const sortedTrains = Object.values(trainGroups).sort((a, b) => {
+        const parseDate = (str) => {
+            const p = str.split(/[-.\/\s]/);
+            let y = parseInt(p[2]); if (y < 100) y += 2000;
+            return new Date(y, parseInt(p[1]) - 1, parseInt(p[0])).getTime();
+        };
+        return parseDate(a.railDate) - parseDate(b.railDate);
+    });
+
+    if (sortedTrains.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="7" class="p-10 text-slate-400 uppercase font-bold text-center">No Running Trains Found.</td></tr>`;
+    } else {
+        sortedTrains.forEach(train => {
+            const shipperEntries = Object.entries(train.shippers);
+            let trainTotal20 = 0;
+            let trainTotal40 = 0;
+            let trainTotalTEU = 0;
+
+            shipperEntries.forEach(([shipperName, counts], idx) => {
+                const tr = document.createElement('tr');
+                tr.className = "border-b border-slate-200 transition-colors hover:bg-slate-50";
+                
+                const teuValue = (counts.c20 * 1) + (counts.c40 * 2);
+                trainTotal20 += counts.c20;
+                trainTotal40 += counts.c40;
+                trainTotalTEU += teuValue;
+
+                let html = "";
+                if (idx === 0) {
+                    html += `
+                        <td rowspan="${shipperEntries.length + 1}" class="p-3 border border-slate-300 text-blue-900 font-black bg-white align-top">${train.trainNo}</td>
+                        <td rowspan="${shipperEntries.length + 1}" class="p-3 border border-slate-300 font-bold text-slate-600 bg-white align-top text-[10px]">${train.railDate}</td>
+                    `;
+                }
+
+                const shipperStyle = shipperName === "OTHER SHIPPERS" ? "text-rose-600 italic" : "text-slate-900 font-black";
+                html += `
+                    <td class="p-2 border border-slate-300 text-[10px] text-left leading-tight ${shipperStyle}">${shipperName}</td>
+                    <td class="p-2 border border-slate-300 text-center font-bold text-slate-500">${counts.c20 || '-'}</td>
+                    <td class="p-2 border border-slate-300 text-center font-bold text-slate-500">${counts.c40 || '-'}</td>
+                    <td class="p-2 border border-slate-300 text-blue-700 font-bold text-center text-sm">${teuValue}</td>
+                `;
+
+                if (idx === 0) {
+                    html += `<td rowspan="${shipperEntries.length + 1}" class="p-3 border border-slate-300 text-[10px] text-indigo-800 text-left font-black uppercase bg-indigo-50/20 align-top">${train.eta}</td>`;
+                }
+                tr.innerHTML = html;
+                tableBody.appendChild(tr);
+            });
+
+            const subTotalTr = document.createElement('tr');
+            subTotalTr.className = "bg-slate-100 font-black border-b-2 border-slate-300";
+            subTotalTr.innerHTML = `
+                <td class="p-2 border border-slate-300 text-[9px] text-right uppercase text-slate-500">Train Sub-Total:</td>
+                <td class="p-2 border border-slate-300 text-center text-slate-900">${trainTotal20}</td>
+                <td class="p-2 border border-slate-300 text-center text-slate-900">${trainTotal40}</td>
+                <td class="p-2 border border-slate-300 text-center text-blue-900 bg-amber-100">${trainTotalTEU}</td>
+            `;
+            tableBody.appendChild(subTotalTr);
+        });
+    }
+
+    modal.classList.remove('hidden');
+    lucide.createIcons();
+});
+// --- MANUAL ADD SHIPPER LOGIC ---
+const openAddShipperBtn = document.getElementById('openAddShipperBtn');
+const addShipperModal = document.getElementById('addShipperModal');
+const manualBlInput = document.getElementById('manualBlInput');
+const manualShipperNameInput = document.getElementById('manualShipperNameInput');
+const saveManualShipperBtn = document.getElementById('saveManualShipperBtn');
+const blMatchStatus = document.getElementById('blMatchStatus');
+const previewList = document.getElementById('previewList');
+const containerPreviewArea = document.getElementById('containerPreviewArea');
+
+// --- COMPLETE ADD SHIPPER LOGIC (FIXED) ---
+let matchedContainers = [];
+
+// 1. Modal Kholne ka Button (Fix: Ye button click hona chahiye)
+document.getElementById('openAddShipperBtn').addEventListener('click', () => {
+    document.getElementById('addShipperModal').classList.remove('hidden');
+    // Saare fields reset karein
+    document.getElementById('manualBlInput').value = ''; 
+    document.getElementById('manualShipperNameInput').value = '';
+    document.getElementById('manualSingleCont').value = '';
+    document.getElementById('blMatchStatus').innerText = '';
+    document.getElementById('containerPreviewArea').classList.add('hidden');
+    matchedContainers = [];
+    if(window.lucide) lucide.createIcons();
+});
+
+// 2. Preview List ko Refresh karne ka function
+const refreshPreviewUI = () => {
+    const previewArea = document.getElementById('containerPreviewArea');
+    const previewList = document.getElementById('previewList');
+    if (matchedContainers.length > 0) {
+        previewArea.classList.remove('hidden');
+        previewList.innerHTML = matchedContainers.map((m, idx) => `
+            <li class="flex justify-between items-center bg-white p-1.5 mb-1 rounded border border-slate-200 shadow-sm">
+                <span class="text-[10px] font-bold text-slate-700">${m.cont} (${m.size}")</span>
+                <button onclick="removeTempCont(${idx})" type="button" class="text-rose-500 hover:scale-110 transition-transform">
+                    <i data-lucide="x-circle" class="w-4 h-4"></i>
+                </button>
+            </li>
+        `).join('');
+        if(window.lucide) lucide.createIcons();
+    } else {
+        previewArea.classList.add('hidden');
+    }
+};
+
+// 3. Queue se hatane ka function
+window.removeTempCont = (idx) => {
+    matchedContainers.splice(idx, 1);
+    refreshPreviewUI();
+};
+
+// 4. Manual Add Button (Blue Box wala ADD button)
+document.getElementById('addManualToPreviewBtn').addEventListener('click', () => {
+    const cont = document.getElementById('manualSingleCont').value.trim().toUpperCase();
+    const size = document.getElementById('manualSingleSize').value;
+    const blNo = document.getElementById('manualBlInput').value.trim().toUpperCase() || "MANUAL";
+    
+    if (!cont) {
+        alert("Pehle Container Number bhariye!");
+        return;
+    }
+    
+    // Check if already in list
+    if (matchedContainers.some(m => m.cont === cont)) {
+        alert("Ye container pehle se list mein hai!");
+        return;
+    }
+
+    matchedContainers.push({ cont, size, bl: blNo });
+    document.getElementById('manualSingleCont').value = ''; // Clear box
+    refreshPreviewUI();
+});
+
+// 5. B/L Lookup (SMTP search)
+document.getElementById('manualBlInput').addEventListener('input', (e) => {
+    const searchVal = e.target.value.trim().toUpperCase();
+    const status = document.getElementById('blMatchStatus');
+    
+    if (searchVal.length < 4) {
+        status.innerText = "";
+        return;
+    }
+
+    const matches = rawSheets.smtp.filter(row => String(row[9] || '').toUpperCase() === searchVal);
+    
+    if (matches.length > 0) {
+        matchedContainers = matches.map(row => ({ 
+            cont: String(row[2]).trim(), 
+            size: String(row[3]).includes('40') ? '40' : '20', 
+            bl: searchVal 
+        }));
+        status.className = "mt-1 text-[9px] font-bold uppercase text-emerald-600";
+        status.innerText = `✅ Found ${matches.length} in SMTP`;
+        
+        if (!document.getElementById('manualShipperNameInput').value) {
+            document.getElementById('manualShipperNameInput').value = matches[0][24] || '';
+        }
+        refreshPreviewUI();
+    } else {
+        status.className = "mt-1 text-[9px] font-bold uppercase text-amber-500";
+        status.innerText = "⚠️ Not in SMTP. Add containers manually below.";
+    }
+});
+
+// 6. Final Save Button (Link & Save)
+document.getElementById('saveManualShipperBtn').addEventListener('click', async () => {
+    const shipperName = document.getElementById('manualShipperNameInput').value.trim().toUpperCase();
+    if (!shipperName) { alert("Shipper Name zaroori hai!"); return; }
+    if (matchedContainers.length === 0) { alert("Kam se kam ek container add karein!"); return; }
+
+    let addedCount = 0;
+    matchedContainers.forEach(m => {
+        // Double check taaki duplicate na ho
+        if (!rawSheets.shipper.some(s => String(s[0]).trim() === m.cont)) {
+            rawSheets.shipper.push([m.cont, m.size, m.bl, shipperName]);
+            addedCount++;
+        }
+    });
+
+    document.getElementById('addShipperModal').classList.add('hidden');
+    window.viewSheetData('shipper');
+    await saveToCloud();
+    processCloudData();
+    alert(`Success! ${addedCount} containers added.`);
+});
+// --- NEW MULTI-SELECT VESSEL LOGIC ---
+window.selectedVessels = [];
+
+window.toggleVesselMenu = () => {
+    const menu = document.getElementById('vesselDropdownMenu');
+    const btn = document.getElementById('vesselDropdownBtn');
+    if (!menu || !btn) return;
+    
+    menu.classList.toggle('hidden');
+    
+    if (!menu.classList.contains('hidden')) {
+        const rect = btn.getBoundingClientRect();
+        menu.style.position = 'fixed'; // 'absolute' ki jagah 'fixed' karein agar abhi bhi hide ho raha ho
+        menu.style.left = `${rect.left}px`;
+        menu.style.top = `${rect.bottom}px`;
+        menu.style.width = `${rect.width}px`;
+        menu.style.zIndex = '9999'; // Sabse upar rakhne ke liye
+    }
+};
+window.populateVesselFilters = (vesselList) => {
+            const menu = document.getElementById('vesselDropdownMenu');
+            
+            // "Select All" checkbox logic
+            const allSelected = vesselList.length > 0 && vesselList.every(v => window.selectedVessels.includes(v));
+            
+            let html = `
+                <div class="flex items-center gap-2 p-2 border-b-2 mb-1 pb-1 bg-blue-50">
+                    <input type="checkbox" id="vesselSelectAll" onchange="window.toggleAllVessels(this)" class="w-3.5 h-3.5 cursor-pointer" ${allSelected ? 'checked' : ''}>
+                    <label for="vesselSelectAll" class="text-[10px] font-bold text-blue-900 cursor-pointer uppercase">SELECT ALL VESSELS</label>
+                </div>
+            `;
+            
+            vesselList.forEach(v => {
+                const relatedGroups = currentShipperAllGroups.filter(g => {
+                    const gVessel = (g.vessel && g.vessel !== '-' && g.vessel !== '') ? g.vessel : 'NOT HANDOVER';
+                    return gVessel === v;
+                });
+                
+                let totalUnits = 0;
+                let railedUnits = 0;
+                let arrivedUnits = 0;
+                let latestHandover = '-';
+                
+                relatedGroups.forEach(g => {
+                    totalUnits += g.stats.total;
+                    railedUnits += g.stats.railed;
+                    arrivedUnits += g.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
+                    
+                    if (g.handoverDt && g.handoverDt !== '-' && g.handoverDt !== 'N/A') {
+                        if (latestHandover === '-' || g.handoverDt > latestHandover) {
+                            latestHandover = g.handoverDt;
+                        }
+                    }
+                });
+                
+                const inTransit = railedUnits - arrivedUnits;
+                const pendingPort = totalUnits - railedUnits;
+                
+                // --- COLOR LOGIC START ---
+                let bgColor = "hover:bg-blue-100";
+                let textColor = "text-slate-700";
+
+                if (pendingPort > 0) {
+                    bgColor = "bg-rose-50 hover:bg-rose-100";
+                    textColor = "text-rose-700";
+                } else if (inTransit > 0) {
+                    bgColor = "bg-amber-50 hover:bg-amber-100";
+                    textColor = "text-amber-700";
+                } else if (totalUnits > 0 && arrivedUnits === totalUnits) {
+                    bgColor = "bg-emerald-50 hover:bg-emerald-100";
+                    textColor = "text-emerald-700";
+                }
+
+                if (v === 'NOT HANDOVER') {
+                    textColor = "text-red-600"; 
+                    bgColor = "bg-red-50 hover:bg-red-100";
+                }
+                // --- COLOR LOGIC END ---
+                
+                // Tick Logic
+                const isChecked = window.selectedVessels.includes(v) ? 'checked' : '';
+
+                html += `
+                <div class="flex items-center gap-3 p-2 rounded border-b border-white/50 ${bgColor} transition-colors">
+                    <input type="checkbox" value="${v}" onchange="window.updateSelectedVessels()" class="vessel-checkbox w-3.5 h-3.5 cursor-pointer" ${isChecked}>
+                    <label class="text-[10px] font-bold ${textColor} cursor-pointer uppercase truncate flex flex-col w-full">
+                        <span class="flex justify-between items-start">
+                            <span class="truncate pr-2">${v}</span>
+                            <span class="flex flex-col items-end shrink-0 gap-0.5">
+                                 <span class="text-[8px] bg-slate-700 text-white px-1 rounded">TOTAL: ${totalUnits}</span>
+                                 ${arrivedUnits > 0 ? `<span class="text-[8px] bg-blue-600 text-white px-1 rounded">ARR: ${arrivedUnits}</span>` : ''}
+                                 ${pendingPort > 0 ? `<span class="text-[8px] bg-rose-600 text-white px-1 rounded">PEN: ${pendingPort}</span>` : ''}
+                                 ${inTransit > 0 ? `<span class="text-[8px] bg-amber-600 text-white px-1 rounded">TRN: ${inTransit}</span>` : ''}
+                                 ${(pendingPort === 0 && inTransit === 0 && arrivedUnits === totalUnits) ? `<span class="text-[8px] bg-emerald-600 text-white px-1 rounded">ALL ARRIVED</span>` : ''}
+                            </span>
+                        </span>
+                        ${(latestHandover !== '-' && v !== 'NOT HANDOVER') ? `<span class="text-[9px] text-slate-500 font-normal mt-1">Handover on: ${latestHandover}</span>` : ''}
+                    </label>
+                </div>`;
+            });
+            menu.innerHTML = html;
+        };
+
+window.updateSelectedVessels = () => {
+    const checkboxes = document.querySelectorAll('.vessel-checkbox:checked');
+    window.selectedVessels = Array.from(checkboxes).map(cb => cb.value);
+    
+    const label = document.getElementById('vesselDropdownLabel');
+    if (window.selectedVessels.length === 0) label.innerText = "Select Vessels";
+    else if (window.selectedVessels.length === 1) label.innerText = window.selectedVessels[0];
+    else label.innerText = `${window.selectedVessels.length} Vessels Selected`;
+
+    applyFilters();
+};
+
+window.toggleAllVessels = (master) => {
+    document.querySelectorAll('.vessel-checkbox').forEach(cb => cb.checked = master.checked);
+    window.updateSelectedVessels();
+};
+
+// Bahar click karne par menu band karne ke liye
+document.addEventListener('click', (e) => {
+    const menu = document.getElementById('vesselDropdownMenu');
+    const btn = document.getElementById('vesselDropdownBtn');
+    if (menu && !menu.contains(e.target) && !btn.contains(e.target)) {
+        menu.classList.add('hidden');
+    }
+});
+initAuth();
+</script>
+<div id="runningTrainsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col border border-slate-300 overflow-hidden">
+        <div class="bg-amber-600 p-4 flex justify-between items-center shrink-0">
+            <div class="flex items-center gap-3 text-white">
+                <i data-lucide="train" class="w-6 h-6"></i>
+                <h2 class="font-bold uppercase tracking-tight text-sm">Live Running Trains Report (In Transit)</h2>
+            </div>
+            <button onclick="document.getElementById('runningTrainsModal').classList.add('hidden')" class="text-white hover:rotate-90 transition-all">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+        </div>
+        <div class="flex-1 overflow-auto p-4 custom-scrollbar bg-slate-50">
+            <table class="w-full text-[11px] border-collapse bg-white shadow-sm">
+                <thead>
+    <tr class="bg-slate-800 text-white uppercase text-[10px]">
+        <th class="p-3 border">Train No</th>
+        <th class="p-3 border">Railout Date</th>
+        <th class="p-3 border text-left">Shipper Name</th>
+        <th class="p-2 border w-12 text-center bg-slate-700">20"</th>
+        <th class="p-2 border w-12 text-center bg-slate-700">40"</th>
+        <th class="p-2 border w-16 text-center bg-blue-900">TEU</th>
+        <th class="p-3 border text-left">ETA / Remarks</th>
+    </tr>
+</thead>
+                <tbody id="runningTrainsBody" class="font-bold text-slate-700 text-center">
+                    </tbody>
+            </table>
+        </div>
+        <div class="p-3 bg-slate-100 border-t border-slate-200 flex justify-between items-center shrink-0">
+            <p class="text-[9px] font-bold text-slate-500 uppercase italic">Only Showing Containers with 'RAILOUT FROM' remark.</p>
+            <button onclick="document.getElementById('runningTrainsModal').classList.add('hidden')" class="px-6 py-2 bg-slate-800 text-white rounded-lg font-bold text-[10px] uppercase">Close Report</button>
+        </div>
+    </div>
+</div>
+<div id="addShipperModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100001] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-slate-300 overflow-hidden">
+        <div class="bg-teal-600 p-4 flex justify-between items-center text-white">
+            <h3 class="font-bold uppercase text-sm flex items-center gap-2"><i data-lucide="user-plus" class="w-4 h-4"></i> Add Manual Shipper</h3>
+            <button onclick="document.getElementById('addShipperModal').classList.add('hidden')"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <div class="p-6 space-y-4">
+            <div>
+                <label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">B/L Number (Lookup from SMTP)</label>
+                <input type="text" id="manualBlInput" placeholder="Enter B/L Number..." class="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-teal-500 uppercase">
+                <div id="blMatchStatus" class="mt-1 text-[9px] font-bold uppercase"></div>
+            </div>
+            <div>
+                <label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">Shipper / Consignee Name</label>
+                <input type="text" id="manualShipperNameInput" placeholder="Type Shipper Name..." class="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-teal-500 uppercase">
+            </div>
+<div id="manualInputFields" class="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+    <p class="text-[9px] font-black text-blue-600 uppercase mb-2">Manual Container Entry</p>
+    <div class="flex gap-2">
+        <input type="text" id="manualSingleCont" placeholder="CONT NO" class="flex-1 px-3 py-1.5 border border-slate-300 rounded text-[10px] font-bold uppercase outline-none focus:ring-1 focus:ring-blue-500">
+        <select id="manualSingleSize" class="w-20 px-1 py-1.5 border border-slate-300 rounded text-[10px] font-bold outline-none">
+            <option value="20">20"</option>
+            <option value="40">40"</option>
+        </select>
+        <button id="addManualToPreviewBtn" type="button" class="bg-blue-600 text-white px-3 py-1.5 rounded font-bold text-[10px] hover:bg-blue-700">ADD</button>
+    </div>
+</div>
+
+<div id="containerPreviewArea" class="mt-4 bg-slate-100 p-3 rounded-lg hidden max-h-40 overflow-y-auto border border-slate-200 custom-scrollbar">
+    <p class="text-[8px] font-bold text-slate-500 mb-2 uppercase border-b pb-1">Queue to be Linked:</p>
+    <ul id="previewList" class="text-[10px] font-bold text-teal-800 space-y-1"></ul>
+</div>
+            
+            <button id="saveManualShipperBtn" class="w-full bg-teal-700 hover:bg-teal-800 text-white font-black py-3 rounded-xl shadow-lg transition-all transform active:scale-95 uppercase text-xs">Link & Save to Shipper Tab</button>
+        </div>
+    </div>
+</div>
+</body>
+</html>
