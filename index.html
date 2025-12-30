@@ -223,7 +223,8 @@ table {
 .report-box .overflow-x-auto {
     position: relative;
     z-index: 50;
-    overflow: visible !important; /* Isse table ke bahr dropdown dikhega */
+    overflow-x: auto !important; /* अब यह स्क्रॉल होगा, बाहर नहीं जाएगा */
+    border-radius: 0 0 0.75rem 0.75rem; /* नीचे के कोने गोल */
 }
 
 .report-box table thead {
@@ -573,25 +574,48 @@ table {
                         <span id="currentTime" class="text-[9px] font-bold text-slate-500 uppercase shrink-0"></span>
                     </div>
 
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-[10px]">
-                                                        <thead>
-                                <tr class="bg-slate-900 text-white font-bold uppercase tracking-wider">
-                                    <th class="px-1.0 py-2 text-center bg-slate-800 w-60">BL NO (SHIPPING LINE) (Total Containers)</th>
-                                    <th class="px-2 py-2 text-[9px] leading-tight">Disch_Vsl_Name / Handover</th>
-                                    <th class="px-1.5 py-2 text-center bg-slate-800 w-20">20</th>
-                                    <th class="px-1.5 py-2 text-center bg-slate-800 w-20">40</th>
-                                    <th class="px-1.5 py-2 text-center bg-emerald-700 w-30 whitespace-normal uppercase">Railout Containers</th>
-                                    <th class="px-1.5 py-2 text-center bg-blue-600 w-30 whitespace-normal uppercase">Arrived Containers</th>
-                                    <th class="px-1.5 py-2 text-center bg-orange-600 w-30 whitespace-normal uppercase">In Transit Containers</th>
-                                    <th class="px-1.5 py-2 text-center bg-rose-700 w-30 whitespace-normal uppercase">Pending Containers</th>
-                                </tr>
-                            </thead>
-                            <tbody id="reportRows" class="font-bold text-slate-700 row-compact"></tbody>
-                            <tfoot id="reportFooter" class="bg-slate-100 font-bold text-slate-900 border-t border-slate-300"></tfoot>
-                        </table>
-                    </div>
-                </div>
+                    <div class="overflow-x-auto shadow-md rounded-lg border border-slate-300 bg-white">
+    
+    <table class="w-full text-left text-[10px] border-collapse">
+        <thead>
+            <tr class="bg-slate-900 text-white font-bold uppercase tracking-wider">
+                
+                <th class="sticky left-0 z-20 px-1.5 py-2 text-left bg-slate-900 border-r border-slate-600 w-[130px] min-w-[130px] shadow-lg text-[9px] leading-tight">
+                    BL NO (LINE) <br> 
+                    <span class="text-[7px] text-slate-400 font-normal normal-case">(Total Containers)</span>
+                </th>
+
+                <th class="px-1.5 py-2 border-r border-slate-700 w-[110px] min-w-[110px] text-[9px] leading-tight break-words whitespace-normal">
+                    Disch_Vsl_Name / Handover
+                </th>
+
+                <th class="px-0.5 py-2 text-center bg-slate-800 border-r border-slate-700 w-8 min-w-[35px] text-[9px]">
+                    20
+                </th>
+                <th class="px-0.5 py-2 text-center bg-slate-800 border-r border-slate-700 w-8 min-w-[35px] text-[9px]">
+                    40
+                </th>
+
+                <th class="px-0.5 py-2 text-center bg-emerald-700 border-r border-emerald-600 w-[80px] min-w-[80px] whitespace-normal uppercase text-[8px] leading-3">
+                    Railout<br>Containers
+                </th>
+                <th class="px-0.5 py-2 text-center bg-blue-600 border-r border-blue-500 w-[80px] min-w-[80px] whitespace-normal uppercase text-[8px] leading-3">
+                    Arrived<br>Containers
+                </th>
+                <th class="px-0.5 py-2 text-center bg-orange-600 border-r border-orange-500 w-[80px] min-w-[80px] whitespace-normal uppercase text-[8px] leading-3">
+                    In Transit<br>Containers
+                </th>
+                <th class="px-0.5 py-2 text-center bg-rose-700 w-[80px] min-w-[80px] whitespace-normal uppercase text-[8px] leading-3">
+                    Pending<br>Containers
+                </th>
+            </tr>
+        </thead>
+        
+        <tbody id="reportRows" class="font-bold text-slate-700 row-compact divide-y divide-slate-200"></tbody>
+        
+        <tfoot id="reportFooter" class="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-300"></tfoot>
+    </table>
+</div>
 
                 <div class="grid grid-cols-1 gap-5 pb-10">
                     <div id="railedBreakdownContainer" class="report-box bg-white">
@@ -956,11 +980,11 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
                 return `
                     <tr class="border-b border-slate-200 hover:bg-slate-50 transition-colors">
                         <td class="px-2 py-1 border-r border-slate-300 min-w-[160px] relative overflow-hidden group">
-                            <div class="absolute top-0 left-0 h-full bg-green-200/60 transition-all duration-1000 ease-out z-0 pointer-events-none" style="width: ${progressPercent}%"></div>
+                            <div class="absolute top-0 left-0 h-full bg-blue-50 transition-all duration-1000 ease-out z-0 pointer-events-none" style="width: ${progressPercent}%"></div>
                             <div class="relative z-10 flex flex-col">
                                 <div class="flex justify-between items-center mb-0.5">
                                     <span class="font-bold text-slate-900 truncate pr-1">
-                                        <span class="text-pink-600 text-[8.5px] font-black mr-1">${progressPercent}%</span>
+                                        <span class="text-blue-800 text-[8.5px] font-black mr-1">${progressPercent}%</span>
                                         ${blDisplay}
                                         <span class="text-black-600 text-[9px] uppercase font-bold">${sizeLabel}</span>
                                     </span>
