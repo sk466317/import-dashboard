@@ -56,16 +56,16 @@ table {
 
         th, td {
             border: 1px solid #1e3a8a33;
-            /* Increase padding to give text room */
-            padding: 8px 10px;
-            vertical-align: top;
+            /* Height FIX: Padding reduced from 8px to 4px */
+            padding: 4px 6px; 
+            vertical-align: middle; /* Top se hata kar Middle kar diya taaki center me dikhe */
             
-            /* Strict text wrapping rules */
+            /* Strict text wrapping rules (Keep this for PNG) */
             white-space: normal !important;
             word-break: break-word !important;
             overflow-wrap: break-word !important;
             
-            line-height: 2;
+            line-height: 2; /* Line height bhi thodi kam ki */
             box-sizing: border-box !important;
         }
 
@@ -580,9 +580,9 @@ table {
         <thead>
             <tr class="bg-slate-900 text-white font-bold uppercase tracking-wider">
                 
-                <th class="sticky left-0 z-20 px-1.5 py-2 text-left bg-slate-900 border-r border-slate-600 w-[130px] min-w-[130px] shadow-lg text-[9px] leading-tight">
+                <th class="sticky left-0 z-20 px-1.5 py-2 text-left bg-slate-900 border-r border-slate-600 w-[180px] min-w-[180px] shadow-lg text-[9px] leading-tight">
                     BL NO (LINE) <br> 
-                    <span class="text-[7px] text-slate-400 font-normal normal-case">(Total Containers)</span>
+                    <span class="text-[9px] text-slate-400 font-normal normal-case">(Total Containers)</span>
                 </th>
 
                 <th class="px-1.5 py-2 border-r border-slate-700 w-[110px] min-w-[110px] text-[9px] leading-tight break-words whitespace-normal">
@@ -617,7 +617,7 @@ table {
     </table>
 </div>
 
-                <div class="grid grid-cols-1 gap-5 pb-10">
+                <div class="grid grid-cols-1 gap-5 pb-10 mt-10">
                     <div id="railedBreakdownContainer" class="report-box bg-white">
                         <div class="bg-emerald-600 px-4 py-1.5 flex justify-between items-center">
                             <div class="flex items-center gap-2 text-white animate-status-icon">
@@ -629,12 +629,13 @@ table {
                             <table class="w-full text-left text-[9px]">
                                 <thead class="bg-emerald-50 text-white font-bold uppercase">
                                     <tr>
-                                        <th class="px-3 py-2">BL (Containers/Line)</th>
-                                        <th class="px-3 py-2 text-center w-24 whitespace-normal uppercase">Railout Done</th>
-                                        <th class="px-3 py-2">Train No / Rake</th>
-                                        <th class="px-3 py-2 text-center w-28">Railout Date</th>
-                                        <th class="px-3 py-2 uppercase">Current Train Location and ETA</th>
+                                        <th class="px-3 py-2 text-left w-[180px] min-w-[180px]">BL (Containers/Line)</th>                                        
+                                        <th class="px-2 py-2 text-center w-[90px] min-w-[90px] whitespace-normal uppercase leading-3">Railout<br>Done</th>                                        
+                                        <th class="px-3 py-2 text-left w-[140px] min-w-[140px]">Train No / Rake</th>                                        
+                                        <th class="px-3 py-2 text-center w-[110px] min-w-[110px]">Railout Date</th>                                        
+                                        <th class="px-3 py-2 text-left uppercase">Current Train Location and ETA</th>
                                     </tr>
+                                </thead>
                                 </thead>
                                 <tbody id="railedDetailRows" class="font-bold text-slate-600 row-compact"></tbody>
                                 <tfoot id="railedDetailFooter" class="bg-emerald-50 text-emerald-900 font-bold uppercase border-t border-emerald-200"></tfoot>
@@ -653,13 +654,14 @@ table {
                             <table class="w-full text-left text-[9px]">
                                 <thead class="bg-rose-50 text-white font-bold uppercase">
                                     <tr>
-                                        <th class="px-3 py-2">BL (Containers/Line)</th>
-                                        <th class="px-3 py-2">Remarks </th>
-                                        <th class="px-3 py-2 text-center w-24">PENDING</th>
-                                        <th class="px-3 py-2 uppercase">Vessel</th>
-                                        <th class="px-3 py-2 text-center w-28 uppercase">Handover Date</th>
-                                        <th class="px-3 py-2 uppercase">Current Status</th>
+                                        <th class="px-3 py-2 text-left w-[180px] min-w-[180px]">BL (Containers/Line)</th>                                        
+                                        <th class="px-3 py-2 text-left w-[100px] min-w-[100px]">Remarks</th>                                        
+                                        <th class="px-2 py-2 text-center w-[70px] min-w-[70px]">PENDING</th>                                        
+                                        <th class="px-3 py-2 text-left w-[130px] min-w-[130px] uppercase">Vessel</th>                                        
+                                        <th class="px-3 py-2 text-center w-[100px] min-w-[100px] uppercase">Handover Date</th>                                        
+                                        <th class="px-3 py-2 text-left uppercase">Current Status</th>
                                     </tr>
+                                </thead>
                                 </thead>
                                 <tbody id="pendingDetailRows" class="font-bold text-slate-600 row-compact"></tbody>
                                 <tfoot id="pendingDetailFooter" class="bg-rose-50 text-rose-900 font-bold uppercase border-t border-rose-200"></tfoot>
