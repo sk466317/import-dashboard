@@ -24,7 +24,7 @@
         body { 
             font-family: Arial, Helvetica, sans-serif; 
             letter-spacing: -0.01em; 
-            background-color: #CBD5E1; 
+            background-color: #ffffff; 
         }
         .font-arial-black {
             font-family: "Arial Black", Gadget, sans-serif;
@@ -346,9 +346,9 @@ table {
 </div>
 
                     <!-- Website Tab Context Tools -->
-                    <div id="websiteUpdateSection" class="hidden items-center gap-3 bg-white p-2 rounded-xl border border-slate-300 shadow-sm flex-wrap">
+                    <div id="websiteUpdateSection" class="hidden items-center gap-3 bg-white p-2 rounded-xl border border-slate-600 shadow-sm flex-wrap">
                         <div class="flex items-center gap-2 border-r border-slate-200 pr-3">
-                            <select id="rakeSelect" class="bg-slate-50 border border-slate-300 text-[10px] font-bold rounded-lg px-2 py-1.5 outline-none w-44">
+                            <select id="rakeSelect" class="bg-slate-50 border border-slate-300 text-[10px] font-bold rounded-lg px-2 py-1.5 outline-none w-60">
                                 <option value="">Select Rake No</option>
                             </select>
                                 
@@ -361,7 +361,7 @@ table {
                                 </button>
                             </div>
 
-                            <div class="h-6 w-px bg-slate-200 mx-1"></div>
+                            <div class="h-6 w-px bg-slate-600 mx-1"></div>
 
                             <!-- Remarks Update Box (Updated with Larger Width) -->
                             <div class="flex items-center gap-1.5">
@@ -525,7 +525,7 @@ table {
     </div>
     <div id="consigneeDisplay" class="p-2 bg-white rounded border border-blue-200 hidden cursor-pointer hover:bg-blue-100 transition-all active:scale-95 shadow-sm" title="Click to view report">
     <p class="text-[7px] text-blue-500 font-bold uppercase flex items-center gap-1">
-        <i data-lucide="external-link" class="w-2 h-2"></i> View Report for:
+        <i data-lucide="external-link" class="w-2 h-1"></i> View Report for:
     </p>
     <p id="consigneeValue" class="text-[9px] font-black text-slate-800 break-words uppercase"></p>
 </div>
@@ -534,19 +534,19 @@ table {
             <div id="shipperList" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1"></div>
         </aside>
 
-        <section id="mainSectionArea" class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 print:p-0 bg-slate-200">
-            <div id="emptyState" class="h-full flex flex-col items-center justify-center text-center p-12 bg-white rounded-2xl border border-slate-400 shadow-lg no-print mx-auto max-w-lg mt-20">
+        <section id="mainSectionArea" class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 print:p-0 bg-slate-300">
+            <div id="emptyState" class="h-full flex flex-col items-center justify-center text-center p-12 bg-white rounded-2xl border border-slate-100 shadow-lg no-print mx-auto max-w-lg mt-20">
                 <i data-lucide="file-spreadsheet" class="w-12 h-12 text-slate-300 mb-3"></i>
                 <h2 class="text-lg font-bold text-slate-800 uppercase tracking-tight">System Ready</h2>
                 <p class="text-slate-500 text-xs font-bold">Please upload a file or wait for cloud sync.</p>
             </div>
 
             <!-- Dashboard Content -->
-            <div id="reportContainer" class="hidden space-y-5 max-w-[1300px] mx-auto p-4 bg-slate-200">
+            <div id="reportContainer" class="hidden space-y-5 max-w-[1300px] mx-auto p-4 bg-slate-300">
                 <!-- Statistics Section -->
                 <div id="overallStats" class="grid grid-cols-6 gap-3 font-arial-black text-center"></div>
 
-                <div class="report-box print:border-none print:shadow-none bg-white">
+                <div class="report-box print:border-none print:shadow-none bg-slate-300">
                     <div class="px-5 py-2 bg-white border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                         <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full">
                             <h2 id="activeShipperName" class="text-sm font-bold text-slate-900 tracking-tight uppercase shrink-0"></h2>
@@ -571,7 +571,7 @@ table {
                                 </div>
                             </div>
                         </div>
-                        <span id="currentTime" class="text-[9px] font-bold text-slate-500 uppercase shrink-0"></span>
+                        <span id="currentTime" class="text-[9px] font-bold text-blue-500 uppercase shrink-0"></span>
                     </div>
 
                     <div class="overflow-x-auto shadow-md rounded-lg border border-slate-300 bg-white">
@@ -924,32 +924,32 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
             
             // Note: Added border-blue-600 and ring logic for active filter state on In Transit box
             document.getElementById('overallStats').innerHTML = `
-		<div class="bg-white p-2 rounded-xl border-b-4 border-b-pink-600 border border-slate-400 shadow-sm flex flex-col items-center">
+		<div class="bg-white p-2 rounded-xl border-b-8 border-b-pink-600 border border-slate-400 shadow-sm flex flex-col items-center">
                     <span class="text-[7px] font-bold text-blue-500 uppercase tracking-widest">Total B/L</span>
                     <span class="text-xl font-bold text-blue-600 mt-0.5 leading-none">${groups.length}</span>
 
                 </div>
-                <div class="bg-white p-2 rounded-xl border-b-4 border-b-orange-500 border border-slate-400 shadow-sm flex flex-col items-center">
+                <div class="bg-white p-2 rounded-xl border-b-8 border-b-orange-500 border border-slate-400 shadow-sm flex flex-col items-center">
                     <span class="text-[7px] font-bold text-slate-400 uppercase tracking-widest">Total Containers</span>
                     <span class="text-lg font-bold text-slate-900">${t20 + t40}</span>
                     <div class="mt-0.5">${formatSubCount(t20, t40, subColor)}</div>
                 </div>
-                <div class="bg-emerald-50 p-2 rounded-xl border-b-4 border-b-emerald-500 border border-slate-400 shadow-sm flex flex-col items-center">
+                <div class="bg-emerald-50 p-2 rounded-xl border-b-8 border-b-emerald-500 border border-slate-400 shadow-sm flex flex-col items-center">
                     <span class="text-[7px] font-bold text-emerald-600 uppercase tracking-widest">Railout Done</span>
                     <span class="text-lg font-bold text-emerald-700">${totalRailed}</span>
                     <div class="mt-0.5">${formatSubCount(r20, r40, subColor)}</div>
                 </div>
-                <div class="bg-blue-50 p-2 rounded-xl border-b-4 border-b-blue-600 border border-slate-400 shadow-sm flex flex-col items-center">
+                <div class="bg-blue-50 p-2 rounded-xl border-b-8 border-b-blue-600 border border-slate-400 shadow-sm flex flex-col items-center">
                     <span class="text-[7px] font-bold text-blue-600 uppercase tracking-widest">Arrived</span>
                     <span class="text-lg font-bold text-blue-700">${totalArrived}</span>
                     <span class="text-[8px] font-bold text-slate-400 mt-1 uppercase">Units Received</span>
                 </div>
-                <div onclick="window.toggleInTransitFilter()" class="cursor-pointer bg-amber-50 p-2 rounded-xl border-b-4 border-b-amber-500 border border-slate-400 shadow-sm flex flex-col items-center transition-all hover:bg-amber-100 ${isInTransitFilterActive ? 'ring-4 ring-blue-500 ring-opacity-50 border-blue-500' : ''}">
+                <div onclick="window.toggleInTransitFilter()" class="cursor-pointer bg-amber-50 p-2 rounded-xl border-b-8 border-b-amber-500 border border-slate-400 shadow-sm flex flex-col items-center transition-all hover:bg-amber-100 ${isInTransitFilterActive ? 'ring-4 ring-blue-500 ring-opacity-50 border-blue-500' : ''}">
                     <span class="text-[7px] font-bold text-amber-600 uppercase tracking-widest">${isInTransitFilterActive ? 'Filtering Mundra...' : 'In Transit'}</span>
                     <span class="text-lg font-bold text-amber-700">${totalInTransit}</span>
                     <span class="text-[8px] font-bold text-slate-400 mt-1 uppercase">Click to Filter</span>
                 </div>
-                <div class="bg-rose-50 p-2 rounded-xl border-b-4 border-b-rose-500 border border-slate-400 shadow-sm flex flex-col items-center">
+                <div class="bg-rose-50 p-2 rounded-xl border-b-8 border-b-rose-500 border border-slate-400 shadow-sm flex flex-col items-center">
                     <span class="text-[7px] font-bold text-rose-600 uppercase tracking-widest">Pending</span>
                     <span class="text-lg font-bold text-rose-700">${p20 + p40}</span>
                     <div class="mt-0.5">${formatSubCount(p20, p40, subColor)}</div>
@@ -973,7 +973,7 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
                 
                 // Merged Vessel / Handover
                 const vesselDisplay = (!bl.isAnySmtp && bl.stats.railed === 0) 
-                    ? '<span class="text-rose-600 font-bold italic">NOT Handover</span>' 
+                    ? '<span class="text-rose-600 font-bold ">NOT Handover</span>' 
                     : `${bl.vessel} / ${bl.handoverDt}`;
                 
                 // BL with LINE in bracket
@@ -1071,7 +1071,7 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
                 let pHtml = '';
                 pendingGroups.forEach(bl => {
                     totalPendingUnits += bl.stats.pending;
-                    const statusLabel = bl.isAnySmtp ? `<span class="text-blue-600 uppercase font-bold text-[9px]">${bl.handoverDt}</span>` : '<span class="text-rose-600 uppercase font-bold text-[9px]">Pending Handover</span>';
+                    const statusLabel = bl.isAnySmtp ? `<span class="text-blue-600 uppercase font-bold text-[9px]">${bl.handoverDt}</span>` : '<span class="text-rose-600 uppercase font-bold text-[9px]">Pending</span>';
                     const bRem = bl.smtpBRemarks.join(' | ');
                     const isUrgent = /scan|scanning|damage/i.test(bRem);
                     pHtml += `<tr class="border-b border-slate-200 hover:bg-rose-50/30"><td class="px-3 py-1 font-bold text-slate-900 border-r border-slate-300">${bl.blNo} <span class="text-blue-500 text-[8px] uppercase font-bold">(${bl.stats.total} / ${bl.line})</span></td><td class="px-3 py-1 text-slate-600 font-bold border-r border-slate-300 text-[8px] uppercase ${isUrgent ? 'text-rose-700 font-bold' : ''}">${bRem || '-'}</td><td class="px-3 py-1 text-center font-bold text-rose-700 bg-rose-50/50 border-r border-slate-300">${bl.stats.pending}</td><td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${bl.vessel}</td><td class="px-3 py-1 text-center font-bold uppercase border-r border-slate-300">${statusLabel}</td><td class="px-3 py-1 text-slate-500 text-[9px] font-bold">${bl.pendingRemarks.join(' | ') || 'Awaiting dispatch'}</td></tr>`;
@@ -1461,7 +1461,7 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
             rakeSelect.innerHTML = '<option value="">Select Rake No</option>';
             [...uniqueRakes.keys()].sort().forEach(rake => {
                 const formattedDate = uniqueRakes.get(rake);
-                const displayText = `${rake}-${formattedDate}`;
+                const displayText = `${rake} Dated: ${formattedDate}`;
 
                 const option = document.createElement('option');
                 option.value = rake;
@@ -2015,168 +2015,120 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
         });
         
                 // === UPDATE SINGLE STACK SUMMARY (FIXED TIME PARSING - FULL DATE & TIME) ===
-        const websiteExcelInput = document.getElementById('websiteExcelInput');
-        if (websiteExcelInput) {
-            websiteExcelInput.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
+        // === UPDATE SINGLE STACK SUMMARY (AUTO V2 & Z2) ===
+const websiteExcelInput = document.getElementById('websiteExcelInput');
+if (websiteExcelInput) {
+    websiteExcelInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
 
-                const reader = new FileReader();
-                reader.onload = (evt) => {
-                    try {
-                        const bstr = evt.target.result;
-                        const wb = XLSX.read(bstr, { type: 'binary' });
-                        const ws = wb.Sheets[wb.SheetNames[0]];
-                        const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const bstr = evt.target.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
-                        if (jsonData.length < 11) {
-                            alert("Excel फ़ाइल में पर्याप्त rows नहीं हैं।");
-                            return;
-                        }
-
-                        // Rake No. from H7
-                        const rakeNo = ws['H7'] ? String(ws['H7'].v).trim().toUpperCase() : '';
-                        if (!rakeNo) {
-                            alert("Rake No. (H7) नहीं मिला।");
-                            return;
-                        }
-
-                        // Raw date from AH11 (row 11, column AH index 33)
-                        const rawExcelDate = jsonData[10][33];
-
-                        // Use our robust full format function
-                        const formattedDate = formatToDDMMYYYY_HHMM(rawExcelDate);
-
-                        if (!formattedDate || formattedDate.includes('NaN')) {
-                            // Fallback to manual if parsing fails
-                            pendingExcelData = { rakeNo, jsonData };
-                            pendingRakeNo = rakeNo;
-                            document.getElementById('manualDateModal').classList.remove('hidden');
-                            document.getElementById('manualRailDateInput').focus();
-                            document.getElementById('manualRailDateInput').placeholder = "dd-mm-yyyy hh:mm (e.g. 28-12-2025 03:05)";
-                            lucide.createIcons();
-                            return;
-                        }
-
-                        // Calculate ETA +4 days
-                        let etaStr = '';
-                        try {
-                            // Extract date part for ETA calculation
-                            const datePart = formattedDate.split(' ')[0];
-                            const [d, m, y] = datePart.split('-').map(Number);
-                            const railDate = new Date(y, m - 1, d);
-                            const etaDate = new Date(railDate);
-                            etaDate.setDate(etaDate.getDate() + 4);
-                            const ed = String(etaDate.getDate()).padStart(2, '0');
-                            const em = String(etaDate.getMonth() + 1).padStart(2, '0');
-                            const ey = etaDate.getFullYear();
-                            etaStr = ` ETA ${ed}-${em}-${ey} 00:00`;
-                        } catch (_) {}
-
-                        const remarkFinal = `RAILOUT FROM MUNDRA ON ${formattedDate}${etaStr}`;
-
-                        let updateCount = 0;
-                        // Process all containers from row 11 onwards (typical data start)
-                        for (let i = 10; i < jsonData.length; i++) {
-                            const row = jsonData[i];
-                            const contNo = String(row[2] || '').trim().toUpperCase(); // Column C
-                            if (!contNo) continue;
-
-                            const rowIndex = rawSheets.website.findIndex(w => 
-                                String(w[3] || '').trim().toUpperCase() === contNo
-                            );
-
-                            if (rowIndex !== -1) {
-                                rawSheets.website[rowIndex][4] = rakeNo;
-                                rawSheets.website[rowIndex][8] = formattedDate; // Full date & time
-                                rawSheets.website[rowIndex][9] = remarkFinal;
-                                updateCount++;
-                            }
-                        }
-
-                        window.viewSheetData('website');
-                        saveToCloud();
-                        processCloudData();
-
-                        const box = document.createElement('div');
-                        box.innerHTML = `
-                            <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
-                                ✓ सफल! ${updateCount} containers updated<br>
-                                Rake: ${rakeNo}<br>
-                                Date & Time: ${formattedDate}
-                            </div>`;
-                        document.body.appendChild(box);
-                        setTimeout(() => box.remove(), 6000);
-
-                    } catch (err) {
-                        console.error(err);
-                        alert("त्रुटि: " + err.message);
-                    }
-                };
-                reader.readAsBinaryString(file);
-                e.target.value = '';
-            });
-        }
-
-        // Manual date submit (already exists, but ensure it uses full year format)
-        document.getElementById('submitManualDateBtn').addEventListener('click', () => {
-            if (!pendingExcelData || !pendingRakeNo) return;
-
-            const dateVal = document.getElementById('manualRailDateInput').value.trim();
-            if (!dateVal) {
-                alert("Date & Time enter करें।");
-                return;
-            }
-
-            const formattedDate = dateVal; // already in dd-mm-yyyy hh:mm
-
-            // Calculate ETA
-            const parts = dateVal.split(' ');
-            const datePart = parts[0].split('-');
-            const d = parseInt(datePart[0]);
-            const m = parseInt(datePart[1]) - 1;
-            const y = parseInt(datePart[2]);
-            const etaDate = new Date(y, m, d);
-            etaDate.setDate(etaDate.getDate() + 4);
-            const ed = String(etaDate.getDate()).padStart(2, '0');
-            const em = String(etaDate.getMonth() + 1).padStart(2, '0');
-            const ey = etaDate.getFullYear();
-            const etaStr = ` ETA ${ed}-${em}-${ey} 00:00`;
-
-            const remarkFinal = `RAILOUT FROM MUNDRA ON ${formattedDate}${etaStr}`;
-            let updateCount = 0;
-
-            pendingExcelData.containers.forEach(contNo => {
-                const rowIndex = rawSheets.website.findIndex(row => 
-                    String(row[3] || '').trim().toUpperCase() === contNo
-                );
-                if (rowIndex !== -1) {
-                    rawSheets.website[rowIndex][4] = pendingRakeNo;
-                    rawSheets.website[rowIndex][8] = formattedDate;
-                    rawSheets.website[rowIndex][9] = remarkFinal;
-                    updateCount++;
+                if (jsonData.length < 11) {
+                    alert("Excel file rows are insufficient.");
+                    return;
                 }
-            });
 
-            document.getElementById('manualDateModal').classList.add('hidden');
-            window.viewSheetData('website');
-            saveToCloud();
-            processCloudData();
+                // Rake No. from H7
+                const rakeNo = ws['H7'] ? String(ws['H7'].v).trim().toUpperCase() : '';
+                if (!rakeNo) {
+                    alert("Rake No. (H7) nahi mila.");
+                    return;
+                }
 
-            const box = document.createElement('div');
-            box.innerHTML = `
-                <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
-                    ✓ सफल! ${updateCount} containers updated<br>
-                    Rake: ${pendingRakeNo}<br>
-                    Date: ${formattedDate}
-                </div>`;
-            document.body.appendChild(box);
-            setTimeout(() => box.remove(), 6000);
+                // --- AUTO DATE & TIME LOGIC (V2 & Z2) ---
+                const rawDateV2 = jsonData[1][21]; // Cell V2 (Index 21)
+                const rawTimeZ2 = jsonData[1][25]; // Cell Z2 (Index 25)
 
-            pendingExcelData = null;
-            pendingRakeNo = null;
-            document.getElementById('manualRailDateInput').value = '';
-        });
+                // 1. Date Parse
+                let dateStr = "";
+                if (typeof rawDateV2 === 'number') {
+                    const d = new Date(Math.round((rawDateV2 - 25569) * 86400 * 1000));
+                    dateStr = `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+                } else if (rawDateV2) {
+                    // Reuse your hoisted helper if available, or manual logic
+                    dateStr = formatToDDMMYYYY(rawDateV2); 
+                } else {
+                    dateStr = formatToDDMMYYYY(new Date()); // Fallback Today
+                }
+
+                // 2. Time Parse
+                let timeStr = "00:00";
+                if (typeof rawTimeZ2 === 'number') {
+                    const totalSeconds = Math.round(rawTimeZ2 * 86400);
+                    const h = Math.floor(totalSeconds / 3600);
+                    const m = Math.floor((totalSeconds % 3600) / 60);
+                    timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                } else if (rawTimeZ2) {
+                    timeStr = String(rawTimeZ2).trim();
+                }
+
+                const formattedDate = `${dateStr} ${timeStr}`;
+
+                // --- ETA CALCULATION ---
+                let etaStr = '';
+                try {
+                    const [d, m, y] = dateStr.split('-').map(Number);
+                    const railDate = new Date(y, m - 1, d);
+                    const etaDate = new Date(railDate);
+                    etaDate.setDate(etaDate.getDate() + 4);
+                    const ed = String(etaDate.getDate()).padStart(2, '0');
+                    const em = String(etaDate.getMonth() + 1).padStart(2, '0');
+                    const ey = etaDate.getFullYear();
+                    etaStr = ` ETA ${ed}-${em}-${ey} 00:00`;
+                } catch (_) {}
+
+                const remarkFinal = `RAILOUT FROM MUNDRA ON ${formattedDate}${etaStr}`;
+
+                let updateCount = 0;
+                // Process containers starting from row 11 (Index 10)
+                for (let i = 10; i < jsonData.length; i++) {
+                    const row = jsonData[i];
+                    const contNo = String(row[2] || '').trim().toUpperCase(); // Col C
+                    if (!contNo) continue;
+
+                    const rowIndex = rawSheets.website.findIndex(w => 
+                        String(w[3] || '').trim().toUpperCase() === contNo
+                    );
+
+                    if (rowIndex !== -1) {
+                        rawSheets.website[rowIndex][4] = rakeNo;
+                        rawSheets.website[rowIndex][8] = formattedDate;
+                        rawSheets.website[rowIndex][9] = remarkFinal;
+                        updateCount++;
+                    }
+                }
+
+                window.viewSheetData('website');
+                saveToCloud();
+                processCloudData();
+
+                const box = document.createElement('div');
+                box.innerHTML = `
+                    <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+                        ✓ Auto Update Successful!<br>
+                        Rake: ${rakeNo}<br>
+                        Date: ${formattedDate}<br>
+                        Updated: ${updateCount} Conts
+                    </div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 6000);
+
+            } catch (err) {
+                console.error(err);
+                alert("Error: " + err.message);
+            }
+        };
+        reader.readAsBinaryString(file);
+        e.target.value = '';
+    });
+}
 
         // Cancel button
         document.getElementById('cancelManualDateBtn').addEventListener('click', () => {
