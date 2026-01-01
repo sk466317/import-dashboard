@@ -372,7 +372,6 @@ table {
                                 </button>
                             </div>
                         </div>
-
                 <div class="flex items-center gap-2 pl-1">
 <label class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
     <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
@@ -392,16 +391,24 @@ table {
     <button id="downloadWebsiteCsvBtn" class="bg-slate-700 hover:bg-slate-800 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] transition-all flex items-center gap-2 uppercase shadow-sm">
         <i data-lucide="download-cloud" class="w-3.5 h-3.5"></i>
         Export CSV
-    </button>
-
-    
+    </button>    
 <button id="saveLocalChangesBtn" class="bg-blue-800 hover:bg-blue-900 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase shadow-md transition-all">
         Save Changes
     </button>
-    <button onclick="window.hideModal()" class="bg-red-800 hover:bg-slate-300 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all shadow-sm">
-        Close
+    
+<button id="deleteHtplUid103Btn" class="bg-rose-700 hover:bg-rose-800 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-sm">
+    <i data-lucide="alert-octagon" class="w-3.5 h-3.5"></i>
+    Delete HTPL Website Data
+</button>
+<button id="uploadCsvToHtplBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-sm">
+    <i data-lucide="upload-cloud" class="w-3.5 h-3.5"></i>
+    Upload CSV to HTPL Server
+</button>
+<button onclick="window.hideModal()" class="bg-red-800 hover:bg-slate-300 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all shadow-sm">
+        Close This Tab
     </button>
 </div>
+
                     </div>
                 </div>
             </div>
@@ -679,11 +686,10 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
     const searchVal = e.target.value.trim().toUpperCase();
     const displayBox = document.getElementById('consigneeDisplay');
     const valueEl = document.getElementById('consigneeValue');
-
     if (searchVal.length > 3 && rawSheets.smtp.length > 1) {
+
         // SMTP: Cell 10 (Index 9) = BL No, Cell 25 (Index 24) = Consignee
-        const match = rawSheets.smtp.find(row => String(row[9] || '').toUpperCase().includes(searchVal));
-        
+        const match = rawSheets.smtp.find(row => String(row[9] || '').toUpperCase().includes(searchVal));        
         if (match && match[24]) {
             const consigneeName = String(match[24]).trim();
             valueEl.innerText = consigneeName;
@@ -712,6 +718,110 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
     } else {
         displayBox.classList.add('hidden');
     }
+});
+
+// Button to delete external HTPL data with fixed UID=103 after confirmation
+document.getElementById('deleteHtplUid103Btn').addEventListener('click', () => {
+    const confirmed = confirm("Do you want to Delete HTPL website data?\n\n Yes or No).");
+
+    if (!confirmed) {
+        // User selected No/Cancel
+        const box = document.createElement('div');
+        box.innerHTML = `
+            <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-slate-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+                Action Cancelled. No request sent.
+            </div>`;
+        document.body.appendChild(box);
+        setTimeout(() => box.remove(), 4000);
+        return;
+    }
+
+    // User confirmed Yes
+    const formData = new FormData();
+    formData.append('UID', '103');
+    formData.append('delete', 'Delete'); // Matches original form submit
+
+    fetch('https://www.hindterminals.com/Container%20Tracking%20System/Import/Delete%20Function/delete.php', {
+        method: 'POST',
+        body: formData,
+        mode: 'no-cors' // Handles cross-origin restrictions
+    })
+    .then(() => {
+        const box = document.createElement('div');
+        box.innerHTML = `
+            <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-amber-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+                ⚠️ Deleted All Website Data!<br>
+                You Can Also Verify on HTPL site.
+            </div>`;
+        document.body.appendChild(box);
+        setTimeout(() => box.remove(), 8000);
+    })
+    .catch(error => {
+        console.error('Request error:', error);
+        alert("Error sending request. Check network/console (possible server or CORS issue).");
+    });
+});
+// Hidden file input for CSV selection
+const csvUploadInput = document.createElement('input');
+csvUploadInput.type = 'file';
+csvUploadInput.accept = '.csv';
+csvUploadInput.style.display = 'none';
+document.body.appendChild(csvUploadInput);
+
+// Button to upload exported CSV to external HTPL server
+document.getElementById('uploadCsvToHtplBtn').addEventListener('click', () => {
+    csvUploadInput.value = '';
+    csvUploadInput.click();
+});
+
+csvUploadInput.addEventListener('change', () => {
+    const file = csvUploadInput.files[0];
+    if (!file) {
+        return;
+    }
+
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+        alert("Please select a valid CSV file.");
+        return;
+    }
+
+    const confirmed = confirm("Do you want to Upload the selected CSV to HTPL server?\n\nFile: " + file.name + "\n\nThanks).");
+
+    if (!confirmed) {
+        const box = document.createElement('div');
+        box.innerHTML = `
+            <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-slate-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+                Upload Cancelled.
+            </div>`;
+        document.body.appendChild(box);
+        setTimeout(() => box.remove(), 4000);
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('submit', 'Import'); // Matches the submit button name/value
+
+    fetch('https://www.hindterminals.com/Container%20Tracking%20System/Import/Upload/index-2.php', {
+        method: 'POST',
+        body: formData,
+        mode: 'no-cors' // Handles cross-origin restrictions
+    })
+    .then(() => {
+        const box = document.createElement('div');
+        box.innerHTML = `
+            <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+                ✓ Upload Request Sent!<br>
+                File "${file.name}" submitted to HTPL server.<br>
+                Verify directly on the site if needed (response not readable due to server restrictions).
+            </div>`;
+        document.body.appendChild(box);
+        setTimeout(() => box.remove(), 8000);
+    })
+    .catch(error => {
+        console.error('Upload error:', error);
+        alert("Error sending upload request. Check network/console (possible server or CORS issue).");
+    });
 });
         // ==========================================
         // Firebase Configuration (Consolidated)
