@@ -2532,62 +2532,88 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
     }
 });
         document.getElementById('downloadWebsiteCsvBtn').addEventListener('click', () => {
-            const data = rawSheets.website;
-            if (!data || data.length === 0) {
-                alert("No website data available to export!");
-                return;
+    const data = rawSheets.website;
+    if (!data || data.length <= 1) {
+        alert("No website data available to export!");
+        return;
+    }
+
+    // Header row
+    const header = data[0].slice(); // Clone header
+    const srNoIndex = 1;   // SR_NO column
+    const billNoIndex = 2; // BILL_NO column
+
+    // Data rows (exclude header)
+    let rows = data.slice(1).map(row => row.slice()); // Deep clone
+
+    // Sort rows by BILL_NO (ascending, treating as string)
+    rows.sort((a, b) => {
+        const billA = String(a[billNoIndex] || '').trim();
+        const billB = String(b[billNoIndex] || '').trim();
+        return billA.localeCompare(billB);
+    });
+
+    // Assign sequential SR_NO per BILL_NO group
+    let currentBillNo = null;
+    let counter = 1;
+    rows.forEach(row => {
+        const billNo = String(row[billNoIndex] || '').trim();
+        if (billNo !== currentBillNo) {
+            currentBillNo = billNo;
+            counter = 1;
+        }
+        row[srNoIndex] = counter;
+        counter++;
+    });
+
+    // Reassemble full data: header + sorted & renumbered rows
+    const processedData = [header, ...rows];
+
+    // Safe date formatting for RAILING_DATE (Index 8)
+    const safeFormatDate = (val) => {
+        if (!val) return "";
+        const formatted = formatToDDMMYYYY_HHMM(val);
+        if (formatted && !formatted.includes('NaN') && formatted.includes('-') && formatted.includes(' ')) {
+            const parts = formatted.split(' ');
+            const datePart = parts[0].split('-');
+            if (datePart.length === 3) {
+                const yy = datePart[2].slice(-2);
+                return `${datePart[0]}-${datePart[1]}-${yy} ${parts[1]}`;
             }
+        }
+        return String(val);
+    };
 
-            // Safe formatting function for CSV (handles invalid dates)
-            const safeFormatDate = (val) => {
-                if (!val) return "";
-                const formatted = formatToDDMMYYYY_HHMM(val);
-                if (formatted && !formatted.includes('NaN') && formatted.includes('-') && formatted.includes(' ')) {
-                    // Convert full format to dd-mm-yy hh:mm
-                    const parts = formatted.split(' ');
-                    const datePart = parts[0].split('-');
-                    if (datePart.length === 3) {
-                        const yy = datePart[2].slice(-2); // Last 2 digits of year
-                        return `${datePart[0]}-${datePart[1]}-${yy} ${parts[1]}`;
-                    }
-                }
-                return String(val); // Fallback to original if invalid
-            };
+    const csvContent = processedData.map((row, rowIndex) => {
+        return row.map((cell, colIndex) => {
+            let val = cell === null || cell === undefined ? "" : String(cell);
+            if (colIndex === 8 && rowIndex > 0 && val !== "") { // RAILING_DATE
+                val = safeFormatDate(val);
+            }
+            if (val.includes(",")) val = `"${val}"`;
+            return val;
+        }).join(",");
+    }).join("\n");
 
-            const csvContent = data.map((row, rowIndex) => {
-                return row.map((cell, colIndex) => {
-                    let val = cell === null || cell === undefined ? "" : String(cell);
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `IMPORT_Data_${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 
-                    // Only format RAILING_DATE column (Index 8)
-                    if (colIndex === 8 && rowIndex > 0 && val !== "") {
-                        val = safeFormatDate(val);
-                    }
-
-                    // Quote if contains comma
-                    if (val.includes(",")) val = `"${val}"`;
-                    return val;
-                }).join(",");
-            }).join("\n");
-
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            const url = URL.createObjectURL(blob);
-            link.setAttribute("href", url);
-            link.setAttribute("download", `IMPORT_Data_${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}.csv`);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-
-            // Success notification
-            const box = document.createElement('div');
-            box.innerHTML = `
-                <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
-                    ✓ CSV Export सफल! ${data.length - 1} rows downloaded
-                </div>`;
-            document.body.appendChild(box);
-            setTimeout(() => box.remove(), 4000);
-        });
+    // Success notification
+    const box = document.createElement('div');
+    box.innerHTML = `
+        <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+            ✓ CSV Export Successful! Rows sorted by BILL_NO & SR_NO reset per group (${data.length - 1} rows)
+        </div>`;
+    document.body.appendChild(box);
+    setTimeout(() => box.remove(), 4000);
+});
 
 // --- FINAL STYLED XLSX EXPORT (BLUE HEADERS & BORDERS) ---
                 document.getElementById('downloadBtn').addEventListener('click', async () => {
