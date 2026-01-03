@@ -900,22 +900,30 @@ csvUploadInput.addEventListener('change', () => {
                 const tz_offset = new Date().getTimezoneOffset() * 60 * 1000;
                 date = new Date(utc_value + tz_offset);
             } else {
-                // String parsing
-                date = new Date(val);
-                if (isNaN(date.getTime())) {
-                    const parts = String(val).split(/[-\/ :]/);
+                // String parsing - STRICT DD-MM-YYYY FIX
+                const valStr = String(val).trim();
+                
+                // Agar date mein '-' hai to hum khud split karenge taaki browser confuse na ho
+                if (valStr.includes('-') || valStr.includes('/')) {
+                    const parts = valStr.split(/[-\/ :]/);
                     if (parts.length >= 3) {
                         let day = parseInt(parts[0], 10);
-                        let month = parseInt(parts[1], 10) - 1;
+                        let month = parseInt(parts[1], 10) - 1; // Months are 0-indexed
                         let year = parseInt(parts[2], 10);
                         if (year < 100) year += 2000;
+                        
                         let hh = parts.length > 3 ? parseInt(parts[3], 10) : 0;
                         let mm = parts.length > 4 ? parseInt(parts[4], 10) : 0;
+                        
                         date = new Date(year, month, day, hh, mm);
+                    } else {
+                         date = new Date(val); // Fallback
                     }
+                } else {
+                    // Agar koi aur format hai
+                    date = new Date(val);
                 }
             }
-
             if (isNaN(date.getTime())) return String(val);
 
             const day = String(date.getDate()).padStart(2, '0');
@@ -3390,3 +3398,4 @@ initAuth();
 </div>
 </body>
 </html>
+
