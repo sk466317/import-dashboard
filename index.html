@@ -997,42 +997,59 @@ document.getElementById('openFoisWithFnrBtn').addEventListener('click', () => {
             applyFilters(); // Re-renders all tables using existing filter chain
         };
         function formatToDDMMYYYY(val) {
-            if (!val) return '';
-            let date;
-            const numVal = parseFloat(val);
+    if (!val) return '';
 
-            if (!isNaN(numVal) && isFinite(numVal) && numVal > 40000) {
-                const utc_days = numVal - 25569;
-                const utc_value = utc_days * 86400 * 1000;
-                const tz_offset = new Date().getTimezoneOffset() * 60 * 1000;
-                date = new Date(utc_value + tz_offset);
-            } else if (typeof val === 'number') {
-                const utc_days = val - 25569;
-                const utc_value = utc_days * 86400 * 1000;
-                const tz_offset = new Date().getTimezoneOffset() * 60 * 1000;
-                date = new Date(utc_value + tz_offset);
-            } else {
-                date = new Date(val);
-                if (isNaN(date.getTime())) {
-                    const parts = String(val).split(/[-\/ :]/);
-                    if (parts.length >= 3) {
-                        let day = parseInt(parts[0], 10);
-                        let month = parseInt(parts[1], 10) - 1;
-                        let year = parseInt(parts[2], 10);
-                        if (year < 100) year += 2000;
-                        date = new Date(year, month, day);
-                    }
+    let date;
+    const numVal = parseFloat(val);
+
+    // Handle Excel serial date (common for proper dates in Excel)
+    if (!isNaN(numVal) && isFinite(numVal) && numVal > 40000) {
+        const utc_days = numVal - 25569;
+        const utc_value = utc_days * 86400 * 1000;
+        const tz_offset = new Date().getTimezoneOffset() * 60 * 1000;
+        date = new Date(utc_value + tz_offset);
+    } else {
+        // String date parsing: Prioritize dd.mm.yyyy (SMTP format), then other common formats
+        const valStr = String(val).trim();
+        const formatsToTry = [
+            '%d.%m.%Y',  // Primary: dd.mm.yyyy (e.g., 06.01.2026)
+            '%d/%m/%Y',  // dd/mm/yyyy
+            '%d-%m-%Y',  // dd-mm-yyyy
+            '%m.%d.%Y',  // Fallback: mm.dd.yyyy (avoid misparse)
+            '%m/%d/%Y'   // mm/dd/yyyy
+        ];
+
+        for (const fmt of formatsToTry) {
+            const parts = valStr.split(/[-.\/]/);
+            if (parts.length === 3) {
+                let d, m, y;
+                if (fmt === '%d.%m.%Y' || fmt === '%d/%m/%Y' || fmt === '%d-%m-%Y') {
+                    d = parseInt(parts[0], 10);
+                    m = parseInt(parts[1], 10) - 1;
+                    y = parseInt(parts[2], 10);
+                } else {
+                    m = parseInt(parts[0], 10) - 1;
+                    d = parseInt(parts[1], 10);
+                    y = parseInt(parts[2], 10);
+                }
+                if (y < 100) y += 2000;
+                date = new Date(y, m, d);
+                if (!isNaN(date.getTime())) {
+                    break;  // Successful parse
                 }
             }
-
-            if (isNaN(date.getTime())) return String(val);
-
-            const day = String(date.getDate()).padStart(2, '0');
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const year = date.getFullYear();
-
-            return `${day}-${month}-${year}`;
         }
+    }
+
+    if (date && !isNaN(date.getTime())) {
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${day}-${month}-${year}`;
+    }
+
+    return String(val);  // Fallback to original if unparseable
+}
         // ------------------------------------------
         // 2. RENDERING LOGIC
         // ------------------------------------------
