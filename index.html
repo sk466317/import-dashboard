@@ -351,7 +351,16 @@ table {
                             <select id="rakeSelect" class="bg-slate-50 border border-slate-300 text-[10px] font-bold rounded-lg px-2 py-1.5 outline-none w-60">
                                 <option value="">Select Rake No</option>
                             </select>
-                                
+<div class="flex items-center gap-2 pl-1 border-t border-slate-300 pt-3 mt-3">
+    <button id="openFoisWithFnrBtn" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-sm">
+        <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+        FNR Track
+    </button>
+    <button id="linkFnrBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-sm">
+        <i data-lucide="link" class="w-3.5 h-3.5"></i>
+        Link FNR to This Rake
+    </button>
+</div>                                
                             <!-- Arrival Date Box -->
                             <div class="flex items-center gap-1.5">
                                 <input type="text" id="arrivedDateInput" placeholder="Arrival Date (dd-mm-yyyy hh:mm)" class="bg-blue-50 border border-blue-200 text-[10px] font-bold rounded-lg px-2 py-1.5 w-44 outline-none focus:ring-1 focus:ring-blue-500">
@@ -373,7 +382,7 @@ table {
                             </div>
                         </div>
                 <div class="flex items-center gap-2 pl-1">
-<label class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
+<label class="bg-yellow-600 hover:bg-yellow-800 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
     <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
     UPDATE DOUBLE STACK SUMMARY
     <input type="file" id="doubleStackExcelInput" class="hidden" accept=".xlsx, .xls">
@@ -877,6 +886,41 @@ csvUploadInput.addEventListener('change', () => {
         let isInTransitFilterActive = false; // New global filter state
 
         lucide.createIcons();
+	// Open FOIS Button: Uses FNR from selected rake (parsed from its formatted name)
+// Open FOIS Button
+document.getElementById('openFoisWithFnrBtn').addEventListener('click', () => {
+    const selectedFormattedRake = rakeSelect.value.trim();
+    if (!selectedFormattedRake) {
+        alert("Please select a Rake No first.");
+        return;
+    }
+
+    let fnr = extractFnrFromRake(selectedFormattedRake);
+
+    if (!fnr) {
+        if (confirm("No FNR linked to this Rake yet. Link one now?")) {
+            document.getElementById('linkFnrBtn').click();
+            return;
+        } else {
+            const manualFnr = prompt("Enter the 11-digit FNR manually:");
+            if (!manualFnr || manualFnr.length !== 11 || isNaN(manualFnr)) {
+                alert("Valid 11-digit FNR is required.");
+                return;
+            }
+            fnr = manualFnr;
+        }
+    }
+
+    const directUrl = `https://www.fois.indianrail.gov.in/RailSAHAY/pages/FNREnquiryOT.jsp?txtFnrNumb=${fnr}`;
+    window.open(directUrl, '_blank');
+
+    const box = document.createElement('div');
+    box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">
+        FOIS opened with FNR ${fnr}!
+    </div>`;
+    document.body.appendChild(box);
+    setTimeout(() => box.remove(), 4000);
+});
 
         // ------------------------------------------
         // 1. DATE & HOISTED FUNCTIONS
@@ -924,6 +968,7 @@ csvUploadInput.addEventListener('change', () => {
                     date = new Date(val);
                 }
             }
+
             if (isNaN(date.getTime())) return String(val);
 
             const day = String(date.getDate()).padStart(2, '0');
@@ -1558,36 +1603,35 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
         // 4. WEBSITE RAKE & ARRIVAL LOGIC
         // ------------------------------------------
                 function populateRakeList() {
-            if (!rawSheets.website || rawSheets.website.length <= 1) return;
+    if (!rawSheets.website || rawSheets.website.length <= 1) return;
 
-            const uniqueRakes = new Map(); // rakeNo → railDate (latest if multiple)
+    const uniqueRakes = new Map();
 
-            rawSheets.website.slice(1).forEach(row => {
-                const rake = String(row[4] || '').trim();
-                const railDateRaw = row[8];
-                const remark = String(row[9] || '').toUpperCase();
+    rawSheets.website.slice(1).forEach(row => {
+        const formattedRake = String(row[4] || '').trim();
+        const railDateRaw = row[8];
+        const remark = String(row[9] || '').toUpperCase();
 
-                if (rake && rake !== "-" && remark.includes("RAILOUT FROM")) {
-                    const formattedDate = formatToDDMMYYYY_HHMM(railDateRaw);
-                    // Same rake के multiple entries में latest date रखें (optional, but safe)
-                    if (!uniqueRakes.has(rake) || formattedDate > uniqueRakes.get(rake)) {
-                        uniqueRakes.set(rake, formattedDate);
-                    }
-                }
-            });
-
-            rakeSelect.innerHTML = '<option value="">Select Rake No</option>';
-            [...uniqueRakes.keys()].sort().forEach(rake => {
-                const formattedDate = uniqueRakes.get(rake);
-                const displayText = `${rake} Dated: ${formattedDate}`;
-
-                const option = document.createElement('option');
-                option.value = rake;
-                option.textContent = displayText;
-                option.dataset.raildate = formattedDate; // raw full date for display box
-                rakeSelect.appendChild(option);
-            });
+        if (formattedRake && formattedRake !== "-" && remark.includes("RAILOUT FROM")) {
+            const formattedDate = formatToDDMMYYYY_HHMM(railDateRaw);
+            if (!uniqueRakes.has(formattedRake) || formattedDate > uniqueRakes.get(formattedRake)) {
+                uniqueRakes.set(formattedRake, formattedDate);
+            }
         }
+    });
+
+    rakeSelect.innerHTML = '<option value="">Select Rake No</option>';
+    [...uniqueRakes.keys()].sort().forEach(formattedRake => {
+        const formattedDate = uniqueRakes.get(formattedRake);
+        const displayText = `${formattedRake} Dated: ${formattedDate}`;
+
+        const option = document.createElement('option');
+        option.value = formattedRake;
+        option.textContent = displayText;
+        option.dataset.raildate = formattedDate;
+        rakeSelect.appendChild(option);
+    });
+}
                 rakeSelect.addEventListener('change', () => {
             const selected = rakeSelect.selectedOptions[0];
             const rakeVal = rakeSelect.value;
@@ -1633,74 +1677,207 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
             let updateCount = 0;
             rawSheets.website.slice(1).forEach((row) => {
                 const currentRemark = String(row[9] || '').toUpperCase();
+                // Ensure we match Rake and ensure it was previously Railed Out
                 if (String(row[4]).trim() === rake && currentRemark.includes("RAILOUT FROM")) {
-                    row[9] = `TRAIN ARRIVED ON ${arrivedDate},`;
+                    // Append Arrival info or replace remark
+                    row[9] = `TRAIN ARRIVED ON ${arrivedDate} & UNLOADING DONE ${arrivedDate}`;
                     updateCount++;
                 }
             });
 
             if (updateCount > 0) {
-                const box = document.createElement('div');
-                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Success! ${updateCount} containers updated for Rake ${rake}.</div>`;
-                document.body.appendChild(box);
-                setTimeout(() => box.remove(), 3000);
-                saveToCloud();
-                processCloudData();
                 window.viewSheetData('website');
-                populateRakeList();
-                arrivedDateInput.value = '';
-            } else {
-                const box = document.createElement('div');
-                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">No matching containers found.</div>`;
-                document.body.appendChild(box);
-                setTimeout(() => box.remove(), 3000);
-            }
-        });
-
-        updateCustomRemarksBtn.addEventListener('click', () => {
-            const rake = rakeSelect.value;
-            const newRemark = customRemarksInput.value.trim();
-            if (!rake) { 
-                const box = document.createElement('div');
-                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Please select a Rake No first.</div>`;
-                document.body.appendChild(box);
-                setTimeout(() => box.remove(), 3000);
-                return; 
-            }
-            if (!newRemark) { 
-                const box = document.createElement('div');
-                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Please enter new Remarks.</div>`;
-                document.body.appendChild(box);
-                setTimeout(() => box.remove(), 3000);
-                return; 
-            }
-
-            let updateCount = 0;
-            rawSheets.website.slice(1).forEach((row) => {
-                const currentRemark = String(row[9] || '').toUpperCase();
-                // Logic: Only update if RAKE_NO matches AND remark contains "RAILOUT FROM"
-                if (String(row[4]).trim() === rake && currentRemark.includes("RAILOUT FROM")) {
-                    row[9] = newRemark;
-                    updateCount++;
-                }
-            });
-
-            if (updateCount > 0) {
-                const box = document.createElement('div');
-                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-amber-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">Remarks updated for ${updateCount} containers in Rake ${rake}.</div>`;
-                document.body.appendChild(box);
-                setTimeout(() => box.remove(), 3000);
                 saveToCloud();
                 processCloudData();
-                window.viewSheetData('website'); 
-            } else {
-                const box = document.createElement('div');
-                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">No matching 'RAILOUT' containers found for this rake.</div>`;
-                document.body.appendChild(box);
-                setTimeout(() => box.remove(), 3000);
-            }
-        });
 
+                const box = document.createElement('div');
+                box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">
+                    Arrived Status Updated for ${updateCount} Containers!
+                </div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 4000);
+            } else {
+                alert("No containers with 'RAILOUT FROM' status found for this Rake.");
+            }
+        }); // <--- THIS WAS MISSING
+// Helper: Extract FNR from formatted RAKE_NO string, e.g., "TWHT06(26010324165)" → "26010324165"
+const extractFnrFromRake = (rakeString) => {
+    if (!rakeString) return null;
+    const match = rakeString.match(/\(([\d]{11})\)/);
+    return match ? match[1] : null;
+};
+
+// Helper: Format RAKE_NO with FNR
+const formatRakeWithFnr = (baseRake, fnr) => {
+    if (!baseRake || !fnr) return baseRake || '';
+    return `${baseRake.trim()}(${fnr})`;
+};
+
+// Link FNR Button (STRICT FIX: No Arrived Trains, Exact Date Only)
+document.getElementById('linkFnrBtn').addEventListener('click', () => {
+    // 1. Dropdown se value aur DATASET se Date nikalo
+    const selectedOption = rakeSelect.selectedOptions[0];
+    const selectedFormattedRake = rakeSelect.value.trim();
+
+    if (!selectedFormattedRake || !selectedOption) {
+        alert("Please select a Rake No first.");
+        return;
+    }
+
+    // Dropdown se Selected Date (Jo user dekh raha hai)
+    const selectedRailDate = selectedOption.dataset.raildate;
+
+    if (!selectedRailDate) {
+        alert("Selected Rake has no valid date found.");
+        return;
+    }
+
+    const currentFnr = extractFnrFromRake(selectedFormattedRake);
+    const defaultFnr = currentFnr || '';
+
+    const fnr = prompt(`Enter/Update FNR for:\nTrain: ${selectedFormattedRake}\nDate: ${selectedRailDate}`, defaultFnr);
+
+    if (!fnr || fnr.length !== 11 || isNaN(fnr)) {
+        alert("Valid 11-digit FNR is required.");
+        return;
+    }
+
+    const baseRake = selectedFormattedRake.replace(/\([\d]{11}\)$/, '').trim();
+    const newFormattedRake = formatRakeWithFnr(baseRake, fnr);
+
+    let updateCount = 0;
+
+    // 2. STRICT LOOP
+    rawSheets.website.slice(1).forEach(row => {
+        // A. Rake Name Check (FNR hata ke)
+        const rowRakeFull = String(row[4] || '').trim();
+        const rowBaseRake = rowRakeFull.replace(/\([\d]{11}\)$/, '').trim();
+        
+        // B. Date Match (Same Format conversion as dropdown)
+        const rowRawDate = row[8];
+        const rowFormattedDate = formatToDDMMYYYY_HHMM(rowRawDate);
+        
+        // C. Remarks Check
+        const rowRemark = String(row[9] || '').toUpperCase();
+
+        // --- CONDITIONS ---
+        const isRakeMatch = (rowBaseRake === baseRake);
+        const isDateMatch = (rowFormattedDate === selectedRailDate);
+        const hasRailoutText = rowRemark.includes("RAILOUT FROM");
+        // CRITICAL FIX: Agar "ARRIVED" word hai to bilkul update mat karo
+        const isNotArrived = !rowRemark.includes("ARRIVED"); 
+
+        if (isRakeMatch && isDateMatch && hasRailoutText && isNotArrived) {
+            row[4] = newFormattedRake;
+            updateCount++;
+        }
+    });
+
+    if (updateCount > 0) {
+        populateRakeList();
+        
+        // Selection Refresh
+        const newSelectVal = [...rakeSelect.options].find(opt =>
+            opt.dataset.raildate === selectedRailDate && opt.value.includes(newFormattedRake)
+        );
+        if(newSelectVal) rakeSelect.value = newSelectVal.value;
+
+        // Save
+        saveToCloud();
+        processCloudData();
+
+        const box = document.createElement('div');
+        box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">
+            ✓ SAFE UPDATE SUCCESSFUL!<br>
+            Updated: ${updateCount} containers<br>
+            (Ignored Arrived & Old Dates)
+        </div>`;
+        document.body.appendChild(box);
+        setTimeout(() => box.remove(), 5000);
+    } else {
+        alert(`No Matching Active Containers Found!\n\nReason could be:\n1. Containers are already 'ARRIVED'\n2. Date mismatch (${selectedRailDate})\n3. Remark doesn't say 'RAILOUT FROM'`);
+    }
+
+    lucide.createIcons();
+});
+
+// --- UPDATE REMARKS BUTTON LOGIC (With RAILOUT FROM Check) ---
+document.getElementById('updateCustomRemarksBtn').addEventListener('click', () => {
+    // 1. Dropdown se Rake aur Date lo
+    const selectedOption = rakeSelect.selectedOptions[0];
+    const selectedFormattedRake = rakeSelect.value.trim();
+    const newRemark = customRemarksInput.value.trim();
+
+    if (!selectedFormattedRake || !selectedOption) {
+        alert("Please select a Rake No first.");
+        return;
+    }
+
+    const selectedRailDate = selectedOption.dataset.raildate;
+    if (!selectedRailDate) {
+        alert("Selected Rake has no valid date.");
+        return;
+    }
+
+    if (!newRemark) {
+        alert("Remark field cannot be empty.");
+        return;
+    }
+
+    // Confirmation
+    if(!confirm(`Are you sure you want to update remarks for:\nTrain: ${selectedFormattedRake}\nDate: ${selectedRailDate}\n\nNew Remark: "${newRemark}"`)) {
+        return;
+    }
+
+    // FNR handle karne ke liye Base Rake Name nikalo
+    const baseRake = selectedFormattedRake.replace(/\([\d]{11}\)$/, '').trim();
+    
+    let updateCount = 0;
+
+    // 2. Loop and Update
+    rawSheets.website.slice(1).forEach(row => {
+        const rowRakeFull = String(row[4] || '').trim();
+        const rowBaseRake = rowRakeFull.replace(/\([\d]{11}\)$/, '').trim();
+        
+        // Date Formatting Ensure karo (Matching ke liye)
+        const rowRawDate = row[8];
+        const rowFormattedDate = formatToDDMMYYYY_HHMM(rowRawDate);
+        
+        // Current Remark nikalo check karne ke liye
+        const currentRemark = String(row[9] || '').toUpperCase();
+
+        // STRICT CHECK: 
+        // 1. Rake Name Match
+        // 2. Date Match
+        // 3. Remark me "RAILOUT FROM" hona zaroori hai
+        if (rowBaseRake === baseRake && 
+            rowFormattedDate === selectedRailDate && 
+            currentRemark.includes("RAILOUT FROM")) {
+            
+            row[9] = newRemark; // Naya remark set karo
+            updateCount++;
+        }
+    });
+
+    // 3. Save & Notify
+    if (updateCount > 0) {
+        saveToCloud();
+        processCloudData(); // UI Refresh
+
+        const box = document.createElement('div');
+        box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-amber-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">
+            ✓ Remarks Updated Successfully!<br>
+            Count: ${updateCount} containers<br>
+            (Only 'RAILOUT FROM' entries updated)
+        </div>`;
+        document.body.appendChild(box);
+        setTimeout(() => box.remove(), 4000);
+        
+        customRemarksInput.blur();
+    } else {
+        alert("No matching containers found!\nCheck if:\n1. Train & Date match\n2. Existing remarks contain 'RAILOUT FROM'");
+    }
+});
         // ------------------------------------------
         // 5. UPDATE MODAL VIEW LOGIC & DELETE ROW
         // ------------------------------------------
@@ -2660,6 +2837,7 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
     const header = data[0].slice(); // Clone header
     const srNoIndex = 1;   // SR_NO column
     const billNoIndex = 2; // BILL_NO column
+    const rakeNoIndex = 4; // RAKE_NO column (Index check karein)
 
     // Data rows (exclude header)
     let rows = data.slice(1).map(row => row.slice()); // Deep clone
@@ -2687,7 +2865,7 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
     // Reassemble full data: header + sorted & renumbered rows
     const processedData = [header, ...rows];
 
-    // Safe date formatting for RAILING_DATE (Index 8)
+    // Safe date formatting helper
     const safeFormatDate = (val) => {
         if (!val) return "";
         const formatted = formatToDDMMYYYY_HHMM(val);
@@ -2705,9 +2883,20 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
     const csvContent = processedData.map((row, rowIndex) => {
         return row.map((cell, colIndex) => {
             let val = cell === null || cell === undefined ? "" : String(cell);
-            if (colIndex === 8 && rowIndex > 0 && val !== "") { // RAILING_DATE
+            
+            // --- NEW: CLEAN RAKE NO (Remove FNR) ---
+            // Sirf Data rows ke liye (Header ke liye nahi) aur Index 4 (Rake No) par
+            if (colIndex === rakeNoIndex && rowIndex > 0) {
+                // Bracket se pehle ka hissa le lo (e.g. "TWHT-06(123)" -> "TWHT-06")
+                val = val.split('(')[0].trim();
+            }
+
+            // RAILING_DATE Formatting (Index 8)
+            if (colIndex === 8 && rowIndex > 0 && val !== "") { 
                 val = safeFormatDate(val);
             }
+            
+            // Handle commas in CSV
             if (val.includes(",")) val = `"${val}"`;
             return val;
         }).join(",");
@@ -2727,7 +2916,8 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
     const box = document.createElement('div');
     box.innerHTML = `
         <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
-            ✓ CSV Export Successful! Rows sorted by BILL_NO & SR_NO reset per group (${data.length - 1} rows)
+            ✓ CSV Export Successful! <br>
+            (Rake No Cleaned: FNR Removed)
         </div>`;
     document.body.appendChild(box);
     setTimeout(() => box.remove(), 4000);
@@ -3316,15 +3506,16 @@ window.toggleAllVessels = (master) => {
 };
 
 // Bahar click karne par menu band karne ke liye
-document.addEventListener('click', (e) => {
-    const menu = document.getElementById('vesselDropdownMenu');
-    const btn = document.getElementById('vesselDropdownBtn');
-    if (menu && !menu.contains(e.target) && !btn.contains(e.target)) {
-        menu.classList.add('hidden');
-    }
-});
-initAuth();
-</script>
+// Bahar click karne par menu band karne ke liye
+        document.addEventListener('click', (e) => {
+            const menu = document.getElementById('vesselDropdownMenu');
+            const btn = document.getElementById('vesselDropdownBtn');
+            if (menu && !menu.contains(e.target) && !btn.contains(e.target)) {
+                menu.classList.add('hidden');
+            }
+        });
+        initAuth();
+    </script>
 <div id="runningTrainsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] hidden flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col border border-slate-300 overflow-hidden">
         <div class="bg-amber-600 p-4 flex justify-between items-center shrink-0">
@@ -3398,4 +3589,3 @@ initAuth();
 </div>
 </body>
 </html>
-
