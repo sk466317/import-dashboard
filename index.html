@@ -2326,8 +2326,7 @@ document.getElementById('updateCustomRemarksBtn').addEventListener('click', () =
             document.getElementById('manualRailDateInput').value = '';
         });
         
-                // === UPDATE SINGLE STACK SUMMARY (FIXED TIME PARSING - FULL DATE & TIME) ===
-        // === UPDATE SINGLE STACK SUMMARY (AUTO V2 & Z2) ===
+                // === UPDATE SINGLE STACK SUMMARY (PRIORITIZE AH11, ROBUST FALLBACK FOR EXCEL SERIAL DATES IN V2) ===
 const websiteExcelInput = document.getElementById('websiteExcelInput');
 if (websiteExcelInput) {
     websiteExcelInput.addEventListener('change', (e) => {
@@ -2354,39 +2353,87 @@ if (websiteExcelInput) {
                     return;
                 }
 
-                // --- AUTO DATE & TIME LOGIC (V2 & Z2) ---
-                const rawDateV2 = jsonData[1][21]; // Cell V2 (Index 21)
-                const rawTimeZ2 = jsonData[1][25]; // Cell Z2 (Index 25)
+                // --- PRIORITIZED DATE & TIME PARSING ---
+                let dateStr = '';
+                let timeStr = '00:00';
+                let formattedDate = '';
 
-                // 1. Date Parse
-                let dateStr = "";
-                if (typeof rawDateV2 === 'number') {
-                    const d = new Date(Math.round((rawDateV2 - 25569) * 86400 * 1000));
-                    dateStr = `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
-                } else if (rawDateV2) {
-                    // Reuse your hoisted helper if available, or manual logic
-                    dateStr = formatToDDMMYYYY(rawDateV2); 
+                // First: Check AH11 (Column AH = index 34, search first 20 rows)
+                let ah11Val = '';
+                for (let r = 0; r < Math.min(20, jsonData.length); r++) {
+                    if (jsonData[r][34] !== undefined && jsonData[r][34] !== '' && jsonData[r][34] !== null) {
+                        ah11Val = jsonData[r][34];
+                        break;
+                    }
+                }
+
+                if (ah11Val) {
+                    // AH11: Use full dd-mm-yyyy hh:mm format
+                    const fullDt = formatToDDMMYYYY_HHMM(ah11Val);
+                    if (fullDt && fullDt.includes(' ')) {
+                        const parts = fullDt.split(' ');
+                        dateStr = parts[0];
+                        timeStr = parts[1];
+                    } else {
+                        dateStr = formatToDDMMYYYY(ah11Val);
+                    }
+                    formattedDate = `${dateStr} ${timeStr}`;
                 } else {
-                    dateStr = formatToDDMMYYYY(new Date()); // Fallback Today
+                    // Fallback: V2 date (now handles Excel serial correctly) + Z2 time
+                    const rawDateV2 = jsonData[1][21]; // V2
+
+                    // Proper Excel serial to date conversion
+                    let dateObj;
+                    if (typeof rawDateV2 === 'number' && rawDateV2 > 40000) {
+                        const utc_days = rawDateV2 - 25569;
+                        const utc_value = utc_days * 86400 * 1000;
+                        const tz_offset = new Date().getTimezoneOffset() * 60 * 1000;
+                        dateObj = new Date(utc_value + tz_offset);
+                    } else {
+                        dateObj = new Date(rawDateV2);
+                        if (isNaN(dateObj.getTime())) {
+                            dateStr = formatToDDMMYYYY(rawDateV2 || new Date());
+                            dateObj = null;
+                        }
+                    }
+
+                    if (dateObj && !isNaN(dateObj.getTime())) {
+                        const day = String(dateObj.getDate()).padStart(2, '0');
+                        const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                        const year = dateObj.getFullYear();
+                        const hh = String(dateObj.getHours()).padStart(2, '0');
+                        const mm = String(dateObj.getMinutes()).padStart(2, '0');
+                        formattedDate = `${day}-${month}-${year} ${hh}:${mm}`;
+                    } else {
+                        // Ultimate fallback
+                        dateStr = formatToDDMMYYYY(rawDateV2 || new Date());
+                        formattedDate = `${dateStr} ${timeStr}`;
+                    }
+
+                    // Time from Z2
+                    const rawTimeZ2 = jsonData[1][25];
+                    if (rawTimeZ2) {
+                        if (typeof rawTimeZ2 === 'number') {
+                            const totalSeconds = Math.round(rawTimeZ2 * 86400);
+                            const h = Math.floor(totalSeconds / 3600);
+                            const m = Math.floor((totalSeconds % 3600) / 60);
+                            timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                        } else {
+                            timeStr = String(rawTimeZ2).trim().padEnd(5, '0');
+                        }
+                        // Update formattedDate with accurate time if date was parsed
+                        if (formattedDate.includes(' ')) {
+                            const parts = formattedDate.split(' ');
+                            formattedDate = `${parts[0]} ${timeStr}`;
+                        }
+                    }
                 }
 
-                // 2. Time Parse
-                let timeStr = "00:00";
-                if (typeof rawTimeZ2 === 'number') {
-                    const totalSeconds = Math.round(rawTimeZ2 * 86400);
-                    const h = Math.floor(totalSeconds / 3600);
-                    const m = Math.floor((totalSeconds % 3600) / 60);
-                    timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-                } else if (rawTimeZ2) {
-                    timeStr = String(rawTimeZ2).trim();
-                }
-
-                const formattedDate = `${dateStr} ${timeStr}`;
-
-                // --- ETA CALCULATION ---
+                // --- ETA CALCULATION (+4 days) ---
                 let etaStr = '';
                 try {
-                    const [d, m, y] = dateStr.split('-').map(Number);
+                    const datePart = formattedDate.split(' ')[0];
+                    const [d, m, y] = datePart.split('-').map(Number);
                     const railDate = new Date(y, m - 1, d);
                     const etaDate = new Date(railDate);
                     etaDate.setDate(etaDate.getDate() + 4);
@@ -2399,10 +2446,9 @@ if (websiteExcelInput) {
                 const remarkFinal = `RAILOUT FROM MUNDRA ON ${formattedDate}${etaStr}`;
 
                 let updateCount = 0;
-                // Process containers starting from row 11 (Index 10)
                 for (let i = 10; i < jsonData.length; i++) {
                     const row = jsonData[i];
-                    const contNo = String(row[2] || '').trim().toUpperCase(); // Col C
+                    const contNo = String(row[2] || '').trim().toUpperCase();
                     if (!contNo) continue;
 
                     const rowIndex = rawSheets.website.findIndex(w => 
