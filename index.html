@@ -315,8 +315,13 @@ table {
                             <input type="file" id="shipperExcelInput" class="hidden" accept=".xlsx, .xls">
                         </label>
                         <p class="text-[9px] font-bold text-slate-400 italic">Expected Headers: A=CONT_Nos., B=Size, C=BL_No., D=Consignee</p>
-                    </div>
 
+                        <!-- DELETE BUTTON MOVED INSIDE -->
+                        <button id="deleteByShipperBtn" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
+                            <i data-lucide="user-x" class="w-3.5 h-3.5"></i>
+                            DELETE BY SHIPPER NAME
+                        </button>
+                    </div>
                     <!-- SMTP Tab Context Tools -->
                     <div id="smtpUpdateSection" class="hidden items-center gap-3 bg-white p-2 rounded-xl border border-slate-300 shadow-sm flex-wrap">
     
@@ -344,13 +349,13 @@ table {
 
     <p class="text-[9px] font-bold text-slate-400 italic block w-full sm:w-auto">Filter: KILARAIPUR/LUDHIANA containers only.</p>
 </div>
-
                     <!-- Website Tab Context Tools -->
                     <div id="websiteUpdateSection" class="hidden items-center gap-3 bg-white p-2 rounded-xl border border-slate-600 shadow-sm flex-wrap">
                         <div class="flex items-center gap-2 border-r border-slate-200 pr-3">
                             <select id="rakeSelect" class="bg-slate-50 border border-slate-300 text-[10px] font-bold rounded-lg px-2 py-1.5 outline-none w-60">
                                 <option value="">Select Rake No</option>
                             </select>
+
 <div class="flex items-center gap-2 pl-1 border-t border-slate-300 pt-3 mt-3">
     <button id="openFoisWithFnrBtn" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-sm">
         <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
@@ -433,8 +438,7 @@ table {
             
            <div class="p-3 bg-white border-t border-slate-200 flex justify-between items-center shrink-0">
     <p class="text-[9px] font-bold text-red-700 uppercase italic">Changes are local until "Save Changes" is clicked.</p>
-    
-    <div class="flex gap-2 hidden">
+        <div class="flex gap-2 hidden">
         <button id="saveLocalChangesBtn" ...>Save Changes</button>
         <button id="closeModalBtnFooter" ...>Close</button>
     </div>
@@ -463,7 +467,36 @@ table {
             </div>
         </div>
     </div>
-
+<!-- Delete By Shipper Name Modal -->
+<div id="deleteShipperModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100002] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-slate-300 overflow-hidden">
+        <div class="bg-rose-600 p-4 flex justify-between items-center text-white">
+            <h3 class="font-bold uppercase text-sm flex items-center gap-2">
+                <i data-lucide="user-x" class="w-4 h-4"></i> Delete Shipper Data
+            </h3>
+            <button onclick="document.getElementById('deleteShipperModal').classList.add('hidden')">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <div class="p-6 space-y-4 max-h-96 overflow-y-auto custom-scrollbar">
+            <p class="text-[11px] font-bold text-slate-600">Select a shipper to delete <strong>all related rows</strong> from the Shipper sheet:</p>
+            <div id="shipperDeleteList" class="space-y-2"></div>
+            <div class="pt-4 border-t border-slate-200">
+                <p id="deleteWarning" class="text-[10px] font-bold text-rose-600 uppercase hidden">
+                    Warning: This will permanently delete <span id="deleteCount">0</span> rows!
+                </p>
+            </div>
+        </div>
+        <div class="p-4 bg-slate-50 flex justify-end gap-3">
+            <button onclick="document.getElementById('deleteShipperModal').classList.add('hidden')" class="px-6 py-2 bg-slate-300 text-slate-700 rounded-lg font-bold text-[10px] uppercase">
+                Cancel
+            </button>
+            <button id="confirmDeleteShipperBtn" class="px-6 py-2 bg-rose-600 text-white rounded-lg font-bold text-[10px] uppercase opacity-50 cursor-not-allowed" disabled>
+                Confirm Delete
+            </button>
+        </div>
+    </div>
+</div>
     <!-- Header -->
     <header class="bg-white border-b border-slate-400 px-6 compact-header flex justify-between items-center shadow-sm shrink-0 no-print">
         <div class="flex items-center gap-3">
@@ -2650,7 +2683,7 @@ if (scanningExcelInput) {
         if (!file) return;
 
         if (!rawSheets || !rawSheets.smtp || rawSheets.smtp.length <= 1) {
-            alert("❌ ERROR: SMTP Data nahi mila.");
+            alert("❌ ERROR: SMTP Data नहीं मिला। पहले SMTP Excel अपलोड करें।");
             return;
         }
 
@@ -2663,51 +2696,125 @@ if (scanningExcelInput) {
                 const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
                 const smtpData = rawSheets.smtp;
-                const sContIdx = 2;       // SMTP Index 2 = Column C (Container No)
-                const terminalColIdx = 1; // SMTP Index 1 = Column B (Terminals)
+                const sContIdx = 2;       // Column C
+                const terminalColIdx = 1; // Column B
 
                 let updateCount = 0;
 
                 jsonData.forEach((exRow) => {
-                    // Excel Cell B (Index 1) = Container Number
                     const exContNo = String(exRow[1] || '').trim().toUpperCase();
+                    if (!exContNo) return;
 
-                    if (exContNo) {
-                        for (let i = 1; i < smtpData.length; i++) {
-                            const smtpCont = String(smtpData[i][sContIdx] || '').trim().toUpperCase();
-                            
-                            if (smtpCont === exContNo) {
-                                smtpData[i][terminalColIdx] = "Under Scanning";
-                                updateCount++;
-                            }
+                    for (let i = 1; i < smtpData.length; i++) {
+                        const smtpCont = String(smtpData[i][sContIdx] || '').trim().toUpperCase();
+                        if (smtpCont === exContNo) {
+                            smtpData[i][terminalColIdx] = "Under Scanning";
+                            updateCount++;
                         }
                     }
                 });
 
                 if (updateCount > 0) {
                     rawSheets.smtp = smtpData;
-                    window.viewSheetData('smtp'); // Refresh table view
-                    
-                    // Success Alert
+                    window.viewSheetData('smtp');
+
                     const box = document.createElement('div');
-                    box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-pink-600 text-white px-8 py-4 rounded-xl shadow-2xl z-[100000] font-bold uppercase text-[10px] animate-bounce">
-                        ✅ Success: ${updateCount} Containers marked as Under Scanning
-                    </div>`;
+                    box.innerHTML = `
+                        <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-pink-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[100000] animate-bounce">
+                            ✅ ${updateCount} कंटेनरों को Under Scanning मार्क किया गया
+                        </div>`;
                     document.body.appendChild(box);
                     setTimeout(() => box.remove(), 4000);
 
                     saveToCloud();
                     processCloudData();
                 } else {
-                    alert("❌ Match Nahi Mila: Excel ke Column B ke containers SMTP se match nahi huye.");
+                    alert("❌ कोई मैच नहीं मिला: Excel के Column B के कंटेनर SMTP से मैच नहीं हुए।");
                 }
+
+                // WEBSITE remarks auto-update
+                const remarksUpdated = autoUpdateScanningRemarksInWebsite();
+
+                if (remarksUpdated > 0) {
+                    const remarkBox = document.createElement('div');
+                    remarkBox.innerHTML = `
+                        <div class="fixed top-24 left-1/2 -translate-x-1/2 bg-purple-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[100000] animate-bounce">
+                            UPDATED ${remarksUpdated} scanning handover remarks in WEBSITE
+                        </div>`;
+                    document.body.appendChild(remarkBox);
+                    setTimeout(() => remarkBox.remove(), 5000);
+
+                    if (currentSheetInView === 'website') {
+                        window.viewSheetData('website');
+                    }
+                }
+
             } catch (err) {
-                alert("Critical Error: " + err.message);
+                console.error("Scanning Excel processing error:", err);
+                alert("क्रिटिकल त्रुटि: " + err.message);
             }
         };
+
         reader.readAsBinaryString(file);
-        e.target.value = ''; // Reset input
+        e.target.value = '';
     });
+}// Scanning wale containers ke remarks ko WEBSITE mein update karne ka function
+function autoUpdateScanningRemarksInWebsite() {
+    if (!rawSheets.smtp || !rawSheets.website) return 0;
+
+    let updatedCount = 0;
+
+    for (let i = 1; i < rawSheets.website.length; i++) {
+        const webRow = rawSheets.website[i];
+        const contNo = String(webRow[3] || '').trim().toUpperCase();
+        if (!contNo) continue;
+
+        const smtpRow = rawSheets.smtp.find(r => 
+            String(r[2] || '').trim().toUpperCase() === contNo
+        );
+        if (!smtpRow) continue;
+
+        // 1. SMTP mein "Under Scanning" hona chahiye
+        if (String(smtpRow[1] || '').trim().toUpperCase() !== "UNDER SCANNING") continue;
+
+        // 2. Remark mein kahin bhi "HANDOVER" word hona chahiye (case-insensitive)
+        let currentRemark = String(webRow[9] || '').trim();
+        if (!currentRemark.toUpperCase().includes("HANDOVER")) continue;
+
+        // 3. Check karo ki pehle se "(CONTAINER IS UNDER SCANNING)" last mein to nahi hai
+        const scanningText = "(CONTAINER IS UNDER SCANNING)";
+        if (currentRemark.endsWith(scanningText)) continue; // Already hai → skip
+
+        // 4. Last mein add kar do (ek space ke saath)
+        const newRemark = currentRemark + (currentRemark ? " " : "") + scanningText;
+
+        // 5. Update karo
+        webRow[9] = newRemark;
+        updatedCount++;
+    }
+
+    if (updatedCount > 0) {
+        console.log(`WEBSITE Remarks updated (added scanning tag) for ${updatedCount} containers`);
+
+        // UI refresh agar zarurat ho
+        if (currentSheetInView === 'website') {
+            window.viewSheetData('website');
+        }
+
+        saveToCloud();
+        processCloudData();
+
+        // Notification
+        const box = document.createElement('div');
+        box.innerHTML = `
+            <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-purple-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+                ADDED "(CONTAINER IS UNDER SCANNING)" to ${updatedCount} remarks
+            </div>`;
+        document.body.appendChild(box);
+        setTimeout(() => box.remove(), 5000);
+    }
+
+    return updatedCount;
 }
         // ------------------------------------------
         // SMTP EXCEL IMPORT LOGIC
@@ -3577,6 +3684,112 @@ window.toggleAllVessels = (master) => {
                 menu.classList.add('hidden');
             }
         });
+// === DELETE BY SHIPPER NAME WITH DROPDOWN SELECTION ===
+document.getElementById('deleteByShipperBtn').addEventListener('click', () => {
+    if (currentSheetInView !== 'shipper') {
+        alert("Please switch to the SHIPPER tab first.");
+        return;
+    }
+
+    const headers = rawSheets.shipper[0];
+    if (!headers) {
+        alert("Shipper sheet has no headers.");
+        return;
+    }
+
+    const consIndex = headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE'));
+    if (consIndex === -1) {
+        alert("Consignee column not found in Shipper sheet.");
+        return;
+    }
+
+    // Get unique shippers with row counts
+    const shipperMap = new Map();
+    rawSheets.shipper.slice(1).forEach(row => {
+        const name = String(row[consIndex] || '').trim();
+        if (name) {
+            shipperMap.set(name, (shipperMap.get(name) || 0) + 1);
+        }
+    });
+
+    if (shipperMap.size === 0) {
+        alert("No shipper data found to delete.");
+        return;
+    }
+
+    // Populate dropdown list
+    const listContainer = document.getElementById('shipperDeleteList');
+    const warningEl = document.getElementById('deleteWarning');
+    const countEl = document.getElementById('deleteCount');
+    const confirmBtn = document.getElementById('confirmDeleteShipperBtn');
+
+    listContainer.innerHTML = '';
+    let selectedShipper = null;
+
+    [...shipperMap.entries()].sort((a, b) => a[0].localeCompare(b[0])).forEach(([name, count]) => {
+        const item = document.createElement('div');
+        item.className = 'flex items-center justify-between p-3 bg-slate-50 hover:bg-rose-50 rounded-lg cursor-pointer transition-all border border-slate-200';
+        item.innerHTML = `
+            <div>
+                <p class="font-bold text-slate-800 text-[11px] uppercase">${name}</p>
+                <p class="text-[9px] text-slate-500">${count} container${count > 1 ? 's' : ''}</p>
+            </div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400"></i>
+        `;
+        item.onclick = () => {
+            // Deselect others
+            document.querySelectorAll('#shipperDeleteList > div').forEach(el => {
+                el.classList.remove('bg-rose-100', 'border-rose-400');
+            });
+            item.classList.add('bg-rose-100', 'border-rose-400');
+            selectedShipper = name;
+            countEl.textContent = count;
+            warningEl.classList.remove('hidden');
+            confirmBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            confirmBtn.disabled = false;
+        };
+        listContainer.appendChild(item);
+    });
+
+    // Confirm button action
+    confirmBtn.onclick = () => {
+        if (!selectedShipper) return;
+
+        const count = shipperMap.get(selectedShipper);
+        const finalConfirm = confirm(`PERMANENTLY delete all ${count} rows for "${selectedShipper}"?\nThis action cannot be undone.`);
+
+        if (!finalConfirm) return;
+
+        // Perform deletion
+        rawSheets.shipper = [
+            headers,
+            ...rawSheets.shipper.slice(1).filter(row => String(row[consIndex] || '').trim() !== selectedShipper)
+        ];
+
+        // Close modal and refresh
+        document.getElementById('deleteShipperModal').classList.add('hidden');
+        window.viewSheetData('shipper');
+        saveToCloud();
+        processCloudData();
+
+        const box = document.createElement('div');
+        box.innerHTML = `
+            <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+                ✓ Successfully deleted all rows for "${selectedShipper}" (${count} rows)
+            </div>`;
+        document.body.appendChild(box);
+        setTimeout(() => box.remove(), 5000);
+    };
+
+    // Reset confirm button state
+    warningEl.classList.add('hidden');
+    confirmBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    confirmBtn.disabled = true;
+
+    // Show modal
+    document.getElementById('deleteShipperModal').classList.remove('hidden');
+    lucide.createIcons();
+});
         initAuth();
     </script>
 <div id="runningTrainsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] hidden flex items-center justify-center p-4">
