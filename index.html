@@ -3003,43 +3003,88 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
         return;
     }
 
-    // Header row
-    const header = data[0].slice(); // Clone header
-    const srNoIndex = 1;   // SR_NO column
-    const billNoIndex = 2; // BILL_NO column
-    const rakeNoIndex = 4; // RAKE_NO column (Index check karein)
+    // ───────────────────────────────────────────────────────────────
+    // Filter Logic: Only PENDING + Current Month + Last Month
+    // ───────────────────────────────────────────────────────────────
+    const today = new Date(); // Current date (client-side)
 
-    // Data rows (exclude header)
-    let rows = data.slice(1).map(row => row.slice()); // Deep clone
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth(); // 0-11
 
-    // Sort rows by BILL_NO (ascending, treating as string)
-    rows.sort((a, b) => {
+    const lastMonthDate = new Date(today);
+    lastMonthDate.setMonth(currentMonth - 1);
+    const lastMonth = lastMonthDate.getMonth();
+    const lastMonthYear = lastMonthDate.getFullYear();
+
+    const filteredRows = data.slice(1).filter(row => {
+        const railingDateRaw = row[8]; // RAILING_DATE column (index 8)
+        const railingDateStr = String(railingDateRaw || '').trim().toUpperCase();
+
+        // 1. Include if exactly "PENDING"
+        if (railingDateStr === "PENDING") return true;
+
+        // 2. Try to parse date (dd-mm-yyyy or dd-mm-yyyy hh:mm)
+        const formatted = formatToDDMMYYYY_HHMM(railingDateRaw);
+        if (!formatted || !formatted.includes('-')) return false;
+
+        const parts = formatted.split(' ')[0].split('-');
+        if (parts.length !== 3) return false;
+
+        const day = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1; // JS months are 0-based
+        const year = parseInt(parts[2], 10);
+
+        if (isNaN(day) || isNaN(month) || isNaN(year)) return false;
+
+        const rowDate = new Date(year, month, day);
+
+        // Include if same as current month/year OR last month/year
+        return (
+            (year === currentYear && month === currentMonth) ||
+            (year === lastMonthYear && month === lastMonth)
+        );
+    });
+
+    if (filteredRows.length === 0) {
+        alert("No data found matching the filter:\n• PENDING\n• Current Month\n• Last Month");
+        return;
+    }
+
+    // ───────────────────────────────────────────────────────────────
+    // Rest of your existing CSV logic (sorting, SR_NO renumbering, etc.)
+    // ───────────────────────────────────────────────────────────────
+    const header = data[0].slice();
+    const srNoIndex = 1;
+    const billNoIndex = 2;
+    const rakeNoIndex = 4;
+
+    // Sort by BILL_NO
+    filteredRows.sort((a, b) => {
         const billA = String(a[billNoIndex] || '').trim();
         const billB = String(b[billNoIndex] || '').trim();
         return billA.localeCompare(billB);
     });
 
-    // Assign sequential SR_NO per BILL_NO group
+    // Renumber SR_NO per BILL_NO group
     let currentBillNo = null;
     let counter = 1;
-    rows.forEach(row => {
+    filteredRows.forEach(row => {
         const billNo = String(row[billNoIndex] || '').trim();
         if (billNo !== currentBillNo) {
             currentBillNo = billNo;
             counter = 1;
         }
-        row[srNoIndex] = counter;
-        counter++;
+        row[srNoIndex] = counter++;
     });
 
-    // Reassemble full data: header + sorted & renumbered rows
-    const processedData = [header, ...rows];
+    // Reassemble: header + filtered & processed rows
+    const processedData = [header, ...filteredRows];
 
-    // Safe date formatting helper
+    // Safe date formatting (your existing helper)
     const safeFormatDate = (val) => {
         if (!val) return "";
         const formatted = formatToDDMMYYYY_HHMM(val);
-        if (formatted && !formatted.includes('NaN') && formatted.includes('-') && formatted.includes(' ')) {
+        if (formatted && formatted.includes('-') && formatted.includes(' ')) {
             const parts = formatted.split(' ');
             const datePart = parts[0].split('-');
             if (datePart.length === 3) {
@@ -3050,47 +3095,49 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
         return String(val);
     };
 
+    // Clean RAKE_NO (remove FNR)
     const csvContent = processedData.map((row, rowIndex) => {
         return row.map((cell, colIndex) => {
-            let val = cell === null || cell === undefined ? "" : String(cell);
-            
-            // --- NEW: CLEAN RAKE NO (Remove FNR) ---
-            // Sirf Data rows ke liye (Header ke liye nahi) aur Index 4 (Rake No) par
+            let val = cell == null ? "" : String(cell);
+
+            // Clean Rake No (remove FNR in bracket)
             if (colIndex === rakeNoIndex && rowIndex > 0) {
-                // Bracket se pehle ka hissa le lo (e.g. "TWHT-06(123)" -> "TWHT-06")
                 val = val.split('(')[0].trim();
             }
 
-            // RAILING_DATE Formatting (Index 8)
-            if (colIndex === 8 && rowIndex > 0 && val !== "") { 
+            // Format RAILING_DATE
+            if (colIndex === 8 && rowIndex > 0 && val !== "") {
                 val = safeFormatDate(val);
             }
-            
-            // Handle commas in CSV
+
+            // Escape commas for CSV
             if (val.includes(",")) val = `"${val}"`;
+
             return val;
         }).join(",");
     }).join("\n");
 
+    // Download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `IMPORT_Data_${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}.csv`);
+    link.setAttribute("download", `Filtered_IMPORT_Data_${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 
     // Success notification
     const box = document.createElement('div');
     box.innerHTML = `
         <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
-            ✓ CSV Export Successful! <br>
-            (Rake No Cleaned: FNR Removed)
+            ✓ CSV Exported Successfully!<br>
+            Rows: ${filteredRows.length} (Pending + Current + Last Month only)
         </div>`;
     document.body.appendChild(box);
-    setTimeout(() => box.remove(), 4000);
+    setTimeout(() => box.remove(), 5000);
 });
 
 // --- FINAL STYLED XLSX EXPORT (BLUE HEADERS & BORDERS) ---
