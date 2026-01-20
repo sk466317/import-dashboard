@@ -1539,16 +1539,19 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
                  processAndRenderReport(consIndex, true);
             }
         }
+async function loadFromCloud() {
+    if (!isCloudEnabled || !auth.currentUser) {
+        cloudLabel.innerText = "Offline Mode";
+        return;
+    }
 
-        async function loadFromCloud() {
-    if (!isCloudEnabled || !auth.currentUser) return;
-    cloudLabel.innerText = "Loading...";
+    cloudLabel.innerText = "Loading data...";
     refreshIcon.classList.add('animate-spin');
 
     try {
         const metaRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_meta', 'latest');
         const metaSnap = await getDoc(metaRef);
-        
+
         if (metaSnap.exists()) {
             const { chunkCount } = metaSnap.data();
             if (chunkCount === 0) {
@@ -1558,7 +1561,6 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
             }
 
             let fullStr = "";
-            // Loop through each chunk
             for (let i = 0; i < chunkCount; i++) {
                 const chunkRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_chunks', `chunk_${i}`);
                 const chunkSnap = await getDoc(chunkRef);
@@ -1575,50 +1577,70 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
         } else {
             cloudLabel.innerText = "No Cloud Data";
         }
-    } catch (e) { 
-        console.error("Cloud Load Error:", e); 
-        cloudLabel.innerText = "Load Error";
+    } catch (e) {
+        console.error("Cloud Load Error:", e);
+        cloudLabel.innerText = "Load Failed";
+
+        // Show error alert with retry button
+        const retryBox = document.createElement('div');
+        retryBox.innerHTML = `
+            <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000]">
+                Data load failed: ${e.message}<br>
+                <button id="retryLoadBtn" class="mt-2 bg-white text-rose-600 px-4 py-1 rounded font-bold hover:bg-gray-100">
+                    Retry Load
+                </button>
+            </div>`;
+        document.body.appendChild(retryBox);
+
+        // Add click handler for retry
+        document.getElementById('retryLoadBtn').onclick = () => {
+            retryBox.remove();
+            loadFromCloud(); // Retry the load
+        };
+
+        // Auto-remove the alert after 15 seconds
+        setTimeout(() => {
+            if (retryBox.parentNode) retryBox.remove();
+        }, 15000);
     } finally {
         refreshIcon.classList.remove('animate-spin');
     }
 }
-       async function saveToCloud() {
-    if (!isCloudEnabled || !auth.currentUser) return;
-    
+async function saveToCloud() {
+    if (!isCloudEnabled || !auth.currentUser) {
+        alert("Cloud sync is disabled or user not authenticated.");
+        return false;
+    }
+
     const overlay = document.getElementById('savingOverlay');
     const progressText = document.getElementById('savingProgressText');
-    
     overlay.classList.remove('hidden');
 
     try {
         const str = JSON.stringify(rawSheets);
-        // Optimized Chunk Size for Firestore Safety
-        const chunkSize = 500000; 
+        const chunkSize = 500000;
         const chunkCount = Math.ceil(str.length / chunkSize);
-        
-        // ... baaki ka logic same rahega
-        
-        // Step 1: Upload Chunks first
+
         for (let i = 0; i < chunkCount; i++) {
             const progress = Math.round(((i + 1) / chunkCount) * 100);
-            progressText.innerText = progress + "%";
-            
+            progressText.innerText = `${progress}%`;
             const chunk = str.substring(i * chunkSize, (i + 1) * chunkSize);
             const chunkRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_chunks', `chunk_${i}`);
             await setDoc(chunkRef, { data: chunk });
         }
-        
-        // Step 2: ONLY update Meta after all chunks are successful
+
         const metaRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_meta', 'latest');
-        await setDoc(metaRef, { 
-            chunkCount: chunkCount, 
-            updatedAt: new Date().toISOString() 
+        await setDoc(metaRef, {
+            chunkCount: chunkCount,
+            updatedAt: new Date().toISOString()
         });
-        
+
         cloudLabel.innerText = "Connected";
+        return true; // Success
     } catch (e) {
-        console.error("Save Error:", e);
-        alert("Critical Error: Data save nahi ho paya. Internet check karein.");
+        console.error("Cloud Save Error:", e);
+        alert(`Failed to save data to cloud: ${e.message}\nPlease check your internet connection and try again.`);
+        return false; // Failure
     } finally {
         setTimeout(() => {
             overlay.classList.add('hidden');
@@ -1626,7 +1648,6 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
         }, 500);
     }
 }
-
 
         // ------------------------------------------
         // 3. LOGIN & MODAL CONTROLS
@@ -2531,30 +2552,33 @@ if (websiteExcelInput) {
         // SHIPPER EXCEL IMPORT LOGIC (Strict Cell Reference A, B, C, D)
         // ------------------------------------------
         const shipperExcelInput = document.getElementById('shipperExcelInput');
-shipperExcelInput.addEventListener('change', (e) => {
+shipperExcelInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
         const bstr = evt.target.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
-       
+
         if (jsonData.length < 2) {
             alert("Excel में कोई डेटा रो नहीं मिली।");
             return;
         }
-        const contIdx = 0;   // Excel: A = CONT_Nos.
-        const sizeIdx = 1;   // Excel: B = Size
-        const blIdx = 2;     // Excel: C = BL_No.
-        const consIdx = 3;   // Excel: D = Consignee
+
+        const contIdx = 0;
+        const sizeIdx = 1;
+        const blIdx = 2;
+        const consIdx = 3;
 
         const internalHeaders = rawSheets.shipper[0];
         if (!internalHeaders) {
             alert("SHIPPER sheet structure is missing headers.");
             return;
         }
+
         const internalContIdx = 0;
         const internalSizeIdx = internalHeaders.findIndex(h => /SIZE/i.test(String(h)));
         const internalBlIdx = internalHeaders.findIndex(h => /BL/i.test(String(h)));
@@ -2571,13 +2595,11 @@ shipperExcelInput.addEventListener('change', (e) => {
                 return;
             }
 
-            // मौजूदा रो का इंडेक्स खोजें (कंटेनर नंबर के आधार पर)
-            const existingIndex = rawSheets.shipper.findIndex(row => 
+            const existingIndex = rawSheets.shipper.findIndex(row =>
                 String(row[internalContIdx] || '').trim() === contNo
             );
 
             if (existingIndex === -1) {
-                // नई रो जोड़ें
                 let newRow = new Array(internalHeaders.length).fill("");
                 newRow[internalContIdx] = contNo;
                 if (internalBlIdx !== -1) newRow[internalBlIdx] = String(exRow[blIdx] || '').trim();
@@ -2586,7 +2608,6 @@ shipperExcelInput.addEventListener('change', (e) => {
                 rawSheets.shipper.push(newRow);
                 addedCount++;
             } else {
-                // मौजूदा रो को ओवरराइट/अपडेट करें
                 if (internalBlIdx !== -1) rawSheets.shipper[existingIndex][internalBlIdx] = String(exRow[blIdx] || '').trim();
                 if (internalSizeIdx !== -1) rawSheets.shipper[existingIndex][internalSizeIdx] = String(exRow[sizeIdx] || '').trim();
                 if (internalConsIdx !== -1) rawSheets.shipper[existingIndex][internalConsIdx] = String(exRow[consIdx] || '').trim();
@@ -2594,19 +2615,24 @@ shipperExcelInput.addEventListener('change', (e) => {
             }
         });
 
-        window.viewSheetData('shipper');  // सही टैब दिखाएं
-        saveToCloud();                    // ऑटोमैटिक क्लाउड सेव
-        processCloudData();               // रिपोर्ट अपडेट
+        window.viewSheetData('shipper');
+
+        const saveSuccess = await saveToCloud(); // Wait for save to complete
+        processCloudData();
+
+        const message = `Shipper Update Complete:\n${addedCount} added\n${updatedCount} updated\n${skipCount} skipped.\n\n` +
+                       (saveSuccess ? "Data saved to cloud successfully." : "Local update done, but cloud save failed. Check internet and try again.");
 
         const box = document.createElement('div');
         box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">
-            Shipper Update Complete: ${addedCount} added, ${updatedCount} updated, ${skipCount} skipped.
+            ${message}
         </div>`;
         document.body.appendChild(box);
-        setTimeout(() => box.remove(), 5000);
+        setTimeout(() => box.remove(), 6000);
     };
+
     reader.readAsBinaryString(file);
-    e.target.value = '';  // इनपुट रीसेट
+    e.target.value = '';
 });
 
         // --- DIRECT MAPPING GATE OUT LOGIC (YAHAN SE ALAG RAKHEIN) ---
@@ -2901,7 +2927,9 @@ if (smtpExcelInput) {
             pendingRakeNo = null;
         });
 
-        refreshBtn.addEventListener('click', () => { loadFromCloud(); });
+        refreshBtn.addEventListener('click', () => {
+    loadFromCloud();
+});
         saveImageBtn.addEventListener('click', () => {
             if (!selectedShipper || !rawSheets.shipper.length) return;
             const area = document.getElementById('reportContainer');
@@ -3584,12 +3612,17 @@ document.getElementById('manualBlInput').addEventListener('input', (e) => {
 // 6. Final Save Button (Link & Save)
 document.getElementById('saveManualShipperBtn').addEventListener('click', async () => {
     const shipperName = document.getElementById('manualShipperNameInput').value.trim().toUpperCase();
-    if (!shipperName) { alert("Shipper Name zaroori hai!"); return; }
-    if (matchedContainers.length === 0) { alert("Kam se kam ek container add karein!"); return; }
+    if (!shipperName) {
+        alert("Shipper Name is required!");
+        return;
+    }
+    if (matchedContainers.length === 0) {
+        alert("Please add at least one container!");
+        return;
+    }
 
     let addedCount = 0;
     matchedContainers.forEach(m => {
-        // Double check taaki duplicate na ho
         if (!rawSheets.shipper.some(s => String(s[0]).trim() === m.cont)) {
             rawSheets.shipper.push([m.cont, m.size, m.bl, shipperName]);
             addedCount++;
@@ -3598,10 +3631,18 @@ document.getElementById('saveManualShipperBtn').addEventListener('click', async 
 
     document.getElementById('addShipperModal').classList.add('hidden');
     window.viewSheetData('shipper');
-    await saveToCloud();
+
+    const saveSuccess = await saveToCloud(); // Wait for save
+
     processCloudData();
-    alert(`Success! ${addedCount} containers added.`);
+
+    if (saveSuccess) {
+        alert(`Success! ${addedCount} containers added and saved to cloud.`);
+    } else {
+        alert(`Local update completed (${addedCount} added), but cloud save failed.\nPlease check internet and try refreshing.`);
+    }
 });
+
 // --- NEW MULTI-SELECT VESSEL LOGIC ---
 window.selectedVessels = [];
 
