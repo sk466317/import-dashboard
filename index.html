@@ -300,6 +300,7 @@ table {
             <div class="p-3 bg-slate-100 border-b border-slate-200 flex flex-col gap-3 shrink-0">
                 <div class="flex items-center justify-between flex-wrap gap-4">
                     <div class="flex gap-2">
+			<button id="tabHKR" class="sheet-tab-btn px-4 py-2 bg-white border border-slate-300 rounded-lg font-bold text-[10px] uppercase hover:bg-blue-50 transition-all" data-sheet="hkr">HKR DATA</button>
                         <button id="tabShipper" class="sheet-tab-btn px-4 py-2 bg-white border border-slate-300 rounded-lg font-bold text-[10px] uppercase hover:bg-blue-50 transition-all" data-sheet="shipper">SHIPPER</button>
                         <button id="tabSmtp" class="sheet-tab-btn px-4 py-2 bg-white border border-slate-300 rounded-lg font-bold text-[10px] uppercase hover:bg-blue-50 transition-all" data-sheet="smtp">SMTP</button>
                         <button id="tabWebsite" class="sheet-tab-btn px-4 py-2 bg-white border border-slate-300 rounded-lg font-bold text-[10px] uppercase hover:bg-blue-50 transition-all" data-sheet="website">WEBSITE</button>
@@ -346,7 +347,11 @@ table {
         Update Scanning
         <input type="file" id="scanningExcelInput" class="hidden" accept=".xlsx, .xls">
     </label>
-
+<label class="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase shrink-0">
+        <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
+        UPLOAD HKR/HMR EXCEL
+        <input type="file" id="hkrHmrExcelInput" class="hidden" accept=".xlsx,.xls,.csv">
+    </label>
     <p class="text-[9px] font-bold text-slate-400 italic block w-full sm:w-auto">Filter: KILARAIPUR/LUDHIANA containers only.</p>
 </div>
                     <!-- Website Tab Context Tools -->
@@ -520,6 +525,11 @@ table {
                 <i data-lucide="database" class="w-3 h-3"></i>
                 UPDATE DATA
             </button>
+<button id="forecastPendencyBtn" 
+        class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-md font-bold text-[10px] transition-all flex items-center gap-1.5 shadow-sm">
+    <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+    FORECAST & PENDENCY
+</button>
             <button id="runningTrainsBtn" class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-md font-bold text-[10px] transition-all flex items-center gap-1.5 shadow-sm">
     <i data-lucide="train" class="w-3.5 h-3.5"></i>
     RUNNING TRAINS
@@ -865,6 +875,244 @@ csvUploadInput.addEventListener('change', () => {
         alert("Error sending upload request. Check network/console (possible server or CORS issue).");
     });
 });
+// COMPLETE DATA DELETE – Only for HKR data
+document.getElementById('deleteAllRowsBtn').addEventListener('click', async () => {
+    if (currentSheetInView !== 'hkr') {
+        alert("This delete button works only in HKR DATA tab.\nPlease switch to HKR DATA first.");
+        return;
+    }
+
+    const confirmed = confirm(
+        "DANGER: This will PERMANENTLY DELETE ALL HKR/HMR data.\n" +
+        "This cannot be undone. Continue?"
+    );
+
+    if (!confirmed) return;
+
+    try {
+        // Clear HKR data
+        rawSheets.hkrHmrFiltered = [];
+
+        // Refresh UI immediately
+        window.viewSheetData('hkr');
+
+        // Save empty state to cloud
+        await quickSaveHkrData();
+        await saveToCloud();
+
+        processCloudData();
+
+        const successBox = document.createElement('div');
+        successBox.innerHTML = `
+            <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+                ✓ All HKR/HMR data permanently deleted.<br>
+                Cloud backup updated.
+            </div>`;
+        document.body.appendChild(successBox);
+        setTimeout(() => successBox.remove(), 6000);
+
+    } catch (err) {
+        console.error("HKR delete error:", err);
+        alert("Local delete done, but cloud save failed. Please refresh page.");
+    }
+});
+// ==========================================
+// EXPORT FORECAST & PENDENCY TO EXCEL (FIXED: Single Click & Button Reset)
+// ==========================================
+const exportBtn = document.getElementById('exportForecastExcelBtn');
+
+// use .onclick instead of addEventListener to prevent duplicates
+exportBtn.onclick = async () => {
+    // 1. Library Check
+    if (!window.ExcelJS) {
+        alert("ExcelJS library not loaded. Please refresh.");
+        return;
+    }
+
+    // 2. Prevent Double Clicks
+    if (exportBtn.getAttribute('data-loading') === 'true') return;
+    exportBtn.setAttribute('data-loading', 'true');
+
+    // 3. UI: Show Loading
+    exportBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Generating...`;
+    lucide.createIcons();
+
+    try {
+        // --- WORKBOOK CREATION ---
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'HTPL Dashboard';
+        workbook.created = new Date();
+
+        // --- SHEET 1: FORECAST ---
+        const wsForecast = workbook.addWorksheet('Forecast (HKR)');
+        wsForecast.columns = [
+            { header: 'Assigned Remark', key: 'remark', width: 15 },
+            { header: 'Vessel Name', key: 'vessel', width: 25 },
+            { header: 'ETA', key: 'eta', width: 18 },
+            { header: 'Container No', key: 'cont', width: 20 },
+            { header: 'Size', key: 'size', width: 10 },
+            { header: 'TEU', key: 'teu', width: 10 },
+            { header: 'Destination', key: 'dest', width: 30 }
+        ];
+
+        // Filter Discharged Containers
+        const dischargedSet = new Set();
+        if (rawSheets.smtp && rawSheets.smtp.length > 1) {
+            rawSheets.smtp.slice(1).forEach(row => {
+                const c = String(row[2] || '').trim().toUpperCase();
+                if(c) dischargedSet.add(c);
+            });
+        }
+
+        const forecastRows = [];
+        if (rawSheets.hkrHmrFiltered) {
+            rawSheets.hkrHmrFiltered.forEach(row => {
+                const ctrNo = String(row.ctr_no || '').trim().toUpperCase();
+                if (dischargedSet.has(ctrNo)) return; 
+
+                const size = String(row.ctr_size || '20').includes('40') ? 40 : 20;
+                
+                forecastRows.push({
+                    remark: String(row.assigned_remark || 'OTHER').trim().toUpperCase(),
+                    vessel: String(row.vessel_name || '-').trim().toUpperCase(),
+                    eta: row.eta_dttm || '-',
+                    cont: ctrNo,
+                    size: size,
+                    teu: size === 40 ? 2 : 1,
+                    dest: row.destination_name || '-'
+                });
+            });
+        }
+
+        // Sort: Remark -> Vessel -> Container
+        forecastRows.sort((a, b) => {
+            const r = a.remark.localeCompare(b.remark);
+            if (r !== 0) return r;
+            const v = a.vessel.localeCompare(b.vessel);
+            if (v !== 0) return v;
+            return a.cont.localeCompare(b.cont);
+        });
+
+        wsForecast.addRows(forecastRows);
+        
+        // Header Styling (Dark Brown)
+        wsForecast.getRow(1).eachCell((cell) => {
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF422006' } };
+        });
+
+        // --- SHEET 2: PENDENCY ---
+        const wsPendency = workbook.addWorksheet('Import Pendency');
+        wsPendency.columns = [
+            { header: 'Assigned Remark', key: 'remark', width: 15 },
+            { header: 'Vessel Name', key: 'vessel', width: 25 },
+            { header: 'Discharge Date', key: 'discharge', width: 18 },
+            { header: 'Container No', key: 'cont', width: 20 },
+            { header: 'Size', key: 'size', width: 10 },
+            { header: 'TEU', key: 'teu', width: 10 },
+            { header: 'Days Pending', key: 'days', width: 15 }
+        ];
+
+        // Lookups
+        const smtpLookup = {}; 
+        if (rawSheets.smtp && rawSheets.smtp.length > 1) {
+            rawSheets.smtp.slice(1).forEach(row => {
+                const c = String(row[2] || '').trim().toUpperCase();
+                if(c) {
+                    smtpLookup[c] = {
+                        size: String(row[3] || '20').includes('40') ? 40 : 20,
+                        vessel: String(row[5] || '-'),
+                        discharge: row[18] || row[17] || '-'
+                    };
+                }
+            });
+        }
+
+        const hkrRemarkLookup = {};
+        if (rawSheets.hkrHmrFiltered) {
+            rawSheets.hkrHmrFiltered.forEach(row => {
+                const c = String(row.ctr_no || '').trim().toUpperCase();
+                if(c) hkrRemarkLookup[c] = row.assigned_remark;
+            });
+        }
+
+        const pendencyRows = [];
+        if (rawSheets.website) {
+            rawSheets.website.slice(1).forEach(row => {
+                if (String(row[8] || '').trim().toUpperCase() !== 'PENDING') return;
+
+                const ctrNo = String(row[3] || '').trim().toUpperCase();
+                const smtpData = smtpLookup[ctrNo] || { size: 20, vessel: 'UNKNOWN', discharge: '-' };
+                const hkrRemark = hkrRemarkLookup[ctrNo] || 'PENDING';
+                const dischargeFmt = formatToDDMMYYYY(smtpData.discharge);
+
+                let daysPending = "-";
+                if(dischargeFmt.includes('-')) {
+                    const parts = dischargeFmt.split('-');
+                    const dDate = new Date(parts[2], parts[1]-1, parts[0]);
+                    const diff = new Date() - dDate;
+                    daysPending = Math.floor(diff / (1000 * 60 * 60 * 24));
+                }
+
+                pendencyRows.push({
+                    remark: hkrRemark,
+                    vessel: smtpData.vessel,
+                    discharge: dischargeFmt,
+                    cont: ctrNo,
+                    size: smtpData.size,
+                    teu: smtpData.size === 40 ? 2 : 1,
+                    days: daysPending
+                });
+            });
+        }
+
+        pendencyRows.sort((a, b) => {
+            const r = a.remark.localeCompare(b.remark);
+            if (r !== 0) return r;
+            const v = a.vessel.localeCompare(b.vessel);
+            if (v !== 0) return v;
+            return a.cont.localeCompare(b.cont);
+        });
+
+        wsPendency.addRows(pendencyRows);
+
+        // Header Styling (Navy Blue)
+        wsPendency.getRow(1).eachCell((cell) => {
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
+        });
+
+        // --- DOWNLOAD ---
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = window.URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `HTPL_Forecast_Pendency_${new Date().toISOString().slice(0,10)}.xlsx`;
+        document.body.appendChild(anchor); // Firefox fix
+        anchor.click();
+        document.body.removeChild(anchor);
+        window.URL.revokeObjectURL(url);
+
+        // Success Message
+        const box = document.createElement('div');
+        box.innerHTML = `
+            <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+                ✓ Detailed Excel Downloaded!
+            </div>`;
+        document.body.appendChild(box);
+        setTimeout(() => box.remove(), 4000);
+
+    } catch (err) {
+        console.error(err);
+        alert("Error exporting Excel: " + err.message);
+    } finally {
+        // 4. Reset Button State Forcefully
+        exportBtn.removeAttribute('data-loading');
+        exportBtn.innerHTML = `<i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Export Detailed Excel`;
+        lucide.createIcons();
+    }
+};
         // ==========================================
         // Firebase Configuration (Consolidated)
         // ==========================================
@@ -911,7 +1159,7 @@ csvUploadInput.addEventListener('change', () => {
         const customRemarksInput = document.getElementById('customRemarksInput');
         const updateCustomRemarksBtn = document.getElementById('updateCustomRemarksBtn');
 
-        let rawSheets = { shipper: [], smtp: [], website: [] };
+        let rawSheets = { shipper: [], smtp: [], website: [], hkrHmrFiltered: [] };
         let selectedShipper = null;
         let currentSheetInView = null;
         let trainDateRemarksMap = {}; 
@@ -1170,68 +1418,72 @@ document.getElementById('openFoisWithFnrBtn').addEventListener('click', () => {
         }
 
                 function renderMainTable(groups) {
-            let g20 = 0, g40 = 0, gR = 0, gA = 0, gT = 0, gP = 0;
-            document.getElementById('reportRows').innerHTML = groups.map(bl => {
-                g20 += bl.stats.s20; 
-                g40 += bl.stats.s40; 
-                gR += bl.stats.railed; 
-                gP += bl.stats.pending;
-                const arrivedCount = bl.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
-                const inTransitCount = bl.stats.railed - arrivedCount;
-                gA += arrivedCount;
-                gT += inTransitCount;
-               
-                const progressPercent = bl.stats.total > 0 ? Math.round((arrivedCount / bl.stats.total) * 100) : 0;
-                const sizeLabel = `(${bl.stats.total}X${bl.stats.s40 > 0 ? '40' : '20'})`;
-                
-                // Merged Vessel / Handover
-                const vesselDisplay = (!bl.isAnySmtp && bl.stats.railed === 0) 
-                    ? '<span class="text-rose-600 font-bold ">NOT Handover</span>' 
-                    : `${bl.vessel} / ${bl.handoverDt}`;
-                
-                // BL with LINE in bracket
-                const blDisplay = `${bl.blNo} (${bl.line})`;
+    let g20 = 0, g40 = 0, gR = 0, gA = 0, gT = 0, gP = 0;
+    
+    document.getElementById('reportRows').innerHTML = groups.map(bl => {
+        g20 += bl.stats.s20; 
+        g40 += bl.stats.s40; 
+        gR += bl.stats.railed; 
+        gP += bl.stats.pending;
+        const arrivedCount = bl.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
+        const inTransitCount = bl.stats.railed - arrivedCount;
+        gA += arrivedCount;
+        gT += inTransitCount;
+        
+        const progressPercent = bl.stats.total > 0 ? Math.round((arrivedCount / bl.stats.total) * 100) : 0;
+        
+        // --- NEW: Generate Tag String (HKR, HMR, HDL) ---
+        const tags = Array.from(bl.destTags || []).sort().join(', ');
+        const tagDisplay = tags ? `<span class="text-[9px] font-black text-indigo-700 ml-1">(${tags})</span>` : '';
 
-                return `
-                    <tr class="border-b border-slate-200 hover:bg-slate-50 transition-colors">
-                        <td class="px-2 py-1 border-r border-slate-300 min-w-[160px] relative overflow-hidden group">
-                            <div class="absolute top-0 left-0 h-full bg-blue-50 transition-all duration-1000 ease-out z-0 pointer-events-none" style="width: ${progressPercent}%"></div>
-                            <div class="relative z-10 flex flex-col">
-                                <div class="flex justify-between items-center mb-0.5">
-                                    <span class="font-bold text-slate-900 truncate pr-1">
-                                        <span class="text-blue-800 text-[8.5px] font-black mr-1">${progressPercent}%</span>
-                                        ${blDisplay}
-                                        <span class="text-black-600 text-[9px] uppercase font-bold">${sizeLabel}</span>
-                                    </span>
-                                </div>
-                                <div class="w-full h-0 bg-slate-200/50 rounded-full overflow-hidden">
-                                    <div class="h-full bg-green-400" style="width: ${progressPercent}%"></div>
-                                </div>
-                            </div>
-                        </td>
-                        <td class="px-2 py-1 text-slate-700 border-r border-slate-300 font-bold uppercase truncate">${vesselDisplay}</td>
-                        <td class="px-1 py-1 text-center border-r border-slate-300 bg-slate-50/50 ${bl.stats.s20 > 0 ? 'text-slate-800' : 'text-slate-200'}">${bl.stats.s20 || '-'}</td>
-                        <td class="px-1 py-1 text-center border-r border-slate-300 bg-slate-50/50 ${bl.stats.s40 > 0 ? 'text-slate-800' : 'text-slate-200'}">${bl.stats.s40 || '-'}</td>
-                        <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-emerald-50 text-emerald-700">${bl.stats.railed || '-'}</td>
-                        <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-blue-50 text-blue-700">${arrivedCount || '-'}</td>
-                        <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-orange-50 text-orange-700">${inTransitCount || '-'}</td>
-                        <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-rose-50 text-rose-700">${bl.stats.pending || '-'}</td>
-                    </tr>
-                `;
-            }).join('');
+        const sizeLabel = `(${bl.stats.total}X${bl.stats.s40 > 0 ? '40' : '20'})${tagDisplay}`;
+        
+        const vesselDisplay = (!bl.isAnySmtp && bl.stats.railed === 0) 
+            ? '<span class="text-rose-600 font-bold ">NOT Handover</span>' 
+            : `${bl.vessel} / ${bl.handoverDt}`;
+        
+        const blDisplay = `${bl.blNo} (${bl.line})`;
 
-            document.getElementById('reportFooter').innerHTML = `
-                <tr class="bg-slate-100 text-slate-900">
-                    <td colspan="2" class="px-2 py-1.5 text-right uppercase font-bold text-slate-500 text-[9px]">Grand Totals</td>
-                    <td class="px-1 py-1.5 text-center text-xs font-bold border-r border-slate-300">${g20}</td>
-                    <td class="px-1 py-1.5 text-center text-xs font-bold border-r border-slate-300">${g40}</td>
-                    <td class="px-1.5 py-1.5 text-center text-xs font-bold text-emerald-700 border-r border-slate-300">${gR}</td>
-                    <td class="px-1.5 py-1.5 text-center text-xs font-bold text-blue-700 border-r border-slate-300">${gA}</td>
-                    <td class="px-1.5 py-1.5 text-center text-xs font-bold text-orange-700 border-r border-slate-300">${gT}</td>
-                    <td class="px-1.5 py-1.5 text-center text-xs font-bold text-rose-700">${gP}</td>
-                </tr>
-            `;
-        }
+        return `
+            <tr class="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+                <td class="px-2 py-1 border-r border-slate-300 min-w-[160px] relative overflow-hidden group">
+                    <div class="absolute top-0 left-0 h-full bg-blue-50 transition-all duration-1000 ease-out z-0 pointer-events-none" style="width: ${progressPercent}%"></div>
+                    <div class="relative z-10 flex flex-col">
+                        <div class="flex justify-between items-center mb-0.5">
+                            <span class="font-bold text-slate-900 truncate pr-1">
+                                <span class="text-blue-800 text-[8.5px] font-black mr-1">${progressPercent}%</span>
+                                ${blDisplay}
+                                <span class="text-black-600 text-[9px] uppercase font-bold ml-1">${sizeLabel}</span>
+                            </span>
+                        </div>
+                        <div class="w-full h-0 bg-slate-200/50 rounded-full overflow-hidden">
+                            <div class="h-full bg-green-400" style="width: ${progressPercent}%"></div>
+                        </div>
+                    </div>
+                </td>
+                <td class="px-2 py-1 text-slate-700 border-r border-slate-300 font-bold uppercase truncate">${vesselDisplay}</td>
+                <td class="px-1 py-1 text-center border-r border-slate-300 bg-slate-50/50 ${bl.stats.s20 > 0 ? 'text-slate-800' : 'text-slate-200'}">${bl.stats.s20 || '-'}</td>
+                <td class="px-1 py-1 text-center border-r border-slate-300 bg-slate-50/50 ${bl.stats.s40 > 0 ? 'text-slate-800' : 'text-slate-200'}">${bl.stats.s40 || '-'}</td>
+                <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-emerald-50 text-emerald-700">${bl.stats.railed || '-'}</td>
+                <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-blue-50 text-blue-700">${arrivedCount || '-'}</td>
+                <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-orange-50 text-orange-700">${inTransitCount || '-'}</td>
+                <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-rose-50 text-rose-700">${bl.stats.pending || '-'}</td>
+            </tr>
+        `;
+    }).join('');
+
+    document.getElementById('reportFooter').innerHTML = `
+        <tr class="bg-slate-100 text-slate-900">
+            <td colspan="2" class="px-2 py-1.5 text-right uppercase font-bold text-slate-500 text-[9px]">Grand Totals</td>
+            <td class="px-1 py-1.5 text-center text-xs font-bold border-r border-slate-300">${g20}</td>
+            <td class="px-1 py-1.5 text-center text-xs font-bold border-r border-slate-300">${g40}</td>
+            <td class="px-1.5 py-1.5 text-center text-xs font-bold text-emerald-700 border-r border-slate-300">${gR}</td>
+            <td class="px-1.5 py-1.5 text-center text-xs font-bold text-blue-700 border-r border-slate-300">${gA}</td>
+            <td class="px-1.5 py-1.5 text-center text-xs font-bold text-orange-700 border-r border-slate-300">${gT}</td>
+            <td class="px-1.5 py-1.5 text-center text-xs font-bold text-rose-700">${gP}</td>
+        </tr>
+    `;
+}
 
         function renderDetailedBreakdown(groups) {
             const railedGroups = groups.filter(g => g.stats.railed > 0);
@@ -1295,170 +1547,156 @@ document.getElementById('openFoisWithFnrBtn').addEventListener('click', () => {
             lucide.createIcons();
         }
 function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
-            // Check karein ki data Shipper se lena hai ya SMTP se
-            const dataSource = (consIndex === 24) ? rawSheets.smtp : rawSheets.shipper;
+    // Check Source
+    const dataSource = (consIndex === 24) ? rawSheets.smtp : rawSheets.shipper;
+    
+    const headers = dataSource[0];
+    if (!headers) return;
+
+    const sizeIndex = headers.findIndex(h => String(h).toUpperCase().includes('SIZE'));
+    const relevantRows = dataSource.slice(1).filter(row => String(row[consIndex] || '').trim() === selectedShipper);
+    
+    const blGroups = {};
+    const excludedTerms = ['CT3', 'CT4', 'MICT', 'SPRH', 'T2'];
+    
+    relevantRows.forEach(row => {
+        const contNo = (consIndex === 24) ? String(row[2] || '').trim() : String(row[0] || '').trim();
+        const blNo = (consIndex === 24) ? String(row[9] || 'N/A').trim() : String(row[2] || 'N/A').trim();
+        const sizeValue = String(row[sizeIndex] || '').includes('40') ? 40 : 20;
+
+        if (!blGroups[blNo]) {
+            blGroups[blNo] = { 
+                blNo, 
+                stats: { total: 0, s20: 0, s40: 0, railed: 0, pending: 0, r20: 0, r40: 0, p20: 0, p40: 0 },
+                line: '-', vessel: '-', handoverDt: '-', 
+                railedDetails: [], pendingRemarks: [], smtpBRemarks: [], 
+                destTags: new Set(), // NEW: To store unique HKR/HMR/HDL tags
+                isAnySmtp: false
+            };
+        }
+
+        const smtpRow = rawSheets.smtp.find(s => String(s[2] || '').trim() === contNo);
+        const webRow = rawSheets.website.find(w => String(w[3] || '').trim() === contNo);
+        
+        if (smtpRow) {
+            blGroups[blNo].isAnySmtp = true;
+            if (blGroups[blNo].vessel === '-') blGroups[blNo].vessel = smtpRow[5] || '-'; 
+            if (blGroups[blNo].handoverDt === '-') blGroups[blNo].handoverDt = smtpRow[18] || smtpRow[17] || '-'; 
+            if (blGroups[blNo].line === '-') blGroups[blNo].line = smtpRow[23] || '-'; 
             
-            const headers = dataSource[0];
-            if (!headers) return;
-
-            const sizeIndex = headers.findIndex(h => String(h).toUpperCase().includes('SIZE'));
-            const relevantRows = dataSource.slice(1).filter(row => String(row[consIndex] || '').trim() === selectedShipper);
-            
-            const blGroups = {};
-            const excludedTerms = ['CT3', 'CT4', 'MICT', 'SPRH', 'T2'];
-            
-            relevantRows.forEach(row => {
-                // Column mapping based on data source
-                const contNo = (consIndex === 24) ? String(row[2] || '').trim() : String(row[0] || '').trim();
-                const blNo = (consIndex === 24) ? String(row[9] || 'N/A').trim() : String(row[2] || 'N/A').trim();
-                const sizeValue = String(row[sizeIndex] || '').includes('40') ? 40 : 20;
-                if (!blGroups[blNo]) {
-                    blGroups[blNo] = { 
-                        blNo, stats: { total: 0, s20: 0, s40: 0, railed: 0, pending: 0, r20: 0, r40: 0, p20: 0, p40: 0 },
-                        line: '-', vessel: '-', handoverDt: '-', 
-                        railedDetails: [], pendingRemarks: [], smtpBRemarks: [], isAnySmtp: false
-                    };
-                }
-
-                const smtpRow = rawSheets.smtp.find(s => String(s[2] || '').trim() === contNo);
-                const webRow = rawSheets.website.find(w => String(w[3] || '').trim() === contNo);
-                
-                if (smtpRow) {
-                    blGroups[blNo].isAnySmtp = true;
-                    if (blGroups[blNo].vessel === '-') blGroups[blNo].vessel = smtpRow[5] || '-'; 
-                    if (blGroups[blNo].handoverDt === '-') blGroups[blNo].handoverDt = smtpRow[18] || smtpRow[17] || '-'; 
-                    if (blGroups[blNo].line === '-') blGroups[blNo].line = smtpRow[23] || '-'; 
-                    const cellBVal = String(smtpRow[1] || '').trim();
-                    if (cellBVal && !excludedTerms.includes(cellBVal.toUpperCase())) {
-                        if (!blGroups[blNo].smtpBRemarks.includes(cellBVal)) blGroups[blNo].smtpBRemarks.push(cellBVal);
-                    }
-                }
-
-                const railDateRaw = webRow ? webRow[8] : '';
-                const railDateStr = String(railDateRaw || '').trim();
-                const isRailed = railDateStr && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(railDateStr.toUpperCase());
-
-                if (isRailed) {
-                    const trainNo = String(webRow[4] || '').trim();
-                    const remark = trainDateRemarksMap[`${trainNo}_${railDateStr}`] || String(webRow[9] || '-').trim();
-                    const formattedRailDate = formatToDDMMYYYY_HHMM(railDateRaw);
-                    let existingDetail = blGroups[blNo].railedDetails.find(d => d.train === trainNo && d.date === formattedRailDate);
-                    if (existingDetail) existingDetail.count++;
-                    else blGroups[blNo].railedDetails.push({ train: trainNo || 'Railed', date: formattedRailDate, remark: remark, count: 1 });
-                    if (sizeValue === 20) blGroups[blNo].stats.r20++; else blGroups[blNo].stats.r40++;
-                } else {
-                    const pRem = (webRow && webRow[9] && webRow[9] !== '-') ? webRow[9] : (smtpRow && smtpRow[22] ? smtpRow[22] : null);
-                    if (pRem && !blGroups[blNo].pendingRemarks.includes(pRem)) blGroups[blNo].pendingRemarks.push(pRem);
-                    if (sizeValue === 20) blGroups[blNo].stats.p20++; else blGroups[blNo].stats.p40++;
-                }
-                blGroups[blNo].stats.total++;
-                if (sizeValue === 20) blGroups[blNo].stats.s20++; else blGroups[blNo].stats.s40++;
-                if (isRailed) blGroups[blNo].stats.railed++; else blGroups[blNo].stats.pending++;
-            });
-
-            // --- UPDATED SORTING LOGIC ---
-            currentShipperAllGroups = Object.values(blGroups);
-
-            currentShipperAllGroups.sort((a, b) => {
-                const isNotHandoverA = (!a.isAnySmtp && a.stats.railed === 0);
-                const isNotHandoverB = (!b.isAnySmtp && b.stats.railed === 0);
-
-                if (isNotHandoverA && !isNotHandoverB) return -1;
-                if (!isNotHandoverA && isNotHandoverB) return 1;
-
-                const parseSortDate = (str) => {
-                    if (!str || str === '-' || str === 'N/A') return 0;
-                    const parts = str.split(/[-.\/\s]/);
-                    if (parts.length < 3) return 0;
-                    
-                    let d = parseInt(parts[0]);
-                    let m = parseInt(parts[1]) - 1;
-                    let y = parseInt(parts[2]);
-                    if (y < 100) y += 2000;
-                    
-                    return new Date(y, m, d).getTime();
-                };
-
-                const dateA = parseSortDate(a.handoverDt);
-                const dateB = parseSortDate(b.handoverDt);
-
-                return dateB - dateA; // New to Old
-            });
-
-            // VESSEL FILTER LOGIC FIX (Auto-Select & Auto-Render)
-            if (shouldPopulateFilters) {
-                // 1. Reset
-                window.selectedVessels = [];
-                document.getElementById('vesselDropdownLabel').innerText = "Select Vessels";
-
-                // 2. Prepare Map
-                const vesselDateMap = {};
-                currentShipperAllGroups.forEach(g => {
-                    let currentVal = g.vessel && g.vessel !== '-' && g.vessel !== '' ? g.vessel : 'NOT HANDOVER';
-                    const currentDt = g.handoverDt;
-
-                    const parseDate = (str) => {
-                        if (!str || str === '-' || str === 'N/A') return 0;
-                        const p = str.split(/[-.\/\s]/);
-                        let y = parseInt(p[2]); if (y < 100) y += 2000;
-                        return new Date(y, parseInt(p[1]) - 1, parseInt(p[0])).getTime();
-                    };
-                    const newTime = parseDate(currentDt);
-
-                    if (!vesselDateMap[currentVal] || newTime > vesselDateMap[currentVal].time) {
-                        vesselDateMap[currentVal] = { name: currentVal, time: newTime };
-                    }
-                });
-
-                // 3. Sort & Force NOT HANDOVER to top
-                let sortedObjects = Object.values(vesselDateMap).sort((a, b) => b.time - a.time);
-                let sortedVesselNames = sortedObjects.map(v => v.name);
-
-                if (sortedVesselNames.includes('NOT HANDOVER')) {
-                    sortedVesselNames = sortedVesselNames.filter(v => v !== 'NOT HANDOVER');
-                    sortedVesselNames.unshift('NOT HANDOVER');
-                }
-
-                // 4. AUTO-SELECT LOGIC: Only Select Vessels with Pending Units
-                const pendingVessels = [];
-                sortedVesselNames.forEach(v => {
-                    const relatedGroups = currentShipperAllGroups.filter(g => {
-                        const gVessel = (g.vessel && g.vessel !== '-' && g.vessel !== '') ? g.vessel : 'NOT HANDOVER';
-                        return gVessel === v;
-                    });
-
-                    let total = 0;
-                    let arrived = 0;
-                    relatedGroups.forEach(g => {
-                        total += g.stats.total;
-                        arrived += g.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
-                    });
-
-                    // If pending units exist (Total > Arrived), add to default selection
-                    if (total > arrived) {
-                        pendingVessels.push(v);
-                    }
-                });
-
-                // Set selection logic
-                if (pendingVessels.length > 0) {
-                    window.selectedVessels = pendingVessels;
-                    document.getElementById('vesselDropdownLabel').innerText = `${pendingVessels.length} Active Vessels Selected`;
-                } else {
-                    document.getElementById('vesselDropdownLabel').innerText = "All Completed (Select to View)";
-                }
-
-                // 5. Populate Menu
-                window.populateVesselFilters(sortedVesselNames);
-
-                // 6. BL Filter
-                const uniqueBLs = currentShipperAllGroups.map(g => g.blNo).filter(Boolean).sort();
-                blFilter.innerHTML = '<option value="ALL">All BLs</option>' + uniqueBLs.map(b => `<option value="${b}">${b}</option>`).join('');
-
-                // 7. *** CRITICAL FIX: APPLY FILTERS IMMEDIATELY ***
-                applyFilters();
+            const cellBVal = String(smtpRow[1] || '').trim();
+            if (cellBVal && !excludedTerms.includes(cellBVal.toUpperCase())) {
+                if (!blGroups[blNo].smtpBRemarks.includes(cellBVal)) blGroups[blNo].smtpBRemarks.push(cellBVal);
             }
-        }        function renderShipperList(shippers, consIndex) {
+
+            // --- NEW: Capture HKR/HMR/HDL from Column W (Index 22) ---
+            const remarkVal = String(smtpRow[22] || '').trim().toUpperCase();
+            if (['HKR', 'HMR', 'HDL'].includes(remarkVal)) {
+                blGroups[blNo].destTags.add(remarkVal);
+            }
+        }
+
+        const railDateRaw = webRow ? webRow[8] : '';
+        const railDateStr = String(railDateRaw || '').trim();
+        const isRailed = railDateStr && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(railDateStr.toUpperCase());
+
+        if (isRailed) {
+            const trainNo = String(webRow[4] || '').trim();
+            const remark = trainDateRemarksMap[`${trainNo}_${railDateStr}`] || String(webRow[9] || '-').trim();
+            const formattedRailDate = formatToDDMMYYYY_HHMM(railDateRaw);
+            let existingDetail = blGroups[blNo].railedDetails.find(d => d.train === trainNo && d.date === formattedRailDate);
+            if (existingDetail) existingDetail.count++;
+            else blGroups[blNo].railedDetails.push({ train: trainNo || 'Railed', date: formattedRailDate, remark: remark, count: 1 });
+            if (sizeValue === 20) blGroups[blNo].stats.r20++; else blGroups[blNo].stats.r40++;
+        } else {
+            const pRem = (webRow && webRow[9] && webRow[9] !== '-') ? webRow[9] : (smtpRow && smtpRow[22] ? smtpRow[22] : null);
+            if (pRem && !blGroups[blNo].pendingRemarks.includes(pRem)) blGroups[blNo].pendingRemarks.push(pRem);
+            if (sizeValue === 20) blGroups[blNo].stats.p20++; else blGroups[blNo].stats.p40++;
+        }
+        blGroups[blNo].stats.total++;
+        if (sizeValue === 20) blGroups[blNo].stats.s20++; else blGroups[blNo].stats.s40++;
+        if (isRailed) blGroups[blNo].stats.railed++; else blGroups[blNo].stats.pending++;
+    });
+
+    currentShipperAllGroups = Object.values(blGroups);
+
+    // Sorting Logic
+    currentShipperAllGroups.sort((a, b) => {
+        const isNotHandoverA = (!a.isAnySmtp && a.stats.railed === 0);
+        const isNotHandoverB = (!b.isAnySmtp && b.stats.railed === 0);
+        if (isNotHandoverA && !isNotHandoverB) return -1;
+        if (!isNotHandoverA && isNotHandoverB) return 1;
+
+        const parseSortDate = (str) => {
+            if (!str || str === '-' || str === 'N/A') return 0;
+            const parts = str.split(/[-.\/\s]/);
+            if (parts.length < 3) return 0;
+            let d = parseInt(parts[0]);
+            let m = parseInt(parts[1]) - 1;
+            let y = parseInt(parts[2]);
+            if (y < 100) y += 2000;
+            return new Date(y, m, d).getTime();
+        };
+        const dateA = parseSortDate(a.handoverDt);
+        const dateB = parseSortDate(b.handoverDt);
+        return dateB - dateA; 
+    });
+
+    if (shouldPopulateFilters) {
+        window.selectedVessels = [];
+        document.getElementById('vesselDropdownLabel').innerText = "Select Vessels";
+        
+        // Auto Select Logic
+        const vesselDateMap = {};
+        currentShipperAllGroups.forEach(g => {
+            let currentVal = g.vessel && g.vessel !== '-' && g.vessel !== '' ? g.vessel : 'NOT HANDOVER';
+            const parseDate = (str) => {
+                if (!str || str === '-' || str === 'N/A') return 0;
+                const p = str.split(/[-.\/\s]/);
+                let y = parseInt(p[2]); if (y < 100) y += 2000;
+                return new Date(y, parseInt(p[1]) - 1, parseInt(p[0])).getTime();
+            };
+            const newTime = parseDate(g.handoverDt);
+            if (!vesselDateMap[currentVal] || newTime > vesselDateMap[currentVal].time) {
+                vesselDateMap[currentVal] = { name: currentVal, time: newTime };
+            }
+        });
+
+        let sortedObjects = Object.values(vesselDateMap).sort((a, b) => b.time - a.time);
+        let sortedVesselNames = sortedObjects.map(v => v.name);
+        if (sortedVesselNames.includes('NOT HANDOVER')) {
+            sortedVesselNames = sortedVesselNames.filter(v => v !== 'NOT HANDOVER');
+            sortedVesselNames.unshift('NOT HANDOVER');
+        }
+
+        const pendingVessels = [];
+        sortedVesselNames.forEach(v => {
+            const relatedGroups = currentShipperAllGroups.filter(g => {
+                const gVessel = (g.vessel && g.vessel !== '-' && g.vessel !== '') ? g.vessel : 'NOT HANDOVER';
+                return gVessel === v;
+            });
+            let total = 0, arrived = 0;
+            relatedGroups.forEach(g => {
+                total += g.stats.total;
+                arrived += g.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
+            });
+            if (total > arrived) pendingVessels.push(v);
+        });
+
+        if (pendingVessels.length > 0) {
+            window.selectedVessels = pendingVessels;
+            document.getElementById('vesselDropdownLabel').innerText = `${pendingVessels.length} Active Vessels Selected`;
+        } else {
+            document.getElementById('vesselDropdownLabel').innerText = "All Completed (Select to View)";
+        }
+
+        window.populateVesselFilters(sortedVesselNames);
+        const uniqueBLs = currentShipperAllGroups.map(g => g.blNo).filter(Boolean).sort();
+        blFilter.innerHTML = '<option value="ALL">All BLs</option>' + uniqueBLs.map(b => `<option value="${b}">${b}</option>`).join('');
+        
+        applyFilters();
+    }
+}        function renderShipperList(shippers, consIndex) {
             const listEl = document.getElementById('shipperList');
             const filter = shipperSearch.value.toLowerCase();
             listEl.innerHTML = shippers
@@ -1649,6 +1887,20 @@ async function saveToCloud() {
     }
 }
 
+// Helper: Save only HKR filtered data quickly (faster than full save)
+async function quickSaveHkrData() {
+    if (!isCloudEnabled || !auth.currentUser) return false;
+    
+    try {
+        const hkrData = rawSheets.hkrHmrFiltered || [];
+        const hkrRef = doc(db, 'artifacts', appId, 'public', 'data', 'hkr_filtered');
+        await setDoc(hkrRef, { data: hkrData, updatedAt: new Date().toISOString() });
+        return true;
+    } catch (e) {
+        console.error("Quick HKR save failed:", e);
+        return false;
+    }
+}
         // ------------------------------------------
         // 3. LOGIN & MODAL CONTROLS
         // ------------------------------------------
@@ -1952,6 +2204,7 @@ document.getElementById('updateCustomRemarksBtn').addEventListener('click', () =
         // ------------------------------------------
         // 5. UPDATE MODAL VIEW LOGIC & DELETE ROW
         // ------------------------------------------
+	
         window.deleteRow = (index) => {
             if (!currentSheetInView) return;
             if (index === 0) return; // Prevent deleting header
@@ -1993,100 +2246,176 @@ document.getElementById('updateCustomRemarksBtn').addEventListener('click', () =
     window.viewSheetData = (sheetName) => {
     currentSheetInView = sheetName;
     const container = document.getElementById('sheetDataContainer');
-    const data = rawSheets[sheetName];
-    
-    const webSection = document.getElementById('websiteUpdateSection');
-    const smtpSection = document.getElementById('smtpUpdateSection');
-    const shipperSection = document.getElementById('shipperUpdateSection');
-        
+
+    // Reset container first
+    container.innerHTML = '';
+
+    // Hide all context tool sections by default
+    const sections = [
+        'shipperUpdateSection',
+        'smtpUpdateSection',
+        'websiteUpdateSection'
+    ];
+    sections.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+    });
+
+    // Show Add Shipper button only in shipper tab
     const addShipperBtn = document.getElementById('openAddShipperBtn');
-    if (sheetName === 'shipper') {
-        addShipperBtn.classList.remove('hidden');
-    } else {
-        addShipperBtn.classList.add('hidden');
+    if (addShipperBtn) {
+        if (sheetName === 'shipper') {
+            addShipperBtn.classList.remove('hidden');
+        } else {
+            addShipperBtn.classList.add('hidden');
+        }
     }
-    
-            if (sheetName === 'website') {
-                webSection.classList.remove('hidden');
-                webSection.classList.add('flex');
-                smtpSection.classList.add('hidden');
-                smtpSection.classList.remove('flex');
-                shipperSection.classList.add('hidden');
-                shipperSection.classList.remove('flex');
-                populateRakeList();
-            } else if (sheetName === 'smtp') {
-                smtpSection.classList.remove('hidden');
-                smtpSection.classList.add('flex');
-                webSection.classList.add('hidden');
-                webSection.classList.remove('flex');
-                shipperSection.classList.add('hidden');
-                shipperSection.classList.remove('flex');
-            } else if (sheetName === 'shipper') {
-                shipperSection.classList.remove('hidden');
-                shipperSection.classList.add('flex');
-                webSection.classList.add('hidden');
-                webSection.classList.remove('flex');
-                smtpSection.classList.add('hidden');
-                smtpSection.classList.remove('flex');
-            } else {
-                webSection.classList.add('hidden');
-                webSection.classList.remove('flex');
-                smtpSection.classList.add('hidden');
-                smtpSection.classList.remove('flex');
-                shipperSection.classList.add('hidden');
-                shipperSection.classList.remove('flex');
+
+    // Show correct context tools
+    if (sheetName === 'shipper') {
+        document.getElementById('shipperUpdateSection').classList.remove('hidden');
+        document.getElementById('shipperUpdateSection').classList.add('flex');
+    } else if (sheetName === 'smtp') {
+        document.getElementById('smtpUpdateSection').classList.remove('hidden');
+        document.getElementById('smtpUpdateSection').classList.add('flex');
+    } else if (sheetName === 'website') {
+        document.getElementById('websiteUpdateSection').classList.remove('hidden');
+        document.getElementById('websiteUpdateSection').classList.add('flex');
+        populateRakeList();
+    }
+
+    // Tab active styling
+    document.querySelectorAll('.sheet-tab-btn').forEach(btn => {
+        if (btn.getAttribute('data-sheet') === sheetName) {
+            btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+            btn.classList.remove('bg-white', 'text-slate-700');
+        } else {
+            btn.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+            btn.classList.add('bg-white', 'text-slate-700');
+        }
+    });
+// Show/hide COMPLETE DATA DELETE button only for HKR tab
+const deleteAllBtn = document.getElementById('deleteAllRowsBtn');
+if (deleteAllBtn) {
+    if (sheetName === 'hkr') {
+        deleteAllBtn.style.display = 'inline-flex';
+        deleteAllBtn.disabled = false;
+        deleteAllBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    } else {
+        deleteAllBtn.style.display = 'none';
+        deleteAllBtn.disabled = true;
+        deleteAllBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+}
+    // ────────────────────────────────────────────────
+    // HKR DATA TAB ────────────────────────────────────
+    // ────────────────────────────────────────────────
+    if (sheetName === 'hkr') {
+        const data = rawSheets.hkrHmrFiltered || [];
+
+        if (data.length === 0) {
+            container.innerHTML = `
+                <div class="p-10 text-center font-bold text-slate-400 uppercase text-[10px]">
+                    No HKR/HMR data saved yet.<br>
+                    <span class="text-[9px] normal-case mt-2 block">
+                        Upload HKR/HMR Excel to populate this view.
+                    </span>
+                </div>`;
+            return;
+        }
+
+        let html = `<table id="editableTable" class="min-w-full text-[9px] uppercase border-collapse">`;
+
+        // Header
+        html += `<thead><tr class="bg-slate-800 text-white font-bold sticky top-0 z-10">`;
+        html += `<th class="px-2 py-1.5 border-r border-slate-200 w-10 text-center">ACTION</th>`;
+        html += `<th class="px-2 py-1.5 border-r border-slate-200">Vessel Name</th>`;
+        html += `<th class="px-2 py-1.5 border-r border-slate-200">ETA DTTM</th>`;
+        html += `<th class="px-2 py-1.5 border-r border-slate-200">Container No</th>`;
+        html += `<th class="px-2 py-1.5 border-r border-slate-200">Size</th>`;
+        html += `<th class="px-2 py-1.5 border-r border-slate-200">Destination</th>`;
+        html += `<th class="px-2 py-1.5 border-r border-slate-200">Line Code</th>`;
+        html += `<th class="px-2 py-1.5 border-r border-slate-200">Assigned Remark</th>`;
+        html += `<th class="px-2 py-1.5 border-r border-slate-200">Uploaded At</th>`;
+        html += `</tr></thead><tbody>`;
+
+        // Rows
+        data.forEach((row, rowIndex) => {
+            html += `<tr class="border-b border-slate-200 hover:bg-slate-50 transition-colors">`;
+            html += `<td class="px-2 py-1.5 border-r border-slate-200 text-center">
+                        <button onclick="window.deleteHkrRow(${rowIndex})" class="delete-row-btn text-rose-500 hover:text-rose-700 transition-all">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                     </td>`;
+            html += `<td class="px-2 py-1.5 border-r border-slate-200">${row.vessel_name || '-'}</td>`;
+            html += `<td class="px-2 py-1.5 border-r border-slate-200">${row.eta_dttm || '-'}</td>`;
+            html += `<td class="px-2 py-1.5 border-r border-slate-200 font-mono">${row.ctr_no || '-'}</td>`;
+            html += `<td class="px-2 py-1.5 border-r border-slate-200 text-center">${row.ctr_size || '-'}</td>`;
+            html += `<td class="px-2 py-1.5 border-r border-slate-200">${row.destination_name || '-'}</td>`;
+            html += `<td class="px-2 py-1.5 border-r border-slate-200">${row.line_code || '-'}</td>`;
+            html += `<td class="px-2 py-1.5 border-r border-slate-200 font-bold text-center ${
+                row.assigned_remark === 'HMR' ? 'text-pink-600' :
+                row.assigned_remark === 'HKR' ? 'text-emerald-600' :
+                row.assigned_remark === 'HDL' ? 'text-blue-600' : 'text-slate-500'
+            }">${row.assigned_remark || '-'}</td>`;
+            html += `<td class="px-2 py-1.5 border-r border-slate-200 text-[9px] text-slate-500 text-center">${
+                row.upload_timestamp ? new Date(row.upload_timestamp).toLocaleString('en-IN', {
+                    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                }) : '-'
+            }</td>`;
+            html += `</tr>`;
+        });
+
+        html += `</tbody></table>`;
+        container.innerHTML = html;
+        lucide.createIcons();
+        return;
+    }
+
+    // ────────────────────────────────────────────────
+    // DEFAULT BEHAVIOR FOR OTHER TABS
+    // ────────────────────────────────────────────────
+    const data = rawSheets[sheetName] || [];
+
+    if (data.length === 0) {
+        container.innerHTML = `<div class="p-10 text-center font-bold text-slate-400 uppercase text-[10px]">No data found in ${sheetName.toUpperCase()}</div>`;
+        return;
+    }
+
+    let html = `<table id="editableTable" class="min-w-full text-[9px] uppercase border-collapse">`;
+    data.forEach((row, rowIndex) => {
+        const isHeader = rowIndex === 0;
+        const rowClass = isHeader ? 'bg-slate-800 text-white font-bold sticky top-0' : 'border-b border-slate-200 hover:bg-slate-50';
+        html += `<tr class="${rowClass}">`;
+
+        // Delete column
+        if (isHeader) {
+            html += `<th class="px-2 py-1.5 border-r border-slate-200 w-10 text-center">ACTION</th>`;
+        } else {
+            html += `<td class="px-2 py-1.5 border-r border-slate-200 text-center">
+                        <button onclick="window.deleteRow(${rowIndex})" class="delete-row-btn text-rose-500 transition-all">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </button>
+                     </td>`;
+        }
+
+        const maxCols = Math.max(...data.map(r => r.length || 0));
+        for (let colIndex = 0; colIndex < maxCols; colIndex++) {
+            if (sheetName === 'smtp') {
+                const allowed = [1,2,3,5,9,17,18,22,23,24,26];
+                if (!allowed.includes(colIndex)) continue;
             }
-
-            document.querySelectorAll('.sheet-tab-btn').forEach(btn => {
-                if (btn.getAttribute('data-sheet') === sheetName) {
-                    btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
-                    btn.classList.remove('bg-white', 'text-slate-700');
-                } else {
-                    btn.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
-                    btn.classList.add('bg-white', 'text-slate-700');
-                }
-            });
-
-            if (!data || data.length === 0) {
-                container.innerHTML = `<div class="p-10 text-center font-bold text-slate-400 uppercase text-[10px]">No data found in ${sheetName}</div>`;
-                return;
-            }
-
-            let html = `<table id="editableTable" class="min-w-full text-[9px] uppercase">`;
-            data.forEach((row, rowIndex) => {
-                const isHeader = rowIndex === 0;
-                const rowClass = isHeader ? 'bg-slate-800 text-white font-bold sticky top-0' : 'border-b border-slate-200 hover:bg-slate-50';
-                html += `<tr class="${rowClass}">`;
-                
-                // Add Delete Action Column
-                if (isHeader) {
-                    html += `<th class="px-2 py-1.5 border-r border-slate-200 w-10 text-center">ACTION</th>`;
-                } else {
-                    html += `<td class="px-2 py-1.5 border-r border-slate-200 text-center">
-                                <button onclick="window.deleteRow(${rowIndex})" class="delete-row-btn text-rose-500 transition-all">
-                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                                </button>
-                             </td>`;
-                }
-
-                const maxCols = Math.max(...data.map(r => r.length));
-                for(let colIndex = 0; colIndex < maxCols; colIndex++) {
-                if (sheetName === 'smtp') {
-                        const allowedIndices = [1, 2, 3, 5, 9, 17, 18, 22, 23, 24, 26];
-                        if (!allowedIndices.includes(colIndex)) continue; 
-                    }
-
-                    const content = row[colIndex] !== undefined && row[colIndex] !== null ? row[colIndex] : '';
-                    html += `<td class="px-2 py-1.5 border-r border-slate-200 truncate max-w-[200px] ${!isHeader ? 'editable-cell' : ''}" 
-                                ${!isHeader ? 'contenteditable="true"' : ''} 
-                                data-row="${rowIndex}" data-col="${colIndex}">${content}</td>`;
-                }
-                html += `</tr>`;
-            });
-            html += `</table>`;
-            container.innerHTML = html;
-            lucide.createIcons();
-        };
+            const content = row[colIndex] ?? '';
+            html += `<td class="px-2 py-1.5 border-r border-slate-200 truncate max-w-[200px] ${!isHeader ? 'editable-cell' : ''}"
+                        ${!isHeader ? 'contenteditable="true"' : ''}
+                        data-row="${rowIndex}" data-col="${colIndex}">${content}</td>`;
+        }
+        html += `</tr>`;
+    });
+    html += `</table>`;
+    container.innerHTML = html;
+    lucide.createIcons();
+};
 
         // ------------------------------------------
         // 6. MAIN APP INITIALIZATION & EVENTS
@@ -2114,7 +2443,9 @@ document.getElementById('updateCustomRemarksBtn').addEventListener('click', () =
 
         authBtn.addEventListener('click', handleLogin);
         document.getElementById('loginPassword').addEventListener('keypress', (e) => { if (e.key === 'Enter') handleLogin(); });
-
+	document.getElementById('tabHKR').addEventListener('click', () => {
+    window.viewSheetData('hkr');
+});
         document.getElementById('tabShipper').addEventListener('click', () => window.viewSheetData('shipper'));
         document.getElementById('tabSmtp').addEventListener('click', () => window.viewSheetData('smtp'));
         document.getElementById('tabWebsite').addEventListener('click', () => window.viewSheetData('website'));
@@ -2842,15 +3173,15 @@ function autoUpdateScanningRemarksInWebsite() {
 
     return updatedCount;
 }
-        // ------------------------------------------
-        // SMTP EXCEL IMPORT LOGIC
-        // ------------------------------------------
-        // --- AUTO-TRANSFER SMTP & WEBSITE LOGIC ---
+        // ==========================================
+// SMTP EXCEL IMPORT LOGIC (Auto Remark: MSC Check -> HKR Data Match Override)
+// ==========================================
 const smtpExcelInput = document.getElementById('smtpExcelInput');
 if (smtpExcelInput) {
     smtpExcelInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
+        
         const reader = new FileReader();
         reader.onload = (evt) => {
             const bstr = evt.target.result;
@@ -2862,27 +3193,69 @@ if (smtpExcelInput) {
 
             let addedCount = 0;
             let transferCount = 0;
-            const activeIndices = [1, 2, 3, 5, 9, 11, 17, 18, 22, 23, 24, 26]; // 11 added for location check
+            let hkrMatchCount = 0; // To track overrides
+            
+            const activeIndices = [1, 2, 3, 5, 9, 11, 17, 18, 22, 23, 24, 26]; 
 
             if (!rawSheets.website || rawSheets.website.length === 0) {
                 rawSheets.website = [["UID", "SR_NO", "BILL_NO", "CONTAINER_NO", "RAKE_NO", "STACK", "SOURCE", "DESTINATION", "RAILING_DATE", "REMARKS"]];
             }
 
             jsonData.slice(1).forEach(exRow => {
-                const contNo = String(exRow[2] || '').trim();
-                const cellLValue = String(exRow[11] || '').toUpperCase(); 
+                const contNo = String(exRow[2] || '').trim().toUpperCase();
+                const cellLValue = String(exRow[11] || '').toUpperCase(); // Location
 
+                // Filter: Only process if Location is KILARAIPUR or LUDHIANA
                 if (contNo && (cellLValue.includes("KILARAIPUR") || cellLValue.includes("LUDHIANA"))) {
-                    // 1. Update SMTP
-                    const alreadyInSmtp = rawSheets.smtp.some(s => String(s[2] || '').trim() === contNo);
-                    if (!alreadyInSmtp) {
-                        let optimizedRow = new Array(27).fill(""); 
-                        activeIndices.forEach(i => { optimizedRow[i] = exRow[i] !== undefined ? exRow[i] : ""; });
-                        rawSheets.smtp.push(optimizedRow);
-                        addedCount++;
+                    
+                    // --- LOGIC START: Determine Remark ---
+                    let finalRemark = "HKR"; // Default
+
+                    // 1. MSC Check (Column X / Index 23)
+                    const lineVal = String(exRow[23] || '').trim().toUpperCase();
+                    if (lineVal.includes("MSC")) {
+                        finalRemark = "-";
                     }
 
-                    // 2. Auto-Transfer to Website
+                    // 2. HKR DATA Match Check (Priority Override)
+                    // Check if this container exists in our saved HKR Data
+                    if (rawSheets.hkrHmrFiltered && rawSheets.hkrHmrFiltered.length > 0) {
+                        const hkrMatch = rawSheets.hkrHmrFiltered.find(row => 
+                            String(row.ctr_no || '').trim().toUpperCase() === contNo
+                        );
+                        
+                        if (hkrMatch && hkrMatch.assigned_remark) {
+                            finalRemark = hkrMatch.assigned_remark; // Overwrite with HKR/HMR/HDL
+                            hkrMatchCount++;
+                        }
+                    }
+
+                    // Set the Final Remark into Excel Row Data (Col W / Index 22)
+                    exRow[22] = finalRemark;
+                    // --- LOGIC END ---
+
+                    // 1. Add to SMTP Sheet (if new)
+                    const alreadyInSmtp = rawSheets.smtp.some(s => String(s[2] || '').trim() === contNo);
+                    
+                    if (!alreadyInSmtp) {
+                        let optimizedRow = new Array(27).fill(""); 
+                        activeIndices.forEach(i => { 
+                            optimizedRow[i] = exRow[i] !== undefined ? exRow[i] : ""; 
+                        });
+                        rawSheets.smtp.push(optimizedRow);
+                        addedCount++;
+                    } else {
+                        // Optional: If you want to UPDATE existing rows with new Remarks too
+                        // Uncomment below lines if needed:
+                        /*
+                        const existingIdx = rawSheets.smtp.findIndex(s => String(s[2]).trim() === contNo);
+                        if (existingIdx !== -1) {
+                            rawSheets.smtp[existingIdx][22] = finalRemark;
+                        }
+                        */
+                    }
+
+                    // 2. Auto-Transfer to Website (if new)
                     const alreadyInWebsite = rawSheets.website.some(w => String(w[3] || '').trim() === contNo);
                     if (!alreadyInWebsite) {
                         const blNo = String(exRow[9] || '').trim();
@@ -2890,7 +3263,15 @@ if (smtpExcelInput) {
                         const tpDateFormatted = formatToDDMMYYYY(rawTpDate);
                         
                         rawSheets.website.push([
-                            103, rawSheets.website.length, blNo, contNo, "-", "Lower", "Mundra", "KILARAIPUR", "Pending", 
+                            103, 
+                            rawSheets.website.length, 
+                            blNo, 
+                            contNo, 
+                            "-", 
+                            "Lower", 
+                            "Mundra", 
+                            "KILARAIPUR", 
+                            "Pending", 
                             `CONTAINER HANDOVER TO HTPL ON ${tpDateFormatted}`
                         ]);
                         transferCount++;
@@ -2899,7 +3280,19 @@ if (smtpExcelInput) {
             });
 
             window.viewSheetData('smtp');
-            alert(`SUCCESS: SMTP ${addedCount} added & Website ${transferCount} synced.`);
+            
+            // Notification
+            const box = document.createElement('div');
+            box.innerHTML = `
+                <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[10000] animate-bounce">
+                    ✓ SMTP Processing Complete!<br>
+                    Added: ${addedCount}<br>
+                    Synced to Website: ${transferCount}<br>
+                    Matched with HKR Data: ${hkrMatchCount}
+                </div>`;
+            document.body.appendChild(box);
+            setTimeout(() => box.remove(), 6000);
+
             saveToCloud(); 
             processCloudData();
         };
@@ -3504,6 +3897,408 @@ document.getElementById('runningTrainsBtn').addEventListener('click', () => {
     modal.classList.remove('hidden');
     lucide.createIcons();
 });
+// ────────────────────────────────────────────────────────────────
+// NEW: FORECAST & PENDENCY REPORT BUTTON LOGIC
+// ────────────────────────────────────────────────────────────────
+
+// Open Forecast & Pendency Modal
+document.getElementById('forecastPendencyBtn').addEventListener('click', () => {
+    document.getElementById('forecastPendencyModal').classList.remove('hidden');
+    generateForecastReport();
+    generatePendencyReport();
+    lucide.createIcons();
+});
+
+// Close Modal (both buttons)
+document.querySelectorAll('#closeForecastModal, #closeForecastModalFooter').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.getElementById('forecastPendencyModal').classList.add('hidden');
+    });
+});
+
+// ==========================================
+// 1. FINAL FORECAST REPORT (With Grand Total)
+// ==========================================
+function generateForecastReport() {
+    const reportDiv = document.getElementById('forecastReport');
+    
+    if (!rawSheets.hkrHmrFiltered || rawSheets.hkrHmrFiltered.length === 0) {
+        reportDiv.innerHTML = '<div class="p-2 text-center text-xs font-bold border border-gray-300">NO DATA</div>';
+        return;
+    }
+
+    // -- Filter Logic --
+    const dischargedSet = new Set();
+    if (rawSheets.smtp && rawSheets.smtp.length > 1) {
+        rawSheets.smtp.slice(1).forEach(row => {
+            const c = String(row[2] || '').trim().toUpperCase();
+            if(c) dischargedSet.add(c);
+        });
+    }
+
+    const groups = {};
+    const summaryStats = {}; 
+
+    rawSheets.hkrHmrFiltered.forEach(row => {
+        const ctrNo = String(row.ctr_no || '').trim().toUpperCase();
+        if (dischargedSet.has(ctrNo)) return; 
+
+        const vessel = String(row.vessel_name || '-').trim().toUpperCase();
+        const eta = row.eta_dttm || '-';
+        const remark = String(row.assigned_remark || 'OTHER').trim().toUpperCase();
+        const size = String(row.ctr_size || '20').includes('40') ? 40 : 20;
+
+        if(!summaryStats[remark]) summaryStats[remark] = {c20:0, c40:0};
+        if(size===40) summaryStats[remark].c40++; else summaryStats[remark].c20++;
+
+        const groupId = `${vessel}||${eta}||${remark}`;
+        if (!groups[groupId]) {
+            groups[groupId] = { vessel, eta, remark, c20: 0, c40: 0 };
+        }
+        if (size === 40) groups[groupId].c40++; else groups[groupId].c20++;
+    });
+
+    const getHighlightClass = (rem) => {
+        if (rem.includes('HKR') || rem.includes('HDL')) return 'bg-green-100 text-green-900';
+        if (rem.includes('HMR')) return 'bg-orange-100 text-orange-900';
+        return 'bg-gray-50 text-gray-900';
+    };
+
+    // -- Summary HTML (Right Side) --
+    let sum20=0, sum40=0, sumTEU=0;
+    let summaryRows = Object.keys(summaryStats).sort().map(rem => {
+        const s = summaryStats[rem];
+        const t = s.c20 + (s.c40 * 2);
+        sum20+=s.c20; sum40+=s.c40; sumTEU+=t;
+        const highlight = getHighlightClass(rem);
+        return `
+            <tr class="border-b border-gray-300">
+                <td class="px-3 py-1 border-r border-gray-300 font-bold text-xs ${highlight}">${rem}</td>
+                <td class="px-2 py-1 border-r border-gray-300 text-center text-xs">${s.c20}</td>
+                <td class="px-2 py-1 border-r border-gray-400 text-center text-xs">${s.c40}</td>
+                <td class="px-2 py-1 text-center font-bold text-xs">${t}</td>
+            </tr>`;
+    }).join('');
+
+    let summaryHtml = `
+        <div class="shrink-0 w-[280px] pt-1">
+            <table class="w-full border border-gray-400 border-collapse text-gray-800 bg-white shadow-sm">
+                <thead class="bg-amber-950 text-white font-bold uppercase text-xs">
+                    <tr>
+                        <th class="px-3 py-2 border-r border-gray-400 text-left">Summary</th>
+                        <th class="px-2 py-2 border-r border-gray-400 text-center">20'</th>
+                        <th class="px-2 py-2 border-r border-gray-400 text-center">40'</th>
+                        <th class="px-2 py-2 text-center">TEU</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${summaryRows}
+                    <tr class="bg-gray-200 font-black border-t-2 border-gray-400 text-xs">
+                        <td class="px-3 py-1.5 border-r border-gray-400 text-right">TOTAL</td>
+                        <td class="px-2 py-1.5 border-r border-gray-400 text-center">${sum20}</td>
+                        <td class="px-2 py-1.5 border-r border-gray-400 text-center">${sum40}</td>
+                        <td class="px-2 py-1.5 text-center text-blue-900">${sumTEU}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    // -- Main Table (Left Side) --
+    const sortedKeys = Object.keys(groups).sort((a, b) => {
+        const r = groups[a].remark.localeCompare(groups[b].remark);
+        return r !== 0 ? r : groups[a].vessel.localeCompare(groups[b].vessel);
+    });
+
+    let tableHtml = `
+        <div class="flex-1 overflow-x-auto pr-4">
+            <table class="w-full border-collapse border border-gray-400 font-sans text-gray-800 bg-white text-[11px] shadow-sm">
+                <thead class="bg-amber-950 text-white font-bold uppercase sticky top-0 border-b border-gray-400">
+                    <tr>
+                        <th class="px-4 py-2 border-r border-gray-400 text-left">Vessel Name</th>
+                        <th class="px-4 py-2 border-r border-gray-400 text-center">ETA</th>
+                        <th class="px-2 py-2 border-r border-gray-400 text-center w-[8%]">20'</th>
+                        <th class="px-2 py-2 border-r border-gray-400 text-center w-[8%]">40'</th>
+                        <th class="px-2 py-2 text-center w-[10%] bg-yellow-600 text-black">TEU</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    let currentRemark = null;
+    let s20=0, s40=0, sTEU=0;
+    
+    // Grand Total Variables
+    let grand20 = 0, grand40 = 0, grandTotalTEU = 0;
+
+    sortedKeys.forEach((key, index) => {
+        const item = groups[key];
+        const rowTEU = item.c20 + (item.c40 * 2);
+
+        if (item.remark !== currentRemark) {
+            if (currentRemark !== null) {
+                tableHtml += `
+                    <tr class="bg-gray-100 border-b border-gray-400 font-bold text-xs">
+                        <td colspan="2" class="px-4 py-1 text-right uppercase">Total ${currentRemark}:</td>
+                        <td class="px-2 py-1 text-center border-l border-gray-300 border-r">${s20}</td>
+                        <td class="px-2 py-1 text-center border-r border-gray-300">${s40}</td>
+                        <td class="px-2 py-1 text-center bg-gray-200">${sTEU}</td>
+                    </tr>`;
+            }
+            
+            currentRemark = item.remark;
+            s20=0; s40=0; sTEU=0;
+            const highlight = getHighlightClass(currentRemark);
+            
+            tableHtml += `
+                <tr class="${highlight} border-b border-gray-300">
+                    <td colspan="5" class="px-4 py-1.5 font-black text-xs uppercase border-t border-gray-400">
+                        ${currentRemark}
+                    </td>
+                </tr>`;
+        }
+
+        s20 += item.c20; s40 += item.c40; sTEU += rowTEU;
+        
+        // Add to Grand Totals
+        grand20 += item.c20;
+        grand40 += item.c40;
+        grandTotalTEU += rowTEU;
+
+        tableHtml += `
+            <tr class="border-b border-gray-300 hover:bg-amber-50 transition-colors">
+                <td class="px-4 py-1 border-r border-gray-300 font-medium">${item.vessel}</td>
+                <td class="px-4 py-1 border-r border-gray-300 text-center">${item.eta}</td>
+                <td class="px-2 py-1 border-r border-gray-300 text-center">${item.c20 || '-'}</td>
+                <td class="px-2 py-1 border-r border-gray-300 text-center">${item.c40 || '-'}</td>
+                <td class="px-2 py-1 text-center font-bold bg-yellow-50/50">${rowTEU}</td>
+            </tr>
+        `;
+
+        if (index === sortedKeys.length - 1) {
+            // Last Subtotal
+            tableHtml += `
+                <tr class="bg-gray-100 border-b border-gray-400 font-bold text-xs">
+                    <td colspan="2" class="px-4 py-1 text-right uppercase">Total ${currentRemark}:</td>
+                    <td class="px-2 py-1 text-center border-l border-gray-300 border-r">${s20}</td>
+                    <td class="px-2 py-1 text-center border-r border-gray-300">${s40}</td>
+                    <td class="px-2 py-1 text-center bg-gray-200">${sTEU}</td>
+                </tr>`;
+        }
+    });
+
+    // --- GRAND TOTAL ROW ADDED HERE ---
+    tableHtml += `
+        <tr class="bg-slate-800 text-white font-black border-t-2 border-slate-600 text-[11px]">
+            <td colspan="2" class="px-4 py-1.5 text-right uppercase tracking-wider">Grand Total:</td>
+            <td class="px-2 py-1.5 text-center border-l border-slate-600 text-emerald-400">${grand20}</td>
+            <td class="px-2 py-1.5 text-center border-l border-slate-600 text-emerald-400">${grand40}</td>
+            <td class="px-2 py-1.5 text-center bg-yellow-500 text-black border-l border-slate-600">${grandTotalTEU}</td>
+        </tr>
+    `;
+
+    tableHtml += `</tbody></table></div>`;
+
+    reportDiv.innerHTML = `<div class="flex flex-row items-start h-full">${tableHtml}${summaryHtml}</div>`;
+}
+
+// ==========================================
+// 2. FINAL PENDENCY REPORT (With Grand Total)
+// ==========================================
+function generatePendencyReport() {
+    const reportDiv = document.getElementById('pendencyReport');
+
+    if (!rawSheets.website || rawSheets.website.length <= 1) {
+        reportDiv.innerHTML = '<div class="p-2 text-center text-xs font-bold border border-gray-300">NO DATA</div>';
+        return;
+    }
+
+    const smtpLookup = {}; 
+    if (rawSheets.smtp && rawSheets.smtp.length > 1) {
+        rawSheets.smtp.slice(1).forEach(row => {
+            const c = String(row[2] || '').trim().toUpperCase();
+            if(c) {
+                smtpLookup[c] = {
+                    size: String(row[3] || '20').includes('40') ? 40 : 20,
+                    vessel: String(row[5] || '-'),
+                    discharge: row[18] || row[17] || '-'
+                };
+            }
+        });
+    }
+
+    const hkrRemarkLookup = {};
+    if (rawSheets.hkrHmrFiltered) {
+        rawSheets.hkrHmrFiltered.forEach(row => {
+            const c = String(row.ctr_no || '').trim().toUpperCase();
+            if(c) hkrRemarkLookup[c] = row.assigned_remark;
+        });
+    }
+
+    const groups = {};
+    const summaryStats = {};
+
+    rawSheets.website.slice(1).forEach(row => {
+        if (String(row[8] || '').trim().toUpperCase() !== 'PENDING') return;
+
+        const ctrNo = String(row[3] || '').trim().toUpperCase();
+        const smtpData = smtpLookup[ctrNo] || { size: 20, vessel: 'UNKNOWN', discharge: '-' };
+        const hkrRemark = hkrRemarkLookup[ctrNo] || 'PENDING';
+
+        const vessel = smtpData.vessel;
+        const size = smtpData.size;
+        let dischargeFmt = formatToDDMMYYYY(smtpData.discharge);
+
+        if(!summaryStats[hkrRemark]) summaryStats[hkrRemark] = {c20:0, c40:0};
+        if(size===40) summaryStats[hkrRemark].c40++; else summaryStats[hkrRemark].c20++;
+
+        const groupId = `${vessel}||${hkrRemark}`;
+        if (!groups[groupId]) {
+            groups[groupId] = { vessel, eta: dischargeFmt, remark: hkrRemark, c20: 0, c40: 0 };
+        }
+        if (size === 40) groups[groupId].c40++; else groups[groupId].c20++;
+    });
+
+    const getHighlightClass = (rem) => {
+        if (rem.includes('HKR') || rem.includes('HDL')) return 'bg-green-100 text-green-900';
+        if (rem.includes('HMR')) return 'bg-orange-100 text-orange-900';
+        return 'bg-gray-50 text-gray-900';
+    };
+
+    // -- Summary HTML --
+    let sum20=0, sum40=0, sumTEU=0;
+    let summaryRows = Object.keys(summaryStats).sort().map(rem => {
+        const s = summaryStats[rem];
+        const t = s.c20 + (s.c40 * 2);
+        sum20+=s.c20; sum40+=s.c40; sumTEU+=t;
+        const highlight = getHighlightClass(rem);
+        return `
+            <tr class="border-b border-gray-300">
+                <td class="px-3 py-1 border-r border-gray-300 font-bold text-xs ${highlight}">${rem}</td>
+                <td class="px-2 py-1 border-r border-gray-300 text-center text-xs">${s.c20}</td>
+                <td class="px-2 py-1 border-r border-gray-400 text-center text-xs">${s.c40}</td>
+                <td class="px-2 py-1 text-center font-bold text-xs">${t}</td>
+            </tr>`;
+    }).join('');
+
+    let summaryHtml = `
+        <div class="shrink-0 w-[280px] pt-1">
+            <table class="w-full border border-gray-400 border-collapse text-gray-800 bg-white shadow-sm">
+                <thead class="bg-blue-900 text-white font-bold uppercase text-xs">
+                    <tr>
+                        <th class="px-3 py-2 border-r border-gray-400 text-left">Summary</th>
+                        <th class="px-2 py-2 border-r border-gray-400 text-center">20'</th>
+                        <th class="px-2 py-2 border-r border-gray-400 text-center">40'</th>
+                        <th class="px-2 py-2 text-center">TEU</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${summaryRows}
+                    <tr class="bg-gray-200 font-black border-t-2 border-gray-400 text-xs">
+                        <td class="px-3 py-1.5 border-r border-gray-400 text-right">TOTAL</td>
+                        <td class="px-2 py-1.5 border-r border-gray-400 text-center">${sum20}</td>
+                        <td class="px-2 py-1.5 border-r border-gray-400 text-center">${sum40}</td>
+                        <td class="px-2 py-1.5 text-center text-blue-900">${sumTEU}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    // -- Main Table --
+    const sortedKeys = Object.keys(groups).sort((a, b) => {
+        const r = groups[a].remark.localeCompare(groups[b].remark);
+        return r !== 0 ? r : groups[a].vessel.localeCompare(groups[b].vessel);
+    });
+
+    let tableHtml = `
+        <div class="flex-1 overflow-x-auto pr-4">
+            <table class="w-full border-collapse border border-gray-400 font-sans text-gray-800 bg-white text-[11px] shadow-sm">
+                <thead class="bg-blue-900 text-white font-bold uppercase sticky top-0 border-b border-gray-400">
+                    <tr>
+                        <th class="px-4 py-2 border-r border-gray-400 text-left">Vessel Name</th>
+                        <th class="px-4 py-2 border-r border-gray-400 text-center">Discharge</th>
+                        <th class="px-2 py-2 border-r border-gray-400 text-center w-[8%]">20'</th>
+                        <th class="px-2 py-2 border-r border-gray-400 text-center w-[8%]">40'</th>
+                        <th class="px-2 py-2 text-center w-[10%] bg-yellow-500 text-black">TEU</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    let currentRemark = null;
+    let s20=0, s40=0, sTEU=0;
+    
+    // Grand Total Variables
+    let grand20 = 0, grand40 = 0, grandTotalTEU = 0;
+
+    sortedKeys.forEach((key, index) => {
+        const item = groups[key];
+        const rowTEU = item.c20 + (item.c40 * 2);
+
+        if (item.remark !== currentRemark) {
+            if (currentRemark !== null) {
+                tableHtml += `
+                    <tr class="bg-gray-100 border-b border-gray-400 font-bold text-xs">
+                        <td colspan="2" class="px-4 py-1 text-right uppercase">Total ${currentRemark}:</td>
+                        <td class="px-2 py-1 text-center border-l border-gray-300 border-r">${s20}</td>
+                        <td class="px-2 py-1 text-center border-r border-gray-300">${s40}</td>
+                        <td class="px-2 py-1 text-center bg-gray-200">${sTEU}</td>
+                    </tr>`;
+            }
+            currentRemark = item.remark;
+            s20=0; s40=0; sTEU=0;
+            const highlight = getHighlightClass(currentRemark);
+            tableHtml += `
+                <tr class="${highlight} border-b border-gray-300">
+                    <td colspan="5" class="px-4 py-1.5 font-black text-xs uppercase border-t border-gray-400">
+                        ${currentRemark}
+                    </td>
+                </tr>`;
+        }
+
+        s20 += item.c20; s40 += item.c40; sTEU += rowTEU;
+        
+        // Add to Grand Totals
+        grand20 += item.c20;
+        grand40 += item.c40;
+        grandTotalTEU += rowTEU;
+
+        tableHtml += `
+            <tr class="border-b border-gray-300 hover:bg-blue-50 transition-colors">
+                <td class="px-4 py-1 border-r border-gray-300 font-medium">${item.vessel}</td>
+                <td class="px-4 py-1 border-r border-gray-300 text-center">${item.eta}</td>
+                <td class="px-2 py-1 border-r border-gray-300 text-center">${item.c20 || '-'}</td>
+                <td class="px-2 py-1 border-r border-gray-300 text-center">${item.c40 || '-'}</td>
+                <td class="px-2 py-1 text-center font-bold bg-yellow-50/50">${rowTEU}</td>
+            </tr>
+        `;
+
+        if (index === sortedKeys.length - 1) {
+            tableHtml += `
+                <tr class="bg-gray-100 border-b border-gray-400 font-bold text-xs">
+                    <td colspan="2" class="px-4 py-1 text-right uppercase">Total ${currentRemark}:</td>
+                    <td class="px-2 py-1 text-center border-l border-gray-300 border-r">${s20}</td>
+                    <td class="px-2 py-1 text-center border-r border-gray-300">${s40}</td>
+                    <td class="px-2 py-1 text-center bg-gray-200">${sTEU}</td>
+                </tr>`;
+        }
+    });
+
+    // --- GRAND TOTAL ROW ADDED HERE ---
+    tableHtml += `
+        <tr class="bg-slate-800 text-white font-black border-t-2 border-slate-600 text-[11px]">
+            <td colspan="2" class="px-4 py-1.5 text-right uppercase tracking-wider">Grand Total:</td>
+            <td class="px-2 py-1.5 text-center border-l border-slate-600 text-emerald-400">${grand20}</td>
+            <td class="px-2 py-1.5 text-center border-l border-slate-600 text-emerald-400">${grand40}</td>
+            <td class="px-2 py-1.5 text-center bg-yellow-500 text-black border-l border-slate-600">${grandTotalTEU}</td>
+        </tr>
+    `;
+
+    tableHtml += `</tbody></table></div>`;
+
+    reportDiv.innerHTML = `<div class="flex flex-row items-start h-full">${tableHtml}${summaryHtml}</div>`;
+}
 // --- MANUAL ADD SHIPPER LOGIC ---
 const openAddShipperBtn = document.getElementById('openAddShipperBtn');
 const addShipperModal = document.getElementById('addShipperModal');
@@ -3878,7 +4673,137 @@ document.getElementById('deleteByShipperBtn').addEventListener('click', () => {
     document.getElementById('deleteShipperModal').classList.remove('hidden');
     lucide.createIcons();
 });
-        initAuth();
+// === FINAL: Save ONLY Containers whose destination contains ANY of the 3 keywords ===
+const hkrHmrExcelInput = document.getElementById('hkrHmrExcelInput');
+if (hkrHmrExcelInput) {
+    hkrHmrExcelInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (!rawSheets?.smtp || rawSheets.smtp.length <= 1) {
+            alert("SMTP sheet is empty. Please upload SMTP data first.");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            try {
+                const bstr = evt.target.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+                if (jsonData.length < 2) {
+                    alert("Excel/CSV file has no data rows.");
+                    return;
+                }
+
+                // SMTP column indices
+                const smtpContIndex = 2;      // CONT_Nos. (Column C)
+                const smtpRemarksIndex = 22;  // Remarks (Column W)
+
+                // Existing containers to prevent duplicates
+                const existingHkrContainers = new Set(
+                    (rawSheets.hkrHmrFiltered || []).map(row => String(row.ctr_no || '').trim().toUpperCase())
+                );
+
+                let updatedCount = 0;     // SMTP Remarks updated
+                let savedCount = 0;       // Matching containers saved
+                let skippedCount = 0;     // Non-matching or duplicates skipped
+                let savedContainers = [...(rawSheets.hkrHmrFiltered || [])]; // Preserve existing
+
+                jsonData.slice(1).forEach(exRow => {
+                    const ctrNo = String(exRow[4] || '').trim().toUpperCase(); // E - ctr_no
+                    if (!ctrNo) return;
+
+                    const destName = String(exRow[7] || '').trim().toUpperCase(); // H - destination_name
+
+                    // Check if destination contains ANY of the 3 required keywords
+                    let newRemark = "";
+                    if (destName.includes("KILA RAIPUR BLOCK - MSC")) {
+                        newRemark = "HMR";
+                    } else if (destName.includes("RANGIAN")) {
+                        newRemark = "HKR";
+                    } else if (destName.includes("LUDHIYANA") || destName.includes("LUDHIANA")) {
+                        newRemark = "HDL";
+                    }
+
+                    // Skip if NONE of the 3 keywords are present
+                    if (!newRemark) {
+                        skippedCount++;
+                        return; // Non-matching destination → do NOT save
+                    }
+
+                    // Update SMTP Remarks if changed
+                    const smtpRowIndex = rawSheets.smtp.findIndex(row => 
+                        String(row[smtpContIndex] || '').trim().toUpperCase() === ctrNo
+                    );
+
+                    if (smtpRowIndex !== -1) {
+                        const currentRemark = String(rawSheets.smtp[smtpRowIndex][smtpRemarksIndex] || '').trim();
+                        if (newRemark !== currentRemark) {
+                            rawSheets.smtp[smtpRowIndex][smtpRemarksIndex] = newRemark;
+                            updatedCount++;
+                        }
+                    }
+
+                    // Skip duplicate
+                    if (existingHkrContainers.has(ctrNo)) {
+                        skippedCount++;
+                        return;
+                    }
+
+                    // Save matching container
+                    savedContainers.push({
+                        vessel_name:     String(exRow[1] || '').trim(),
+                        eta_dttm:        formatToDDMMYYYY_HHMM(exRow[2] || ''),
+                        ctr_no:          ctrNo,
+                        ctr_size:        String(exRow[5] || '').trim(),
+                        destination_name: String(exRow[7] || '').trim(),
+                        line_code:       String(exRow[8] || '').trim(),
+                        assigned_remark: newRemark,
+                        upload_timestamp: new Date().toISOString()
+                    });
+
+                    savedCount++;
+                    existingHkrContainers.add(ctrNo);
+                });
+
+                if (savedCount > 0 || updatedCount > 0) {
+                    rawSheets.hkrHmrFiltered = savedContainers;
+
+                    const box = document.createElement('div');
+                    box.innerHTML = `
+                        <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-cyan-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+                            SUCCESS:<br>
+                            ${updatedCount} SMTP Remarks updated (HKR/HMR/HDL)<br>
+                            ${savedCount} matching containers saved (only those with Kila Raipur / Rangian / Ludhiana)<br>
+                            ${skippedCount} skipped (non-matching destinations or duplicates)
+                        </div>`;
+                    document.body.appendChild(box);
+                    setTimeout(() => box.remove(), 7000);
+
+                    await quickSaveHkrData();
+                    await saveToCloud();
+                    processCloudData();
+
+                    if (currentSheetInView === 'hkr') {
+                        window.viewSheetData('hkr');
+                    }
+                } else {
+                    alert("No containers found with matching destinations (Kila Raipur Block - MSC, Rangian, Ludhiyana/Ludhiana).");
+                }
+
+            } catch (err) {
+                console.error("HKR/HMR processing error:", err);
+                alert("Error processing file: " + err.message);
+            }
+        };
+
+        reader.readAsBinaryString(file);
+        e.target.value = '';
+    });
+}        initAuth();
     </script>
 <div id="runningTrainsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] hidden flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col border border-slate-300 overflow-hidden">
@@ -3948,6 +4873,47 @@ document.getElementById('deleteByShipperBtn').addEventListener('click', () => {
 </div>
             
             <button id="saveManualShipperBtn" class="w-full bg-teal-700 hover:bg-teal-800 text-white font-black py-3 rounded-xl shadow-lg transition-all transform active:scale-95 uppercase text-xs">Link & Save to Shipper Tab</button>
+        </div>
+    </div>
+</div>
+<!-- Forecast & Pendency Modal -->
+<div id="forecastPendencyModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[99999] hidden flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl w-[98vw] h-[95vh] flex flex-col overflow-hidden border border-slate-300">
+        
+        <div class="bg-purple-800 p-3 flex justify-between items-center text-white shrink-0">
+            <h2 class="font-bold uppercase text-lg flex items-center gap-2">
+                <i data-lucide="bar-chart-3" class="w-5 h-2"></i> HTPL Import Forecast & Pendency
+            </h2>
+<button id="exportForecastExcelBtn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold text-[11px] uppercase flex items-center gap-2 shadow-md transition-all active:scale-95">
+            <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Export Detailed Excel
+        </button>
+            <button id="closeForecastModal" class="text-white hover:bg-purple-600 rounded-full p-1 transition-all">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+        </div>
+
+        <div class="flex-1 overflow-auto p-4 custom-scrollbar bg-slate-50">
+            
+            <div class="mb-8">
+                <h3 class="text-md font-black text-amber-950 mb-2 uppercase flex items-center gap-2 border-b-2 border-amber-900/20 pb-1 w-fit">
+                    <i data-lucide="ship" class="w-4 h-4 text-amber-800"></i> Vessel Wise Forecast
+                </h3>
+                <div id="forecastReport" class="bg-white rounded shadow-sm border border-slate-300 p-2"></div>
+            </div>
+
+            <div>
+                <h3 class="text-md font-black text-blue-900 mb-2 uppercase flex items-center gap-2 border-b-2 border-blue-900/20 pb-1 w-fit">
+                    <i data-lucide="clock" class="w-4 h-4 text-blue-800"></i> Import Pendency
+                </h3>
+                <div id="pendencyReport" class="bg-white rounded shadow-sm border border-slate-300 p-2"></div>
+            </div>
+
+        </div>
+
+        <div class="p-3 bg-slate-100 border-t border-slate-300 flex justify-end shrink-0">
+            <button id="closeForecastModalFooter" class="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded shadow-lg font-bold text-[11px] uppercase transition-all">
+                Close Report
+            </button>
         </div>
     </div>
 </div>
