@@ -569,7 +569,7 @@ table {
 <div class="p-3 border-b border-slate-400 bg-blue-200/50">
     <div class="relative mb-2">
         <i data-lucide="search" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-blue-600"></i>
-        <input type="text" id="smtpBlSearch" placeholder="Search By B/L No " class="w-full pl-8 pr-3 py-1.5 bg-white border border-blue-400 rounded-lg text-[10px] font-bold outline-none focus:ring-2 focus:ring-orange-800 shadow-sm">
+        <input type="text" id="smtpBlSearch" placeholder="Search By Container Or B/L Number " class="w-full pl-8 pr-3 py-1.5 bg-white border border-blue-400 rounded-lg text-[10px] font-bold outline-none focus:ring-2 focus:ring-orange-800 shadow-sm">
     </div>
     <div id="smtpConsigneeBox" class="p-2 bg-white rounded-lg border-2 border-blue-400 hidden cursor-pointer hover:bg-blue-600 hover:text-white transition-all shadow-md group">
         <p class="text-[7px] text-blue-500 font-bold uppercase group-hover:text-blue-100">Found Consignee (SMTP):</p>
@@ -1485,67 +1485,87 @@ document.getElementById('openFoisWithFnrBtn').addEventListener('click', () => {
     `;
 }
 
-        function renderDetailedBreakdown(groups) {
-            const railedGroups = groups.filter(g => g.stats.railed > 0);
-            const pendingGroups = groups.filter(g => g.stats.pending > 0);
-            let totalRailedUnits = 0, totalPendingUnits = 0;
+        // ==========================================
+// RENDER DETAILED BREAKDOWN (Both Railed & Pending with Hyperlinks)
+// ==========================================
+function renderDetailedBreakdown(groups) {
+    const railedGroups = groups.filter(g => g.stats.railed > 0);
+    const pendingGroups = groups.filter(g => g.stats.pending > 0);
+    let totalRailedUnits = 0, totalPendingUnits = 0;
 
-            // Header Update for Railed Shipments when filter is active
-            const headingEl = document.getElementById('railedShipmentsHeading');
-            if (headingEl) {
-                headingEl.innerText = isInTransitFilterActive ? "Railed Out Shipments (Filtered: Mundra Railout)" : "Railed Out Shipments";
+    // Header Update for Railed Shipments
+    const headingEl = document.getElementById('railedShipmentsHeading');
+    if (headingEl) {
+        headingEl.innerText = isInTransitFilterActive ? "Railed Out Shipments (Filtered: Mundra Railout)" : "Railed Out Shipments";
+    }
+
+    // --- 1. RAILED OUT TABLE ---
+    if (railedGroups.length === 0) document.getElementById('railedBreakdownContainer').classList.add('hidden');
+    else {
+        document.getElementById('railedBreakdownContainer').classList.remove('hidden');
+        let rHtml = '';
+        railedGroups.forEach(bl => {
+            let detailsToShow = bl.railedDetails;
+            if (isInTransitFilterActive) {
+                detailsToShow = detailsToShow.filter(d => /RAILOUT FROM MUNDRA/i.test(d.remark));
             }
 
-            if (railedGroups.length === 0) document.getElementById('railedBreakdownContainer').classList.add('hidden');
-            else {
-                document.getElementById('railedBreakdownContainer').classList.remove('hidden');
-                let rHtml = '';
-                railedGroups.forEach(bl => {
-                    // Logic to filter rows by RAILOUT FROM MUNDRA if active
-                    let detailsToShow = bl.railedDetails;
-                    if (isInTransitFilterActive) {
-                        detailsToShow = detailsToShow.filter(d => /RAILOUT FROM MUNDRA/i.test(d.remark));
-                    }
-
-                    if (detailsToShow.length > 0) {
-                        let blTotal = 0;
-                        detailsToShow.forEach((detail, idx) => {
-                            totalRailedUnits += detail.count;
-                            blTotal += detail.count;
-                            const isArrived = /TRAIN ARRIVED/i.test(detail.remark);
-                            const remarkClass = isArrived ? 'bg-yellow-100 text-slate-900' : 'text-slate-500';
-                            rHtml += `<tr class="border-b border-slate-200 hover:bg-emerald-50/30">`;
-                            if (idx === 0) rHtml += `<td rowspan="${detailsToShow.length}" class="px-3 py-1 font-bold text-slate-900 border-r border-slate-300 align-top">
-    <a href="javascript:void(0)" onclick="searchHTPL('${bl.blNo}')" class="text-blue-1000 hover:underline cursor-pointer">
-        ${bl.blNo}
-    </a>
-    <span class="text-blue-500 text-[10px] uppercase font-bold ml-1">(${bl.stats.total} / ${bl.line})</span>
-</td>`
-                            rHtml += `<td class="px-3 py-1 text-center font-bold text-emerald-700 bg-emerald-50 border-r border-slate-300">${detail.count}</td><td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${detail.train}</td><td class="px-3 py-1 text-center text-blue-600 font-bold border-r border-slate-300 uppercase whitespace-nowrap">${detail.date}</td><td class="px-3 py-1 ${remarkClass} text-[9px] font-bold">${detail.remark}</td></tr>`;
-                        });
-                        rHtml += `<tr class="bg-blue-100/60 font-bold border-b border-blue-200"><td class="px-3 py-1 text-blue-800 uppercase text-[8px]">Group Total</td><td class="px-3 py-1 text-center text-blue-900 border-r border-blue-200">${blTotal}</td><td colspan="3"></td></tr>`;
-                    }
+            if (detailsToShow.length > 0) {
+                let blTotal = 0;
+                detailsToShow.forEach((detail, idx) => {
+                    totalRailedUnits += detail.count;
+                    blTotal += detail.count;
+                    const isArrived = /TRAIN ARRIVED/i.test(detail.remark);
+                    const remarkClass = isArrived ? 'bg-yellow-100 text-slate-900' : 'text-slate-500';
+                    rHtml += `<tr class="border-b border-slate-200 hover:bg-emerald-50/30">`;
+                    
+                    // Railed Link Logic (Already existed)
+                    if (idx === 0) rHtml += `<td rowspan="${detailsToShow.length}" class="px-3 py-1 font-bold text-slate-900 border-r border-slate-300 align-top">
+                        <a href="javascript:void(0)" onclick="searchHTPL('${bl.blNo}')" class="text-blue-800 hover:text-blue-600 hover:underline cursor-pointer transition-colors">
+                            ${bl.blNo}
+                        </a>
+                        <span class="text-blue-500 text-[10px] uppercase font-bold ml-1">(${bl.stats.total} / ${bl.line})</span>
+                    </td>`;
+                    
+                    rHtml += `<td class="px-3 py-1 text-center font-bold text-emerald-700 bg-emerald-50 border-r border-slate-300">${detail.count}</td><td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${detail.train}</td><td class="px-3 py-1 text-center text-blue-600 font-bold border-r border-slate-300 uppercase whitespace-nowrap">${detail.date}</td><td class="px-3 py-1 ${remarkClass} text-[9px] font-bold">${detail.remark}</td></tr>`;
                 });
-                document.getElementById('railedDetailRows').innerHTML = rHtml;
-                document.getElementById('railedDetailFooter').innerHTML = `<tr class="bg-emerald-50 text-emerald-800 font-bold"><td class="px-3 py-1.5 text-right uppercase text-[9px]">Grand Total (Viewed)</td><td class="px-3 py-1.5 text-center text-[11px] border-r border-emerald-200">${totalRailedUnits}</td><td colspan="3"></td></tr>`;
+                rHtml += `<tr class="bg-blue-100/60 font-bold border-b border-blue-200"><td class="px-3 py-1 text-blue-800 uppercase text-[8px]">Group Total</td><td class="px-3 py-1 text-center text-blue-900 border-r border-blue-200">${blTotal}</td><td colspan="3"></td></tr>`;
             }
+        });
+        document.getElementById('railedDetailRows').innerHTML = rHtml;
+        document.getElementById('railedDetailFooter').innerHTML = `<tr class="bg-emerald-50 text-emerald-800 font-bold"><td class="px-3 py-1.5 text-right uppercase text-[9px]">Grand Total (Viewed)</td><td class="px-3 py-1.5 text-center text-[11px] border-r border-emerald-200">${totalRailedUnits}</td><td colspan="3"></td></tr>`;
+    }
 
-            if (pendingGroups.length === 0) document.getElementById('pendingBreakdownContainer').classList.add('hidden');
-            else {
-                document.getElementById('pendingBreakdownContainer').classList.remove('hidden');
-                let pHtml = '';
-                pendingGroups.forEach(bl => {
-                    totalPendingUnits += bl.stats.pending;
-                    const statusLabel = bl.isAnySmtp ? `<span class="text-blue-600 uppercase font-bold text-[9px]">${bl.handoverDt}</span>` : '<span class="text-rose-600 uppercase font-bold text-[9px]">Pending</span>';
-                    const bRem = bl.smtpBRemarks.join(' | ');
-                    const isUrgent = /scan|scanning|damage/i.test(bRem);
-                    pHtml += `<tr class="border-b border-slate-200 hover:bg-rose-50/30"><td class="px-3 py-1 font-bold text-slate-900 border-r border-slate-300">${bl.blNo} <span class="text-blue-500 text-[8px] uppercase font-bold">(${bl.stats.total} / ${bl.line})</span></td><td class="px-3 py-1 text-slate-600 font-bold border-r border-slate-300 text-[8px] uppercase ${isUrgent ? 'text-rose-700 font-bold' : ''}">${bRem || '-'}</td><td class="px-3 py-1 text-center font-bold text-rose-700 bg-rose-50/50 border-r border-slate-300">${bl.stats.pending}</td><td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${bl.vessel}</td><td class="px-3 py-1 text-center font-bold uppercase border-r border-slate-300">${statusLabel}</td><td class="px-3 py-1 text-slate-500 text-[9px] font-bold">${bl.pendingRemarks.join(' | ') || 'Awaiting dispatch'}</td></tr>`;
-                });
-                document.getElementById('pendingDetailRows').innerHTML = pHtml;
-                document.getElementById('pendingDetailFooter').innerHTML = `<tr class="bg-rose-50 text-rose-800 font-bold"><td colspan="2" class="px-3 py-1.5 text-right uppercase text-[9px]">Total Pending Units</td><td class="px-3 py-1.5 text-center text-[11px] border-r border-rose-200">${totalPendingUnits}</td><td colspan="3"></td></tr>`;
-            }
-            lucide.createIcons();
-        }
+    // --- 2. PENDING TABLE (UPDATED WITH LINKS) ---
+    if (pendingGroups.length === 0) document.getElementById('pendingBreakdownContainer').classList.add('hidden');
+    else {
+        document.getElementById('pendingBreakdownContainer').classList.remove('hidden');
+        let pHtml = '';
+        pendingGroups.forEach(bl => {
+            totalPendingUnits += bl.stats.pending;
+            const statusLabel = bl.isAnySmtp ? `<span class="text-blue-600 uppercase font-bold text-[9px]">${bl.handoverDt}</span>` : '<span class="text-rose-600 uppercase font-bold text-[9px]">Pending</span>';
+            const bRem = bl.smtpBRemarks.join(' | ');
+            const isUrgent = /scan|scanning|damage/i.test(bRem);
+            
+            pHtml += `<tr class="border-b border-slate-200 hover:bg-rose-50/30">
+                <td class="px-3 py-1 font-bold text-slate-900 border-r border-slate-300">
+                    <a href="javascript:void(0)" onclick="searchHTPL('${bl.blNo}')" class="text-blue-800 hover:text-blue-600 hover:underline cursor-pointer transition-colors">
+                        ${bl.blNo}
+                    </a>
+                    <span class="text-blue-500 text-[8px] uppercase font-bold ml-1">(${bl.stats.total} / ${bl.line})</span>
+                </td>
+                <td class="px-3 py-1 text-slate-600 font-bold border-r border-slate-300 text-[8px] uppercase ${isUrgent ? 'text-rose-700 font-bold' : ''}">${bRem || '-'}</td>
+                <td class="px-3 py-1 text-center font-bold text-rose-700 bg-rose-50/50 border-r border-slate-300">${bl.stats.pending}</td>
+                <td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${bl.vessel}</td>
+                <td class="px-3 py-1 text-center font-bold uppercase border-r border-slate-300">${statusLabel}</td>
+                <td class="px-3 py-1 text-slate-500 text-[9px] font-bold">${bl.pendingRemarks.join(' | ') || 'Awaiting dispatch'}</td>
+            </tr>`;
+        });
+        document.getElementById('pendingDetailRows').innerHTML = pHtml;
+        document.getElementById('pendingDetailFooter').innerHTML = `<tr class="bg-rose-50 text-rose-800 font-bold"><td colspan="2" class="px-3 py-1.5 text-right uppercase text-[9px]">Total Pending Units</td><td class="px-3 py-1.5 text-center text-[11px] border-r border-rose-200">${totalPendingUnits}</td><td colspan="3"></td></tr>`;
+    }
+    lucide.createIcons();
+}
 function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
     // Check Source
     const dataSource = (consIndex === 24) ? rawSheets.smtp : rawSheets.shipper;
@@ -2307,6 +2327,39 @@ if (deleteAllBtn) {
         deleteAllBtn.classList.add('opacity-50', 'cursor-not-allowed');
     }
 }
+// ==========================================
+// FIXED: DELETE SINGLE ROW FROM HKR DATA
+// ==========================================
+window.deleteHkrRow = async (index) => {
+    if (!rawSheets.hkrHmrFiltered) return;
+
+    // Confirmation
+    const confirmed = confirm("Are you sure you want to delete this HKR row?");
+    if (!confirmed) return;
+
+    // Delete from Array
+    rawSheets.hkrHmrFiltered.splice(index, 1);
+
+    // Refresh UI immediately
+    window.viewSheetData('hkr');
+
+    // Save Changes (Cloud & Local)
+    // quickSaveHkrData() helper humne pehle banaya tha, use call kar rahe hain
+    if (typeof quickSaveHkrData === 'function') {
+        await quickSaveHkrData();
+    }
+    await saveToCloud();
+    processCloudData();
+
+    // Show Notification
+    const box = document.createElement('div');
+    box.innerHTML = `
+        <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[100000] animate-bounce">
+            Row Deleted Successfully
+        </div>`;
+    document.body.appendChild(box);
+    setTimeout(() => box.remove(), 2000);
+};
     // ────────────────────────────────────────────────
     // HKR DATA TAB ────────────────────────────────────
     // ────────────────────────────────────────────────
@@ -3378,46 +3431,67 @@ if (smtpExcelInput) {
         });
 // Yaha se paste karein (Line 809 ke paas)
 
-// --- NEW SMTP SEARCH & REPORT LOGIC ---
+// ==========================================
+// SEARCH LOGIC (B/L OR CONTAINER)
+// ==========================================
 document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
     const searchVal = e.target.value.trim().toUpperCase();
     const resultBox = document.getElementById('smtpConsigneeBox');
     const nameDisplay = document.getElementById('smtpConsigneeName');
 
+    // 4 characters minimum to avoid too many random matches
     if (searchVal.length >= 4 && rawSheets.smtp && rawSheets.smtp.length > 1) {
-        const match = rawSheets.smtp.find(row => String(row[9] || '').toUpperCase().includes(searchVal));
-        if (match && match[24]) {
+        
+        // --- NEW LOGIC: Check BL (Index 9) OR Container (Index 2) ---
+        const match = rawSheets.smtp.find(row => {
+            const bl = String(row[9] || '').toUpperCase();
+            const cont = String(row[2] || '').toUpperCase();
+            return bl.includes(searchVal) || cont.includes(searchVal);
+        });
+
+        if (match && match[24]) { // Index 24 is Consignee Name
             const foundConsignee = String(match[24]).trim();
+            const associatedBL = String(match[9] || '').trim(); // Get the BL of this container
+            
             nameDisplay.innerText = foundConsignee;
             resultBox.classList.remove('hidden');
 
+            // Click Event
             resultBox.onclick = () => {
                 selectedShipper = foundConsignee; 
-                document.getElementById('activeShipperName').innerText = foundConsignee + " (BL: " + searchVal + ")";
+                
+                // Header update
+                document.getElementById('activeShipperName').innerText = `${foundConsignee} (Found: ${searchVal})`;
+                
+                // Show Main Report
                 document.getElementById('emptyState').classList.add('hidden');
                 document.getElementById('reportContainer').classList.remove('hidden');
 
-                // Generate SMTP report (24 is index for Consignee)
+                // Generate Report
                 processAndRenderReport(24, true); 
 
-                // LOCK to searched BL
+                // --- SMART FILTER LOGIC ---
+                // Agar user ne Container search kiya hai, to bhi hum uske BL ko filter me lagayenge
+                // taaki report me us container ka group dikhe.
                 setTimeout(() => {
-                    blFilter.value = searchVal;
-                    applyFilters();
+                    blFilter.value = associatedBL; // Set dropdown to the actual BL
+                    applyFilters(); // Filter data
                 }, 100);
                 
+                // Reset Search Box
                 e.target.value = '';
                 resultBox.classList.add('hidden');
             };
         } else {
             resultBox.classList.remove('hidden');
-            nameDisplay.innerText = "No BL Found in SMTP";
+            nameDisplay.innerText = "NO MATCH FOUND";
+            // Remove click event if no match
+            resultBox.onclick = null;
         }
     } else {
         resultBox.classList.add('hidden');
     }
-});
-        document.getElementById('downloadWebsiteCsvBtn').addEventListener('click', () => {
+});        document.getElementById('downloadWebsiteCsvBtn').addEventListener('click', () => {
     const data = rawSheets.website;
     if (!data || data.length <= 1) {
         alert("No website data available to export!");
@@ -4103,7 +4177,7 @@ function generateForecastReport() {
 }
 
 // ==========================================
-// 2. FINAL PENDENCY REPORT (With Grand Total)
+// 2. FINAL PENDENCY REPORT (Added "Days" Suffix)
 // ==========================================
 function generatePendencyReport() {
     const reportDiv = document.getElementById('pendencyReport');
@@ -4113,6 +4187,7 @@ function generatePendencyReport() {
         return;
     }
 
+    // --- 1. Prepare Data & Lookups ---
     const smtpLookup = {}; 
     if (rawSheets.smtp && rawSheets.smtp.length > 1) {
         rawSheets.smtp.slice(1).forEach(row => {
@@ -4152,7 +4227,7 @@ function generatePendencyReport() {
         if(!summaryStats[hkrRemark]) summaryStats[hkrRemark] = {c20:0, c40:0};
         if(size===40) summaryStats[hkrRemark].c40++; else summaryStats[hkrRemark].c20++;
 
-        const groupId = `${vessel}||${hkrRemark}`;
+        const groupId = `${vessel}||${dischargeFmt}||${hkrRemark}`;
         if (!groups[groupId]) {
             groups[groupId] = { vessel, eta: dischargeFmt, remark: hkrRemark, c20: 0, c40: 0 };
         }
@@ -4165,7 +4240,17 @@ function generatePendencyReport() {
         return 'bg-gray-50 text-gray-900';
     };
 
-    // -- Summary HTML --
+    const calculatePendingDays = (dateStr) => {
+        if(!dateStr || dateStr === '-') return 0;
+        const parts = dateStr.split(/[-.\/]/);
+        if(parts.length < 3) return 0;
+        const d = new Date(parts[2], parts[1]-1, parts[0]);
+        const today = new Date();
+        const diffTime = Math.abs(today - d);
+        return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    };
+
+    // --- 2. Vertical Summary (Right Side) ---
     let sum20=0, sum40=0, sumTEU=0;
     let summaryRows = Object.keys(summaryStats).sort().map(rem => {
         const s = summaryStats[rem];
@@ -4205,10 +4290,17 @@ function generatePendencyReport() {
         </div>
     `;
 
-    // -- Main Table --
+    // --- 3. Main Table (Left Side) ---
     const sortedKeys = Object.keys(groups).sort((a, b) => {
-        const r = groups[a].remark.localeCompare(groups[b].remark);
-        return r !== 0 ? r : groups[a].vessel.localeCompare(groups[b].vessel);
+        const itemA = groups[a];
+        const itemB = groups[b];
+        const r = itemA.remark.localeCompare(itemB.remark);
+        if (r !== 0) return r;
+        const dateA = calculatePendingDays(itemA.eta); 
+        const dateB = calculatePendingDays(itemB.eta);
+        const dateDiff = dateB - dateA; 
+        if (dateDiff !== 0) return dateDiff;
+        return itemA.vessel.localeCompare(itemB.vessel);
     });
 
     let tableHtml = `
@@ -4218,7 +4310,7 @@ function generatePendencyReport() {
                     <tr>
                         <th class="px-4 py-2 border-r border-gray-400 text-left">Vessel Name</th>
                         <th class="px-4 py-2 border-r border-gray-400 text-center">Discharge</th>
-                        <th class="px-2 py-2 border-r border-gray-400 text-center w-[8%]">20'</th>
+                        <th class="px-2 py-2 border-r border-gray-400 text-center w-20">Days</th> <th class="px-2 py-2 border-r border-gray-400 text-center w-[8%]">20'</th>
                         <th class="px-2 py-2 border-r border-gray-400 text-center w-[8%]">40'</th>
                         <th class="px-2 py-2 text-center w-[10%] bg-yellow-500 text-black">TEU</th>
                     </tr>
@@ -4228,19 +4320,18 @@ function generatePendencyReport() {
 
     let currentRemark = null;
     let s20=0, s40=0, sTEU=0;
-    
-    // Grand Total Variables
     let grand20 = 0, grand40 = 0, grandTotalTEU = 0;
 
     sortedKeys.forEach((key, index) => {
         const item = groups[key];
         const rowTEU = item.c20 + (item.c40 * 2);
+        const pendingDays = calculatePendingDays(item.eta);
 
         if (item.remark !== currentRemark) {
             if (currentRemark !== null) {
                 tableHtml += `
                     <tr class="bg-gray-100 border-b border-gray-400 font-bold text-xs">
-                        <td colspan="2" class="px-4 py-1 text-right uppercase">Total ${currentRemark}:</td>
+                        <td colspan="3" class="px-4 py-1 text-right uppercase">Total ${currentRemark}:</td>
                         <td class="px-2 py-1 text-center border-l border-gray-300 border-r">${s20}</td>
                         <td class="px-2 py-1 text-center border-r border-gray-300">${s40}</td>
                         <td class="px-2 py-1 text-center bg-gray-200">${sTEU}</td>
@@ -4251,23 +4342,26 @@ function generatePendencyReport() {
             const highlight = getHighlightClass(currentRemark);
             tableHtml += `
                 <tr class="${highlight} border-b border-gray-300">
-                    <td colspan="5" class="px-4 py-1.5 font-black text-xs uppercase border-t border-gray-400">
+                    <td colspan="6" class="px-4 py-1.5 font-black text-xs uppercase border-t border-gray-400">
                         ${currentRemark}
                     </td>
                 </tr>`;
         }
 
         s20 += item.c20; s40 += item.c40; sTEU += rowTEU;
-        
-        // Add to Grand Totals
-        grand20 += item.c20;
-        grand40 += item.c40;
-        grandTotalTEU += rowTEU;
+        grand20 += item.c20; grand40 += item.c40; grandTotalTEU += rowTEU;
+
+        const daysClass = pendingDays > 7 ? 'text-red-600 font-black' : 'text-slate-600';
 
         tableHtml += `
             <tr class="border-b border-gray-300 hover:bg-blue-50 transition-colors">
                 <td class="px-4 py-1 border-r border-gray-300 font-medium">${item.vessel}</td>
-                <td class="px-4 py-1 border-r border-gray-300 text-center">${item.eta}</td>
+                <td class="px-4 py-1 border-r border-gray-300 text-center whitespace-nowrap">${item.eta}</td>
+                
+                <td class="px-2 py-1 border-r border-gray-300 text-center whitespace-nowrap ${daysClass}">
+                    ${pendingDays} Days
+                </td>
+
                 <td class="px-2 py-1 border-r border-gray-300 text-center">${item.c20 || '-'}</td>
                 <td class="px-2 py-1 border-r border-gray-300 text-center">${item.c40 || '-'}</td>
                 <td class="px-2 py-1 text-center font-bold bg-yellow-50/50">${rowTEU}</td>
@@ -4277,7 +4371,7 @@ function generatePendencyReport() {
         if (index === sortedKeys.length - 1) {
             tableHtml += `
                 <tr class="bg-gray-100 border-b border-gray-400 font-bold text-xs">
-                    <td colspan="2" class="px-4 py-1 text-right uppercase">Total ${currentRemark}:</td>
+                    <td colspan="3" class="px-4 py-1 text-right uppercase">Total ${currentRemark}:</td>
                     <td class="px-2 py-1 text-center border-l border-gray-300 border-r">${s20}</td>
                     <td class="px-2 py-1 text-center border-r border-gray-300">${s40}</td>
                     <td class="px-2 py-1 text-center bg-gray-200">${sTEU}</td>
@@ -4285,10 +4379,9 @@ function generatePendencyReport() {
         }
     });
 
-    // --- GRAND TOTAL ROW ADDED HERE ---
     tableHtml += `
         <tr class="bg-slate-800 text-white font-black border-t-2 border-slate-600 text-[11px]">
-            <td colspan="2" class="px-4 py-1.5 text-right uppercase tracking-wider">Grand Total:</td>
+            <td colspan="3" class="px-4 py-1.5 text-right uppercase tracking-wider">Grand Total:</td>
             <td class="px-2 py-1.5 text-center border-l border-slate-600 text-emerald-400">${grand20}</td>
             <td class="px-2 py-1.5 text-center border-l border-slate-600 text-emerald-400">${grand40}</td>
             <td class="px-2 py-1.5 text-center bg-yellow-500 text-black border-l border-slate-600">${grandTotalTEU}</td>
