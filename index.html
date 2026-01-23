@@ -2764,7 +2764,9 @@ window.deleteHkrRow = async (index) => {
             document.getElementById('manualRailDateInput').value = '';
         });
         
-                // === UPDATE SINGLE STACK SUMMARY (PRIORITIZE AH11, ROBUST FALLBACK FOR EXCEL SERIAL DATES IN V2) ===
+// ==========================================
+// UPDATE SINGLE STACK SUMMARY (WITH PRE-SAVE SUMMARY & ROBUST SCAN)
+// ==========================================
 const websiteExcelInput = document.getElementById('websiteExcelInput');
 if (websiteExcelInput) {
     websiteExcelInput.addEventListener('change', (e) => {
@@ -2772,10 +2774,12 @@ if (websiteExcelInput) {
         if (!file) return;
 
         const reader = new FileReader();
+        reader.readAsArrayBuffer(file);
+        
         reader.onload = (evt) => {
             try {
-                const bstr = evt.target.result;
-                const wb = XLSX.read(bstr, { type: 'binary' });
+                const data = evt.target.result;
+                const wb = XLSX.read(data, { type: 'array' });
                 const ws = wb.Sheets[wb.SheetNames[0]];
                 const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
@@ -2784,20 +2788,25 @@ if (websiteExcelInput) {
                     return;
                 }
 
-                // Rake No. from H7
-                const rakeNo = ws['H7'] ? String(ws['H7'].v).trim().toUpperCase() : '';
+                // --- 1. Rake No. from H7 (YOUR EXISTING LOGIC) ---
+                let rakeNo = ws['H7'] ? String(ws['H7'].v).trim().toUpperCase() : '';
+                if (!rakeNo) {
+                    // Fallback to check rows 4-8 just in case
+                    for(let r=4; r<8; r++) {
+                         if(jsonData[r] && jsonData[r][7] && String(jsonData[r][7]).trim().length>3) { 
+                             rakeNo = String(jsonData[r][7]).trim().toUpperCase(); break; 
+                         }
+                    }
+                }
                 if (!rakeNo) {
                     alert("Rake No. (H7) nahi mila.");
                     return;
                 }
 
-                // --- PRIORITIZED DATE & TIME PARSING ---
-                let dateStr = '';
-                let timeStr = '00:00';
-                let formattedDate = '';
-
-                // First: Check AH11 (Column AH = index 34, search first 20 rows)
+                // --- 2. PRIORITIZED DATE & TIME PARSING (YOUR EXISTING LOGIC) ---
+                let dateStr = '', timeStr = '00:00', formattedDate = '';
                 let ah11Val = '';
+                // Check AH11 (Index 34)
                 for (let r = 0; r < Math.min(20, jsonData.length); r++) {
                     if (jsonData[r][34] !== undefined && jsonData[r][34] !== '' && jsonData[r][34] !== null) {
                         ah11Val = jsonData[r][34];
@@ -2806,7 +2815,6 @@ if (websiteExcelInput) {
                 }
 
                 if (ah11Val) {
-                    // AH11: Use full dd-mm-yyyy hh:mm format
                     const fullDt = formatToDDMMYYYY_HHMM(ah11Val);
                     if (fullDt && fullDt.includes(' ')) {
                         const parts = fullDt.split(' ');
@@ -2817,10 +2825,8 @@ if (websiteExcelInput) {
                     }
                     formattedDate = `${dateStr} ${timeStr}`;
                 } else {
-                    // Fallback: V2 date (now handles Excel serial correctly) + Z2 time
-                    const rawDateV2 = jsonData[1][21]; // V2
-
-                    // Proper Excel serial to date conversion
+                    // Fallback: V2 (Index 21) + Z2 (Index 25) Logic
+                    const rawDateV2 = jsonData[1][21]; 
                     let dateObj;
                     if (typeof rawDateV2 === 'number' && rawDateV2 > 40000) {
                         const utc_days = rawDateV2 - 25569;
@@ -2843,12 +2849,10 @@ if (websiteExcelInput) {
                         const mm = String(dateObj.getMinutes()).padStart(2, '0');
                         formattedDate = `${day}-${month}-${year} ${hh}:${mm}`;
                     } else {
-                        // Ultimate fallback
                         dateStr = formatToDDMMYYYY(rawDateV2 || new Date());
                         formattedDate = `${dateStr} ${timeStr}`;
                     }
 
-                    // Time from Z2
                     const rawTimeZ2 = jsonData[1][25];
                     if (rawTimeZ2) {
                         if (typeof rawTimeZ2 === 'number') {
@@ -2859,7 +2863,6 @@ if (websiteExcelInput) {
                         } else {
                             timeStr = String(rawTimeZ2).trim().padEnd(5, '0');
                         }
-                        // Update formattedDate with accurate time if date was parsed
                         if (formattedDate.includes(' ')) {
                             const parts = formattedDate.split(' ');
                             formattedDate = `${parts[0]} ${timeStr}`;
@@ -2867,63 +2870,204 @@ if (websiteExcelInput) {
                     }
                 }
 
-                // --- ETA CALCULATION (+4 days) ---
+                // --- 3. PREPARE DATA (Don't save yet) ---
+                const totalContainers = [];
+                const updatedContainers = [];
+                const notUpdatedContainers = [];
+
+                // ETA Calculation
                 let etaStr = '';
                 try {
                     const datePart = formattedDate.split(' ')[0];
                     const [d, m, y] = datePart.split('-').map(Number);
                     const railDate = new Date(y, m - 1, d);
-                    const etaDate = new Date(railDate);
+                    const etaDate = new Date(railDate); 
                     etaDate.setDate(etaDate.getDate() + 4);
-                    const ed = String(etaDate.getDate()).padStart(2, '0');
-                    const em = String(etaDate.getMonth() + 1).padStart(2, '0');
-                    const ey = etaDate.getFullYear();
-                    etaStr = ` ETA ${ed}-${em}-${ey} 00:00`;
+                    etaStr = ` ETA ${String(etaDate.getDate()).padStart(2,'0')}-${String(etaDate.getMonth()+1).padStart(2,'0')}-${etaDate.getFullYear()} 00:00`;
                 } catch (_) {}
-
                 const remarkFinal = `RAILOUT FROM MUNDRA ON ${formattedDate}${etaStr}`;
 
-                let updateCount = 0;
-                for (let i = 10; i < jsonData.length; i++) {
-                    const row = jsonData[i];
+                // --- MAIN LOOP ---
+                jsonData.slice(10).forEach(row => {
                     const contNo = String(row[2] || '').trim().toUpperCase();
-                    if (!contNo) continue;
+                    if (!contNo || contNo.length < 4) return;
 
-                    const rowIndex = rawSheets.website.findIndex(w => 
-                        String(w[3] || '').trim().toUpperCase() === contNo
-                    );
+                    totalContainers.push(contNo);
 
+                    const rowIndex = rawSheets.website.findIndex(w => String(w[3] || '').trim().toUpperCase() === contNo);
+                    
                     if (rowIndex !== -1) {
-                        rawSheets.website[rowIndex][4] = rakeNo;
-                        rawSheets.website[rowIndex][8] = formattedDate;
-                        rawSheets.website[rowIndex][9] = remarkFinal;
-                        updateCount++;
+                        // Found in System -> Add to Update Queue
+                        updatedContainers.push({
+                            index: rowIndex,
+                            data: {
+                                rake: rakeNo,
+                                date: formattedDate,
+                                remark: remarkFinal
+                            }
+                        });
+                    } else {
+                        // Not Found -> Add to Not Updated List (Check for Priority)
+                        const targetDests = ['INHKR', 'INHMR', 'INHDL'];
+                        
+                        // Robust Scan for Destination in Excel Row
+                        let destVal = String(row[26] || '').trim().toUpperCase(); // Col AA
+                        let isPriority = targetDests.includes(destVal);
+                        let foundDestName = isPriority ? destVal : '';
+
+                        if (!isPriority) {
+                            // Scan entire row for keywords
+                            foundDestName = targetDests.find(d => row.some(cell => String(cell || '').trim().toUpperCase() === d));
+                            if (foundDestName) isPriority = true;
+                        }
+
+                        notUpdatedContainers.push({
+                            cont: contNo,
+                            dest: foundDestName || 'OTHER', // Destination name or 'OTHER'
+                            isPriority: isPriority
+                        });
                     }
-                }
+                });
 
-                window.viewSheetData('website');
-                saveToCloud();
-                processCloudData();
-
-                const box = document.createElement('div');
-                box.innerHTML = `
-                    <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
-                        ✓ Auto Update Successful!<br>
-                        Rake: ${rakeNo}<br>
-                        Date: ${formattedDate}<br>
-                        Updated: ${updateCount} Conts
-                    </div>`;
-                document.body.appendChild(box);
-                setTimeout(() => box.remove(), 6000);
+                // --- 4. SHOW SUMMARY MODAL (Instead of direct save) ---
+                showUpdateSummaryModal(rakeNo, formattedDate, totalContainers.length, updatedContainers, notUpdatedContainers);
 
             } catch (err) {
                 console.error(err);
-                alert("Error: " + err.message);
+                alert("Error reading file: " + err.message);
             }
         };
-        reader.readAsBinaryString(file);
-        e.target.value = '';
+        e.target.value = ''; 
     });
+}
+
+// --- HELPER 1: Show Pre-Save Summary Modal ---
+function showUpdateSummaryModal(rake, date, totalCount, updates, notUpdates) {
+    // Generate HTML for Missing List
+    // Highlights High Priority (HKR/HMR/HDL) in RED, others in GRAY
+    const notUpdatedListHtml = notUpdates.length > 0 
+        ? notUpdates.map(item => {
+            const colorClass = item.isPriority ? "bg-red-100 text-red-800 border-red-300 font-bold" : "bg-slate-100 text-slate-500 border-slate-200";
+            return `<div class="flex justify-between text-[10px] px-2 py-1 mb-1 border rounded ${colorClass}">
+                        <span>${item.cont}</span>
+                        <span>${item.dest}</span>
+                    </div>`;
+        }).join('')
+        : `<div class="text-center text-slate-400 italic text-[10px] py-2">All containers matched successfully!</div>`;
+
+    const modalHtml = `
+        <div id="summaryModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center animate-in fade-in zoom-in duration-200" style="z-index: 200000;">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden border-2 border-slate-300">
+                <div class="bg-slate-800 text-white p-4 flex justify-between items-center">
+                    <h3 class="font-bold uppercase text-sm tracking-wide flex items-center gap-2">
+                        <i data-lucide="clipboard-check" class="w-4 h-4 text-emerald-400"></i> Update Summary
+                    </h3>
+                    <button id="cancelSummaryBtn" class="text-slate-400 hover:text-white transition-colors">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+
+                <div class="p-5 space-y-4">
+                    <div class="grid grid-cols-2 gap-3 text-[11px] uppercase font-bold text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                        <div>
+                            <span class="block text-[9px] text-slate-400">Train No</span>
+                            <span class="text-blue-700 text-sm">${rake}</span>
+                        </div>
+                        <div>
+                            <span class="block text-[9px] text-slate-400">Railout Date</span>
+                            <span class="text-blue-700 text-sm">${date}</span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2 text-center">
+                        <div class="p-2 bg-slate-100 rounded border border-slate-200">
+                            <span class="block text-[9px] font-bold text-slate-500 uppercase">Total</span>
+                            <span class="text-lg font-black text-slate-800">${totalCount}</span>
+                        </div>
+                        <div class="p-2 bg-emerald-50 rounded border border-emerald-200">
+                            <span class="block text-[9px] font-bold text-emerald-600 uppercase">Matched</span>
+                            <span class="text-lg font-black text-emerald-700">${updates.length}</span>
+                        </div>
+                        <div class="p-2 bg-rose-50 rounded border border-rose-200">
+                            <span class="block text-[9px] font-bold text-rose-600 uppercase">Missing</span>
+                            <span class="text-lg font-black text-rose-700">${notUpdates.length}</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <p class="text-[10px] font-bold text-slate-700 uppercase mb-2 flex justify-between">
+                            <span>Not Updated Containers:</span>
+                            <span class="text-rose-600 text-[9px] italic">(Scroll to view)</span>
+                        </p>
+                        <div class="bg-slate-50 border border-slate-300 rounded-lg p-2 h-40 overflow-y-auto custom-scrollbar shadow-inner">
+                            ${notUpdatedListHtml}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-4 bg-slate-100 border-t border-slate-200 flex justify-end gap-3">
+                    <button id="cancelSummaryBtn2" class="px-4 py-2 bg-white border border-slate-300 text-slate-600 rounded-lg text-[10px] font-bold uppercase hover:bg-slate-50 transition-colors shadow-sm">
+                        Cancel
+                    </button>
+                    <button id="confirmUpdateBtn" class="px-6 py-2 bg-emerald-600 text-white rounded-lg text-[10px] font-bold uppercase hover:bg-emerald-700 transition-all shadow-md flex items-center gap-2">
+                        <i data-lucide="save" class="w-3 h-3"></i> CONFIRM & SAVE
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Remove existing modal if any
+    const existingModal = document.getElementById('summaryModal');
+    if (existingModal) existingModal.remove();
+
+    // Append to Body
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = modalHtml;
+    document.body.appendChild(wrapper);
+    lucide.createIcons();
+
+    // Event Listeners
+    const closeModal = () => wrapper.remove();
+
+    document.getElementById('cancelSummaryBtn').onclick = closeModal;
+    document.getElementById('cancelSummaryBtn2').onclick = closeModal;
+
+    document.getElementById('confirmUpdateBtn').onclick = () => {
+        applySingleStackUpdates(updates);
+        closeModal();
+    };
+}
+
+// --- HELPER 2: Apply Updates & Save ---
+function applySingleStackUpdates(updates) {
+    if (updates.length === 0) {
+        alert("No matched containers to update.");
+        return;
+    }
+
+    // Apply changes to rawSheets
+    updates.forEach(u => {
+        rawSheets.website[u.index][4] = u.data.rake;
+        rawSheets.website[u.index][8] = u.data.date;
+        rawSheets.website[u.index][9] = u.data.remark;
+    });
+
+    // Refresh UI
+    window.viewSheetData('website');
+    
+    // Save to Cloud
+    saveToCloud(); 
+    processCloudData();
+
+    // Success Notification (High Z-Index)
+    const box = document.createElement('div');
+    box.innerHTML = `
+        <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-emerald-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] animate-bounce" style="z-index: 200001;">
+            ✓ Successfully Updated ${updates.length} Containers!
+        </div>`;
+    document.body.appendChild(box);
+    setTimeout(() => box.remove(), 5000);
 }
 
         // Cancel button
