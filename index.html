@@ -3965,51 +3965,47 @@ window.searchHTPL = function(blNumber) {
     form.submit();
     document.body.removeChild(form);
 };
-// ... Iske upar aapka sara purana code (downloadBtn logic etc.) khatam ho raha hoga ...
 
-// *******************************************************************
-// IS LINE KE THEEK UPAR PASTE KAREIN (Running Trains Logic)
-// *******************************************************************
-
+// ==========================================
+// RUNNING TRAINS REPORT (Sorted by LINE -> Shipper)
+// ==========================================
 document.getElementById('runningTrainsBtn').addEventListener('click', () => {
     const modal = document.getElementById('runningTrainsModal');
-    const tableBody = document.getElementById('runningTrainsBody');
     
-    const tableHeader = modal.querySelector('thead tr');
-    tableHeader.innerHTML = `
-        <th class="p-3 border">Train No</th>
-        <th class="p-3 border">Railout Date</th>
-        <th class="p-3 border text-left">Shipper Name</th>
-        <th class="p-2 border w-12 text-center bg-slate-700">20"</th>
-        <th class="p-2 border w-12 text-center bg-slate-700">40"</th>
-        <th class="p-2 border w-16 text-center bg-blue-900">TEU</th>
-        <th class="p-3 border text-left">ETA</th>
-    `;
-
-    tableBody.innerHTML = ""; 
+    // Target container to inject multiple tables
+    const reportContainer = modal.querySelector('.flex-1.overflow-auto');
+    reportContainer.innerHTML = ""; 
 
     if (!rawSheets.website || rawSheets.website.length <= 1) {
         alert("No tracking data available.");
         return;
     }
 
-    // --- LOGIC: Fetch Shipper & Size directly from SMTP/Shipper ---
+    // --- Helpers ---
     const getShipperName = (blNo) => {
         if (!rawSheets.shipper || rawSheets.shipper.length <= 1) return "OTHER SHIPPERS";
         const match = rawSheets.shipper.find(r => String(r[2] || '').trim().toUpperCase() === String(blNo).trim().toUpperCase());
         return (match && match[3]) ? String(match[3]).trim().toUpperCase() : "OTHER SHIPPERS";
     };
 
-    // Naya Function: SMTP Sheet se Container No ke base par Size fetch karega
     const getSizeFromSMTP = (contNo) => {
         if (!rawSheets.smtp || rawSheets.smtp.length <= 1) return 20;
-        // SMTP: Column C (Index 2) is Container, Column D (Index 3) is Size
         const row = rawSheets.smtp.find(r => String(r[2] || '').trim().toUpperCase() === String(contNo).trim().toUpperCase());
         if (row) {
             const sizeVal = String(row[3] || '');
             return sizeVal.includes('40') ? 40 : 20;
         }
-        return 20; // Default
+        return 20; 
+    };
+
+    const getLineFromSMTP = (contNo) => {
+        if (!rawSheets.smtp || rawSheets.smtp.length <= 1) return "-";
+        const headers = rawSheets.smtp[0];
+        const lineIdx = headers.findIndex(h => String(h).toUpperCase().includes('LINE') && !String(h).toUpperCase().includes('SEAL')); 
+        const contIdx = 2;
+        if (lineIdx === -1) return "-";
+        const row = rawSheets.smtp.find(r => String(r[contIdx] || '').trim().toUpperCase() === String(contNo).trim().toUpperCase());
+        return row ? String(row[lineIdx] || '-').trim().toUpperCase() : "-";
     };
 
     const extractETA = (remark) => {
@@ -4021,6 +4017,7 @@ document.getElementById('runningTrainsBtn').addEventListener('click', () => {
         return remark;
     };
 
+    // --- Data Processing ---
     let trainGroups = {};
 
     rawSheets.website.slice(1).forEach(row => {
@@ -4028,11 +4025,12 @@ document.getElementById('runningTrainsBtn').addEventListener('click', () => {
         if (remark.includes("RAILOUT FROM") && !remark.includes("ARRIVED")) {
             const trainNo = row[4] || "N/A";
             const railDate = row[8] || "N/A";
-            const contNo = row[3] || ""; // Website tab se Container Number
-            const blNo = row[2] || "N/A";
+            const contNo = String(row[3] || "").trim(); 
+            const blNo = String(row[2] || "").trim();
             
             const shipperName = getShipperName(blNo);
-            const size = getSizeFromSMTP(contNo); // SMTP se size liya
+            const size = getSizeFromSMTP(contNo);
+            const line = getLineFromSMTP(contNo);
             const etaOnly = extractETA(row[9]);
             
             const trainKey = `${trainNo}_${railDate}`;
@@ -4041,15 +4039,22 @@ document.getElementById('runningTrainsBtn').addEventListener('click', () => {
                 trainGroups[trainKey] = { trainNo, railDate, eta: etaOnly, shippers: {} };
             }
 
-            if (!trainGroups[trainKey].shippers[shipperName]) {
-                trainGroups[trainKey].shippers[shipperName] = { c20: 0, c40: 0 };
+            const groupKey = `${line}||${shipperName}`;
+
+            if (!trainGroups[trainKey].shippers[groupKey]) {
+                trainGroups[trainKey].shippers[groupKey] = { 
+                    line: line, 
+                    name: shipperName, 
+                    c20: 0, c40: 0 
+                };
             }
             
-            if (size === 20) trainGroups[trainKey].shippers[shipperName].c20++;
-            else if (size === 40) trainGroups[trainKey].shippers[shipperName].c40++;
+            if (size === 20) trainGroups[trainKey].shippers[groupKey].c20++;
+            else if (size === 40) trainGroups[trainKey].shippers[groupKey].c40++;
         }
     });
 
+    // Sort Trains by Date
     const sortedTrains = Object.values(trainGroups).sort((a, b) => {
         const parseDate = (str) => {
             const p = str.split(/[-.\/\s]/);
@@ -4059,57 +4064,92 @@ document.getElementById('runningTrainsBtn').addEventListener('click', () => {
         return parseDate(a.railDate) - parseDate(b.railDate);
     });
 
+    // --- Rendering ---
     if (sortedTrains.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="7" class="p-10 text-slate-400 uppercase font-bold text-center">No Running Trains Found.</td></tr>`;
+        reportContainer.innerHTML = `<div class="p-10 text-slate-400 uppercase font-bold text-center text-xs">No Running Trains Found.</div>`;
     } else {
-        sortedTrains.forEach(train => {
-            const shipperEntries = Object.entries(train.shippers);
-            let trainTotal20 = 0;
-            let trainTotal40 = 0;
-            let trainTotalTEU = 0;
+        let fullHtml = '';
 
-            shipperEntries.forEach(([shipperName, counts], idx) => {
-                const tr = document.createElement('tr');
-                tr.className = "border-b border-slate-200 transition-colors hover:bg-slate-50";
-                
-                const teuValue = (counts.c20 * 1) + (counts.c40 * 2);
-                trainTotal20 += counts.c20;
-                trainTotal40 += counts.c40;
+        sortedTrains.forEach(train => {
+            // --- NEW: Sort Shippers by LINE first, then Name ---
+            const shipperEntries = Object.values(train.shippers).sort((a, b) => {
+                // 1. Sort by Line
+                const lineA = a.line || "";
+                const lineB = b.line || "";
+                const lineDiff = lineA.localeCompare(lineB);
+                if (lineDiff !== 0) return lineDiff;
+
+                // 2. Sort by Shipper Name (if Line is same)
+                return a.name.localeCompare(b.name);
+            });
+
+            let trainTotal20 = 0, trainTotal40 = 0, trainTotalTEU = 0;
+            let rowsHtml = '';
+
+            shipperEntries.forEach((group, idx) => {
+                const teuValue = (group.c20 * 1) + (group.c40 * 2);
+                trainTotal20 += group.c20;
+                trainTotal40 += group.c40;
                 trainTotalTEU += teuValue;
 
-                let html = "";
+                rowsHtml += `<tr class="border-b border-slate-300 hover:bg-yellow-50 transition-colors text-[10px] leading-tight">`;
+                
+                // First Row: Train Info (Wider columns: 1.5x)
                 if (idx === 0) {
-                    html += `
-                        <td rowspan="${shipperEntries.length + 1}" class="p-3 border border-slate-300 text-blue-900 font-black bg-white align-top">${train.trainNo}</td>
-                        <td rowspan="${shipperEntries.length + 1}" class="p-3 border border-slate-300 font-bold text-slate-600 bg-white align-top text-[10px]">${train.railDate}</td>
+                    rowsHtml += `
+                        <td rowspan="${shipperEntries.length + 1}" class="px-2 py-1 border-r border-slate-300 text-blue-900 font-black bg-white align-top whitespace-nowrap border-l-4 border-l-blue-600 w-[140px]">${train.trainNo}</td>
+                        <td rowspan="${shipperEntries.length + 1}" class="px-2 py-1 border-r border-slate-300 font-bold text-slate-600 bg-white align-top whitespace-nowrap text-center w-[110px]">${train.railDate}</td>
+                        <td rowspan="${shipperEntries.length + 1}" class="px-2 py-1 border-r border-slate-300 text-[9px] text-indigo-800 text-left font-black uppercase bg-indigo-50/30 align-top w-[150px]">${train.eta}</td>
                     `;
                 }
 
-                const shipperStyle = shipperName === "OTHER SHIPPERS" ? "text-rose-600 italic" : "text-slate-900 font-black";
-                html += `
-                    <td class="p-2 border border-slate-300 text-[10px] text-left leading-tight ${shipperStyle}">${shipperName}</td>
-                    <td class="p-2 border border-slate-300 text-center font-bold text-slate-500">${counts.c20 || '-'}</td>
-                    <td class="p-2 border border-slate-300 text-center font-bold text-slate-500">${counts.c40 || '-'}</td>
-                    <td class="p-2 border border-slate-300 text-blue-700 font-bold text-center text-sm">${teuValue}</td>
+                const shipperStyle = group.name === "OTHER SHIPPERS" ? "text-rose-600 italic" : "text-slate-800 font-bold";
+                
+                // Data Rows (Line, 20, 40, TEU: Double Width)
+                rowsHtml += `
+                    <td class="px-1 py-0.5 border-r border-slate-300 text-center font-bold text-slate-700 bg-slate-100 uppercase w-[100px]">${group.line}</td>
+                    <td class="px-2 py-0.5 border-r border-slate-300 text-left ${shipperStyle} truncate max-w-[250px]" title="${group.name}">${group.name}</td>
+                    <td class="px-1 py-0.5 border-r border-slate-300 text-center font-bold text-slate-500 w-[65px]">${group.c20 || '-'}</td>
+                    <td class="px-1 py-0.5 border-r border-slate-300 text-center font-bold text-slate-500 w-[65px]">${group.c40 || '-'}</td>
+                    <td class="px-1 py-0.5 border-r border-slate-300 text-blue-800 font-black text-center bg-blue-50 w-[80px]">${teuValue}</td>
                 `;
-
-                if (idx === 0) {
-                    html += `<td rowspan="${shipperEntries.length + 1}" class="p-3 border border-slate-300 text-[10px] text-indigo-800 text-left font-black uppercase bg-indigo-50/20 align-top">${train.eta}</td>`;
-                }
-                tr.innerHTML = html;
-                tableBody.appendChild(tr);
+                rowsHtml += `</tr>`;
             });
 
-            const subTotalTr = document.createElement('tr');
-            subTotalTr.className = "bg-slate-100 font-black border-b-2 border-slate-300";
-            subTotalTr.innerHTML = `
-                <td class="p-2 border border-slate-300 text-[9px] text-right uppercase text-slate-500">Train Sub-Total:</td>
-                <td class="p-2 border border-slate-300 text-center text-slate-900">${trainTotal20}</td>
-                <td class="p-2 border border-slate-300 text-center text-slate-900">${trainTotal40}</td>
-                <td class="p-2 border border-slate-300 text-center text-blue-900 bg-amber-100">${trainTotalTEU}</td>
+            // Subtotal Row
+            rowsHtml += `
+                <tr class="bg-slate-200 font-black border-b-2 border-slate-400 text-[10px]">
+                    <td colspan="2" class="px-2 py-0.5 border-r border-slate-300 text-right uppercase text-slate-600">Total:</td>
+                    <td class="px-1 py-0.5 border-r border-slate-300 text-center text-slate-900">${trainTotal20}</td>
+                    <td class="px-1 py-0.5 border-r border-slate-300 text-center text-slate-900">${trainTotal40}</td>
+                    <td class="px-1 py-0.5 border-r border-slate-300 text-center text-white bg-slate-600">${trainTotalTEU}</td>
+                </tr>
             `;
-            tableBody.appendChild(subTotalTr);
+
+            fullHtml += `
+                <div class="mb-6 shadow-sm border border-slate-400 rounded overflow-hidden">
+                    <table class="w-full text-[10px] border-collapse bg-white table-fixed">
+                        <thead class="bg-slate-800 text-white uppercase text-[10px] leading-none">
+                            <tr>
+                                <th class="px-2 py-2 border-r border-slate-600 font-bold w-[140px]">Train No</th>
+                                <th class="px-2 py-2 border-r border-slate-600 font-bold w-[110px]">Date</th>
+                                <th class="px-2 py-2 border-r border-slate-600 font-bold text-left w-[150px]">ETA</th>
+                                <th class="px-2 py-2 border-r border-slate-600 font-bold text-center w-[100px] bg-slate-700 text-yellow-300">Line</th>
+                                <th class="px-2 py-2 border-r border-slate-600 font-bold text-left">Shipper Name</th>
+                                <th class="px-1 py-2 border-r border-slate-600 font-bold w-[65px] text-center bg-slate-700">20'</th>
+                                <th class="px-1 py-2 border-r border-slate-600 font-bold w-[65px] text-center bg-slate-700">40'</th>
+                                <th class="px-1 py-2 border-r border-slate-600 font-bold w-[80px] text-center bg-blue-900">TEU</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHtml}
+                        </tbody>
+                    </table>
+                </div>
+            `;
         });
+
+        reportContainer.innerHTML = fullHtml;
     }
 
     modal.classList.remove('hidden');
