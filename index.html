@@ -1165,13 +1165,22 @@ exportBtn.onclick = async () => {
         let trainDateRemarksMap = {}; 
         let currentShipperAllGroups = []; 
         let isInTransitFilterActive = false; // New global filter state
-
         lucide.createIcons();
+	
+	// --- GLOBAL HELPER: Get Vessel Name (Standardized) ---
+function getGroupVessel(g) {
+    if (g.vessel && g.vessel !== '-' && g.vessel !== '') {
+        return g.vessel;                    // Priority 1: SMTP vessel
+    }
+    if (g.hkrVessel && g.hkrVessel !== '-') {
+        return `NOT HANDOVER (${g.hkrVessel})`;  // ← Improved: show HKR vessel name
+    }
+    return 'NOT HANDOVER';                  // Final fallback
+}	
 	// Open FOIS Button: Uses FNR from selected rake (parsed from its formatted name)
-// Open FOIS Button
-document.getElementById('openFoisWithFnrBtn').addEventListener('click', () => {
-    const selectedFormattedRake = rakeSelect.value.trim();
-    if (!selectedFormattedRake) {
+	document.getElementById('openFoisWithFnrBtn').addEventListener('click', () => {
+	const selectedFormattedRake = rakeSelect.value.trim();
+	if (!selectedFormattedRake) {
         alert("Please select a Rake No first.");
         return;
     }
@@ -1331,31 +1340,37 @@ document.getElementById('openFoisWithFnrBtn').addEventListener('click', () => {
 
     return String(val);  // Fallback to original if unparseable
 }
-        // ------------------------------------------
-        // 2. RENDERING LOGIC
-        // ------------------------------------------
-         function applyFilters() {
+ // ==========================================
+// APPLY FILTERS (FIXED: LOGIC SYNCED WITH DROPDOWN)
+// ==========================================
+function applyFilters() {
     if (!currentShipperAllGroups.length) return;
+
     let filtered = [...currentShipperAllGroups];
 
     // Vessel filter
     if (window.selectedVessels && window.selectedVessels.length > 0) {
         filtered = filtered.filter(g => {
-            // Data mein agar vessel '-' ya empty hai, toh usse 'NOT HANDOVER' maano
-            const normalizedVessel = (g.vessel && g.vessel !== '-' && g.vessel !== '') ? g.vessel : 'NOT HANDOVER';
-            return window.selectedVessels.includes(normalizedVessel);
+            const groupVessel = getGroupVessel(g);
+            return window.selectedVessels.some(selected => 
+                selected === groupVessel ||
+                (selected === 'NOT HANDOVER' && groupVessel.startsWith('NOT HANDOVER'))
+            );
         });
+    } else {
+        // Agar koi vessel select nahi hai → filtered ko bilkul empty kar do
+        filtered = [];
     }
 
-    // BL filter
-    const bVal = blFilter.value;
+    // BL filter (yeh waise hi rahega)
+    const bVal = document.getElementById('blFilter').value;
     if (bVal !== "ALL") filtered = filtered.filter(g => g.blNo === bVal);
 
+    // Render functions call
     renderStats(filtered);
     renderMainTable(filtered);
     renderDetailedBreakdown(filtered);
 }
-
         function renderStats(groups) {
             const t20 = groups.reduce((acc, b) => acc + b.stats.s20, 0);
             const t40 = groups.reduce((acc, b) => acc + b.stats.s40, 0);
@@ -1421,29 +1436,36 @@ document.getElementById('openFoisWithFnrBtn').addEventListener('click', () => {
     let g20 = 0, g40 = 0, gR = 0, gA = 0, gT = 0, gP = 0;
     
     document.getElementById('reportRows').innerHTML = groups.map(bl => {
-        g20 += bl.stats.s20; 
-        g40 += bl.stats.s40; 
-        gR += bl.stats.railed; 
-        gP += bl.stats.pending;
+        g20 += bl.stats.s20; g40 += bl.stats.s40; gR += bl.stats.railed; gP += bl.stats.pending;
         const arrivedCount = bl.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
         const inTransitCount = bl.stats.railed - arrivedCount;
-        gA += arrivedCount;
-        gT += inTransitCount;
+        gA += arrivedCount; gT += inTransitCount;
         
         const progressPercent = bl.stats.total > 0 ? Math.round((arrivedCount / bl.stats.total) * 100) : 0;
-        
-        // --- NEW: Generate Tag String (HKR, HMR, HDL) ---
         const tags = Array.from(bl.destTags || []).sort().join(', ');
         const tagDisplay = tags ? `<span class="text-[9px] font-black text-indigo-700 ml-1">(${tags})</span>` : '';
-
         const sizeLabel = `(${bl.stats.total}X${bl.stats.s40 > 0 ? '40' : '20'})${tagDisplay}`;
-        
-        const vesselDisplay = (!bl.isAnySmtp && bl.stats.railed === 0) 
-            ? '<span class="text-rose-600 font-bold ">NOT Handover</span>' 
-            : `${bl.vessel} / ${bl.handoverDt}`;
-        
         const blDisplay = `${bl.blNo} (${bl.line})`;
 
+        // --- NEW DISPLAY LOGIC (UPDATED) ---
+       let vesselDisplay = "";
+
+if (bl.isAnySmtp) {
+    // Normal handover case – same as before
+    vesselDisplay = `${bl.vessel} / ${bl.handoverDt}`;
+} else {
+    // NOT HANDOVER case – formatted as requested
+    vesselDisplay = `
+        <div class="flex flex-col">
+            <span class="text-red-600 font-bold text-[10px]">NOT HANDOVER</span>
+            ${bl.hkrVessel ? `
+                <span class="text-blue-600 text-[8px] mt-0.5 block font-bold text-">
+                    (${bl.hkrVessel} / ETA: ${bl.hkrEta || '-'})
+                </span>
+            ` : ''}
+        </div>
+    `;
+}
         return `
             <tr class="border-b border-slate-200 hover:bg-slate-50 transition-colors">
                 <td class="px-2 py-1 border-r border-slate-300 min-w-[160px] relative overflow-hidden group">
@@ -1461,15 +1483,14 @@ document.getElementById('openFoisWithFnrBtn').addEventListener('click', () => {
                         </div>
                     </div>
                 </td>
-                <td class="px-2 py-1 text-slate-700 border-r border-slate-300 font-bold uppercase truncate">${vesselDisplay}</td>
+                <td class="px-2 py-1 text-slate-700 border-r border-slate-300 font-bold uppercase truncate leading-tight"> ${vesselDisplay}</td>
                 <td class="px-1 py-1 text-center border-r border-slate-300 bg-slate-50/50 ${bl.stats.s20 > 0 ? 'text-slate-800' : 'text-slate-200'}">${bl.stats.s20 || '-'}</td>
                 <td class="px-1 py-1 text-center border-r border-slate-300 bg-slate-50/50 ${bl.stats.s40 > 0 ? 'text-slate-800' : 'text-slate-200'}">${bl.stats.s40 || '-'}</td>
                 <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-emerald-50 text-emerald-700">${bl.stats.railed || '-'}</td>
                 <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-blue-50 text-blue-700">${arrivedCount || '-'}</td>
                 <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-orange-50 text-orange-700">${inTransitCount || '-'}</td>
                 <td class="px-1.5 py-1 text-center border-r border-slate-300 bg-rose-50 text-rose-700">${bl.stats.pending || '-'}</td>
-            </tr>
-        `;
+            </tr>`;
     }).join('');
 
     document.getElementById('reportFooter').innerHTML = `
@@ -1481,8 +1502,7 @@ document.getElementById('openFoisWithFnrBtn').addEventListener('click', () => {
             <td class="px-1.5 py-1.5 text-center text-xs font-bold text-blue-700 border-r border-slate-300">${gA}</td>
             <td class="px-1.5 py-1.5 text-center text-xs font-bold text-orange-700 border-r border-slate-300">${gT}</td>
             <td class="px-1.5 py-1.5 text-center text-xs font-bold text-rose-700">${gP}</td>
-        </tr>
-    `;
+        </tr>`;
 }
 
         // ==========================================
@@ -1567,9 +1587,7 @@ function renderDetailedBreakdown(groups) {
     lucide.createIcons();
 }
 function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
-    // Check Source
     const dataSource = (consIndex === 24) ? rawSheets.smtp : rawSheets.shipper;
-    
     const headers = dataSource[0];
     if (!headers) return;
 
@@ -1580,6 +1598,7 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
     const excludedTerms = ['CT3', 'CT4', 'MICT', 'SPRH', 'T2'];
     
     relevantRows.forEach(row => {
+        // ... (पुराना Logic Same रहेगा) ...
         const contNo = (consIndex === 24) ? String(row[2] || '').trim() : String(row[0] || '').trim();
         const blNo = (consIndex === 24) ? String(row[9] || 'N/A').trim() : String(row[2] || 'N/A').trim();
         const sizeValue = String(row[sizeIndex] || '').includes('40') ? 40 : 20;
@@ -1589,8 +1608,9 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
                 blNo, 
                 stats: { total: 0, s20: 0, s40: 0, railed: 0, pending: 0, r20: 0, r40: 0, p20: 0, p40: 0 },
                 line: '-', vessel: '-', handoverDt: '-', 
+                hkrVessel: null, hkrEta: null, 
                 railedDetails: [], pendingRemarks: [], smtpBRemarks: [], 
-                destTags: new Set(), // NEW: To store unique HKR/HMR/HDL tags
+                destTags: new Set(),
                 isAnySmtp: false
             };
         }
@@ -1608,11 +1628,16 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
             if (cellBVal && !excludedTerms.includes(cellBVal.toUpperCase())) {
                 if (!blGroups[blNo].smtpBRemarks.includes(cellBVal)) blGroups[blNo].smtpBRemarks.push(cellBVal);
             }
-
-            // --- NEW: Capture HKR/HMR/HDL from Column W (Index 22) ---
             const remarkVal = String(smtpRow[22] || '').trim().toUpperCase();
-            if (['HKR', 'HMR', 'HDL'].includes(remarkVal)) {
-                blGroups[blNo].destTags.add(remarkVal);
+            if (['HKR', 'HMR', 'HDL'].includes(remarkVal)) blGroups[blNo].destTags.add(remarkVal);
+        } else {
+            if (rawSheets.hkrHmrFiltered) {
+                const hkrMatch = rawSheets.hkrHmrFiltered.find(h => String(h.ctr_no || '').trim() === contNo);
+                if (hkrMatch) {
+                    if (!blGroups[blNo].hkrVessel) blGroups[blNo].hkrVessel = hkrMatch.vessel_name;
+                    if (!blGroups[blNo].hkrEta) blGroups[blNo].hkrEta = hkrMatch.eta_dttm;
+                    if (blGroups[blNo].line === '-' && hkrMatch.line_code) blGroups[blNo].line = hkrMatch.line_code;
+                }
             }
         }
 
@@ -1640,36 +1665,31 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
 
     currentShipperAllGroups = Object.values(blGroups);
 
-    // Sorting Logic
     currentShipperAllGroups.sort((a, b) => {
         const isNotHandoverA = (!a.isAnySmtp && a.stats.railed === 0);
         const isNotHandoverB = (!b.isAnySmtp && b.stats.railed === 0);
         if (isNotHandoverA && !isNotHandoverB) return -1;
         if (!isNotHandoverA && isNotHandoverB) return 1;
-
         const parseSortDate = (str) => {
             if (!str || str === '-' || str === 'N/A') return 0;
             const parts = str.split(/[-.\/\s]/);
             if (parts.length < 3) return 0;
-            let d = parseInt(parts[0]);
-            let m = parseInt(parts[1]) - 1;
-            let y = parseInt(parts[2]);
+            let d = parseInt(parts[0]), m = parseInt(parts[1]) - 1, y = parseInt(parts[2]);
             if (y < 100) y += 2000;
             return new Date(y, m, d).getTime();
         };
-        const dateA = parseSortDate(a.handoverDt);
-        const dateB = parseSortDate(b.handoverDt);
-        return dateB - dateA; 
+        return parseSortDate(b.handoverDt) - parseSortDate(a.handoverDt); 
     });
 
     if (shouldPopulateFilters) {
         window.selectedVessels = [];
         document.getElementById('vesselDropdownLabel').innerText = "Select Vessels";
-        
-        // Auto Select Logic
         const vesselDateMap = {};
+        
         currentShipperAllGroups.forEach(g => {
-            let currentVal = g.vessel && g.vessel !== '-' && g.vessel !== '' ? g.vessel : 'NOT HANDOVER';
+            // --- USE STANDARD HELPER HERE ---
+            let currentVal = getGroupVessel(g);
+
             const parseDate = (str) => {
                 if (!str || str === '-' || str === 'N/A') return 0;
                 const p = str.split(/[-.\/\s]/);
@@ -1684,35 +1704,17 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
 
         let sortedObjects = Object.values(vesselDateMap).sort((a, b) => b.time - a.time);
         let sortedVesselNames = sortedObjects.map(v => v.name);
+        
+        // Ensure NOT HANDOVER is at the top if present
         if (sortedVesselNames.includes('NOT HANDOVER')) {
             sortedVesselNames = sortedVesselNames.filter(v => v !== 'NOT HANDOVER');
             sortedVesselNames.unshift('NOT HANDOVER');
         }
-
-        const pendingVessels = [];
-        sortedVesselNames.forEach(v => {
-            const relatedGroups = currentShipperAllGroups.filter(g => {
-                const gVessel = (g.vessel && g.vessel !== '-' && g.vessel !== '') ? g.vessel : 'NOT HANDOVER';
-                return gVessel === v;
-            });
-            let total = 0, arrived = 0;
-            relatedGroups.forEach(g => {
-                total += g.stats.total;
-                arrived += g.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
-            });
-            if (total > arrived) pendingVessels.push(v);
-        });
-
-        if (pendingVessels.length > 0) {
-            window.selectedVessels = pendingVessels;
-            document.getElementById('vesselDropdownLabel').innerText = `${pendingVessels.length} Active Vessels Selected`;
-        } else {
-            document.getElementById('vesselDropdownLabel').innerText = "All Completed (Select to View)";
-        }
-
+        
         window.populateVesselFilters(sortedVesselNames);
         const uniqueBLs = currentShipperAllGroups.map(g => g.blNo).filter(Boolean).sort();
-        blFilter.innerHTML = '<option value="ALL">All BLs</option>' + uniqueBLs.map(b => `<option value="${b}">${b}</option>`).join('');
+        const blSelect = document.getElementById('blFilter');
+        blSelect.innerHTML = '<option value="ALL">All BLs</option>' + uniqueBLs.map(b => `<option value="${b}">${b}</option>`).join('');
         
         applyFilters();
     }
@@ -1761,6 +1763,34 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
     processAndRenderReport(consIndex, true);
 };
 
+// === CRITICAL: Vessel checkbox change hone par table turant refresh ho ===
+window.updateSelectedVessels = () => {
+    // 1. Saare checked checkboxes se values collect karo
+    const checkboxes = document.querySelectorAll('#vesselDropdownMenu .vessel-checkbox:checked');
+    window.selectedVessels = Array.from(checkboxes).map(cb => cb.value.trim());
+
+    // 2. Dropdown button ke label ko turant update karo
+    const label = document.getElementById('vesselDropdownLabel');
+    if (label) {
+        if (window.selectedVessels.length === 0) {
+            label.innerText = "Select Vessels";
+        } else if (window.selectedVessels.length === 1) {
+            label.innerText = window.selectedVessels[0];
+        } else {
+            label.innerText = `${window.selectedVessels.length} Vessels Selected`;
+        }
+    }
+
+    // 3. Sabse zaroori: Table ko turant refresh karo
+    if (typeof applyFilters === 'function') {
+        applyFilters();
+    } else {
+        console.warn("applyFilters function nahi mili — table refresh nahi hoga.");
+    }
+
+    // Debug ke liye (baad mein hata sakte ho)
+    console.log("Vessel selection changed →", window.selectedVessels);
+};
         function processCloudData() {
             trainDateRemarksMap = {};
             if (rawSheets.website && rawSheets.website.length > 1) {
@@ -4716,126 +4746,181 @@ document.getElementById('saveManualShipperBtn').addEventListener('click', async 
 });
 
 // --- NEW MULTI-SELECT VESSEL LOGIC ---
-window.selectedVessels = [];
-
 window.toggleVesselMenu = () => {
     const menu = document.getElementById('vesselDropdownMenu');
     const btn = document.getElementById('vesselDropdownBtn');
     if (!menu || !btn) return;
-    
+
     menu.classList.toggle('hidden');
-    
+
     if (!menu.classList.contains('hidden')) {
         const rect = btn.getBoundingClientRect();
-        menu.style.position = 'fixed'; // 'absolute' ki jagah 'fixed' karein agar abhi bhi hide ho raha ho
-        menu.style.left = `${rect.left}px`;
-        menu.style.top = `${rect.bottom}px`;
-        menu.style.width = `${rect.width}px`;
-        menu.style.zIndex = '9999'; // Sabse upar rakhne ke liye
+        menu.style.position = 'fixed';
+        menu.style.left   = `${rect.left}px`;
+        menu.style.top    = `${rect.bottom + window.scrollY + 4}px`; // + scrollY fix
+        menu.style.width  = `${rect.width}px`;
+        menu.style.zIndex = '99999'; // very high
     }
 };
-window.populateVesselFilters = (vesselList) => {
-            const menu = document.getElementById('vesselDropdownMenu');
-            
-            // "Select All" checkbox logic
-            const allSelected = vesselList.length > 0 && vesselList.every(v => window.selectedVessels.includes(v));
-            
-            let html = `
-                <div class="flex items-center gap-2 p-2 border-b-2 mb-1 pb-1 bg-blue-50">
-                    <input type="checkbox" id="vesselSelectAll" onchange="window.toggleAllVessels(this)" class="w-3.5 h-3.5 cursor-pointer" ${allSelected ? 'checked' : ''}>
-                    <label for="vesselSelectAll" class="text-[10px] font-bold text-blue-900 cursor-pointer uppercase">SELECT ALL VESSELS</label>
-                </div>
-            `;
-            
-            vesselList.forEach(v => {
-                const relatedGroups = currentShipperAllGroups.filter(g => {
-                    const gVessel = (g.vessel && g.vessel !== '-' && g.vessel !== '') ? g.vessel : 'NOT HANDOVER';
-                    return gVessel === v;
-                });
-                
-                let totalUnits = 0;
-                let railedUnits = 0;
-                let arrivedUnits = 0;
-                let latestHandover = '-';
-                
-                relatedGroups.forEach(g => {
-                    totalUnits += g.stats.total;
-                    railedUnits += g.stats.railed;
-                    arrivedUnits += g.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
-                    
-                    if (g.handoverDt && g.handoverDt !== '-' && g.handoverDt !== 'N/A') {
-                        if (latestHandover === '-' || g.handoverDt > latestHandover) {
-                            latestHandover = g.handoverDt;
-                        }
-                    }
-                });
-                
-                const inTransit = railedUnits - arrivedUnits;
-                const pendingPort = totalUnits - railedUnits;
-                
-                // --- COLOR LOGIC START ---
-                let bgColor = "hover:bg-blue-100";
-                let textColor = "text-slate-700";
+window.populateVesselFilters = (list) => {
+    const menu = document.getElementById('vesselDropdownMenu');
+    let displayList = [...list];
+    const nhIndex = displayList.findIndex(v => v === 'NOT HANDOVER' || v.startsWith('NOT HANDOVER'));
+    if (nhIndex !== -1) {
+        const item = displayList.splice(nhIndex, 1)[0];
+        displayList.unshift(item);
+    }
+    const allSelected = displayList.length > 0 && displayList.every(v =>
+        window.selectedVessels.some(s => 
+            s === v || 
+            (s === 'NOT HANDOVER' && v.startsWith('NOT HANDOVER')) ||
+            (v === 'NOT HANDOVER' && s.startsWith('NOT HANDOVER'))
+        )
+    );
 
-                if (pendingPort > 0) {
-                    bgColor = "bg-rose-50 hover:bg-rose-100";
-                    textColor = "text-rose-700";
-                } else if (inTransit > 0) {
-                    bgColor = "bg-amber-50 hover:bg-amber-100";
-                    textColor = "text-amber-700";
-                } else if (totalUnits > 0 && arrivedUnits === totalUnits) {
-                    bgColor = "bg-emerald-50 hover:bg-emerald-100";
-                    textColor = "text-emerald-700";
-                }
+    let html = `
+        <div class="flex items-center gap-2 p-2 border-b-2 mb-1 pb-1 bg-blue-50">
+            <input type="checkbox" id="vesselSelectAll" onchange="window.toggleAllVessels(this)" 
+                   class="vessel-checkbox w-3.5 h-3.5 cursor-pointer" ${allSelected ? 'checked' : ''}>
+            <label for="vesselSelectAll" class="text-[10px] font-bold text-blue-900 cursor-pointer uppercase">
+                SELECT ALL VESSELS
+            </label>
+        </div>
+    `;
 
-                if (v === 'NOT HANDOVER') {
-                    textColor = "text-red-600"; 
-                    bgColor = "bg-red-50 hover:bg-red-100";
-                }
-                // --- COLOR LOGIC END ---
-                
-                // Tick Logic
-                const isChecked = window.selectedVessels.includes(v) ? 'checked' : '';
+    displayList.forEach(v => {
+        const relatedGroups = currentShipperAllGroups.filter(g => 
+            getGroupVessel(g) === v || 
+            (v === 'NOT HANDOVER' && getGroupVessel(g).startsWith('NOT HANDOVER'))
+        );
 
-                html += `
-                <div class="flex items-center gap-3 p-2 rounded border-b border-white/50 ${bgColor} transition-colors">
-                    <input type="checkbox" value="${v}" onchange="window.updateSelectedVessels()" class="vessel-checkbox w-3.5 h-3.5 cursor-pointer" ${isChecked}>
-                    <label class="text-[10px] font-bold ${textColor} cursor-pointer uppercase truncate flex flex-col w-full">
-                        <span class="flex justify-between items-start">
-                            <span class="truncate pr-2">${v}</span>
-                            <span class="flex flex-col items-end shrink-0 gap-0.5">
-                                 <span class="text-[8px] bg-slate-700 text-white px-1 rounded">TOTAL: ${totalUnits}</span>
-                                 ${arrivedUnits > 0 ? `<span class="text-[8px] bg-blue-600 text-white px-1 rounded">ARR: ${arrivedUnits}</span>` : ''}
-                                 ${pendingPort > 0 ? `<span class="text-[8px] bg-rose-600 text-white px-1 rounded">PEN: ${pendingPort}</span>` : ''}
-                                 ${inTransit > 0 ? `<span class="text-[8px] bg-amber-600 text-white px-1 rounded">TRN: ${inTransit}</span>` : ''}
-                                 ${(pendingPort === 0 && inTransit === 0 && arrivedUnits === totalUnits) ? `<span class="text-[8px] bg-emerald-600 text-white px-1 rounded">ALL ARRIVED</span>` : ''}
-                            </span>
-                        </span>
-                        ${(latestHandover !== '-' && v !== 'NOT HANDOVER') ? `<span class="text-[9px] text-slate-500 font-normal mt-1">Handover on: ${latestHandover}</span>` : ''}
-                    </label>
-                </div>`;
-            });
-            menu.innerHTML = html;
-        };
+        let totalUnits = 0, railedUnits = 0, arrivedUnits = 0, latestHandover = '-';
+        relatedGroups.forEach(g => {
+            totalUnits += g.stats.total;
+            railedUnits += g.stats.railed;
+            arrivedUnits += g.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
+            if (g.handoverDt && g.handoverDt !== '-' && g.handoverDt !== 'N/A') {
+                if (latestHandover === '-' || g.handoverDt > latestHandover) latestHandover = g.handoverDt;
+            }
+        });
 
-window.updateSelectedVessels = () => {
-    const checkboxes = document.querySelectorAll('.vessel-checkbox:checked');
-    window.selectedVessels = Array.from(checkboxes).map(cb => cb.value);
-    
+        const inTransit = railedUnits - arrivedUnits;
+        const pendingPort = totalUnits - railedUnits;
+        let bgColor = "hover:bg-blue-100", textColor = "text-slate-700";
+        if (pendingPort > 0) { bgColor = "bg-rose-50 hover:bg-rose-100"; textColor = "text-rose-700"; }
+        else if (inTransit > 0) { bgColor = "bg-amber-50 hover:bg-amber-100"; textColor = "text-amber-700"; }
+        else if (totalUnits > 0 && arrivedUnits === totalUnits) { bgColor = "bg-emerald-50 hover:bg-emerald-100"; textColor = "text-emerald-700"; }
+        if (v.startsWith('NOT HANDOVER')) { textColor = "text-red-600 font-bold"; bgColor = "bg-red-50 hover:bg-red-100"; }
+        let displayName = v;
+        if (v === 'NOT HANDOVER') {
+            const nhGroup = relatedGroups.find(g => g.hkrVessel);
+            if (nhGroup?.hkrVessel) {
+                displayName = `NOT HANDOVER (${nhGroup.hkrVessel})`;
+                if (nhGroup.hkrEta) displayName += ` / ETA: ${nhGroup.hkrEta}`;
+            }
+        }
+        const isChecked = window.selectedVessels.some(s => 
+            s === v || 
+            (s === 'NOT HANDOVER' && v.startsWith('NOT HANDOVER')) ||
+            (v === 'NOT HANDOVER' && s.startsWith('NOT HANDOVER'))
+        ) ? 'checked' : '';
+
+        html += `
+        <div class="flex items-center gap-3 p-2 rounded border-b border-white/50 ${bgColor} transition-colors">
+            <input type="checkbox" value="${v}" onchange="window.updateSelectedVessels()" 
+                   class="vessel-checkbox w-3.5 h-3.5 cursor-pointer" ${isChecked}>
+            <label class="text-[10px] font-bold ${textColor} cursor-pointer uppercase truncate flex flex-col w-full">
+                <span class="flex justify-between items-start">
+                    <span class="truncate pr-2">${displayName}</span>
+                    <span class="flex flex-col items-end shrink-0 gap-0.5">
+                        <span class="text-[8px] bg-slate-700 text-white px-1 rounded">TOTAL: ${totalUnits}</span>
+                        ${arrivedUnits > 0 ? `<span class="text-[8px] bg-blue-600 text-white px-1 rounded">ARR: ${arrivedUnits}</span>` : ''}
+                        ${pendingPort > 0 ? `<span class="text-[8px] bg-rose-600 text-white px-1 rounded">PEN: ${pendingPort}</span>` : ''}
+                        ${inTransit > 0 ? `<span class="text-[8px] bg-amber-600 text-white px-1 rounded">TRN: ${inTransit}</span>` : ''}
+                    </span>
+                </span>
+                ${(latestHandover !== '-' && !v.startsWith('NOT HANDOVER')) ? 
+                    `<span class="text-[9px] text-slate-500 font-normal mt-1">Handover on: ${latestHandover}</span>` : ''}
+            </label>
+        </div>`;
+    });
+
+    menu.innerHTML = html;
+    const activeVessels = new Set();
+    if (displayList.some(v => v === 'NOT HANDOVER' || v.startsWith('NOT HANDOVER'))) {
+        activeVessels.add('NOT HANDOVER');
+    }
+
+    currentShipperAllGroups.forEach(g => {
+        const gv = getGroupVessel(g);
+        if (gv && !gv.startsWith('NOT HANDOVER')) {
+            const arrived = g.railedDetails.reduce((acc, d) => /TRAIN ARRIVED/i.test(d.remark) ? acc + d.count : acc, 0);
+            const inTransit = g.stats.railed - arrived;
+            const pending = g.stats.pending;
+            if (inTransit > 0 || pending > 0) activeVessels.add(gv);
+        }
+    });
+
+    window.selectedVessels = Array.from(activeVessels);
     const label = document.getElementById('vesselDropdownLabel');
-    if (window.selectedVessels.length === 0) label.innerText = "Select Vessels";
-    else if (window.selectedVessels.length === 1) label.innerText = window.selectedVessels[0];
-    else label.innerText = `${window.selectedVessels.length} Vessels Selected`;
+    if (window.selectedVessels.length === 0) {
+        label.innerText = "Select Vessels";
+    } else if (window.selectedVessels.length === 1) {
+        label.innerText = window.selectedVessels[0];
+    } else {
+        label.innerText = `${window.selectedVessels.length} Vessels Selected`;
+    }
+    document.querySelectorAll('.vessel-checkbox').forEach(cb => {
+        const val = cb.value;
+        cb.checked = window.selectedVessels.some(s => 
+            s === val || 
+            (s === 'NOT HANDOVER' && val.startsWith('NOT HANDOVER')) ||
+            (val === 'NOT HANDOVER' && s.startsWith('NOT HANDOVER'))
+        );
+    });
 
+    // Immediate refresh
     applyFilters();
 };
 
-window.toggleAllVessels = (master) => {
-    document.querySelectorAll('.vessel-checkbox').forEach(cb => cb.checked = master.checked);
-    window.updateSelectedVessels();
-};
+// === SELECT ALL VESSELS CHECKBOX KA LOGIC (Naya function) ===
+window.toggleAllVessels = (checkbox) => {
+    const isChecked = checkbox.checked;
+    
+    // Dropdown ke andar saare normal vessel checkboxes dhundho
+    // (Select All checkbox ko exclude karo)
+    const allVesselCheckboxes = document.querySelectorAll(
+        '#vesselDropdownMenu .vessel-checkbox:not(#vesselSelectAll)'
+    );
 
-// Bahar click karne par menu band karne ke liye
+    // Sabko check ya uncheck kar do
+    allVesselCheckboxes.forEach(cb => {
+        cb.checked = isChecked;
+    });
+
+    // window.selectedVessels array ko update karo
+    window.selectedVessels = isChecked 
+        ? Array.from(allVesselCheckboxes).map(cb => cb.value.trim())
+        : [];
+
+    // Dropdown ke button label ko turant update karo
+    const label = document.getElementById('vesselDropdownLabel');
+    if (label) {
+        if (isChecked) {
+            label.innerText = `${allVesselCheckboxes.length} Vessels Selected`;
+        } else {
+            label.innerText = "Select Vessels";
+        }
+    }
+
+    // Table ko turant refresh karo
+    if (typeof applyFilters === 'function') {
+        applyFilters();
+    }
+
+    // Debug ke liye (baad mein comment out kar sakte ho)
+    console.log("Select All toggled →", isChecked ? "All selected" : "All deselected");
+};
 // Bahar click karne par menu band karne ke liye
         document.addEventListener('click', (e) => {
             const menu = document.getElementById('vesselDropdownMenu');
