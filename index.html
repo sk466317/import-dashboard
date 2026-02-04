@@ -15,11 +15,8 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Global Firebase state attachment to window
         window.fb = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, getDoc, onSnapshot };
     </script>
-
     <style>
         body { 
             font-family: Arial, Helvetica, sans-serif; 
@@ -32,7 +29,7 @@
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        
+      
         @keyframes status-pulse {
             0% { transform: scale(1); opacity: 1; }
             50% { transform: scale(1.15); opacity: 0.8; }
@@ -1160,6 +1157,7 @@ exportBtn.onclick = async () => {
         const updateCustomRemarksBtn = document.getElementById('updateCustomRemarksBtn');
 
         let rawSheets = { shipper: [], smtp: [], website: [], hkrHmrFiltered: [] };
+	let lastUpdated = null;  // यह timestamp ट्रैक करेगा कि डेटा कब अपडेट हुआ
         let selectedShipper = null;
         let currentSheetInView = null;
         let trainDateRemarksMap = {}; 
@@ -1827,73 +1825,6 @@ window.updateSelectedVessels = () => {
                  processAndRenderReport(consIndex, true);
             }
         }
-async function loadFromCloud() {
-    if (!isCloudEnabled || !auth.currentUser) {
-        cloudLabel.innerText = "Offline Mode";
-        return;
-    }
-
-    cloudLabel.innerText = "Loading data...";
-    refreshIcon.classList.add('animate-spin');
-
-    try {
-        const metaRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_meta', 'latest');
-        const metaSnap = await getDoc(metaRef);
-
-        if (metaSnap.exists()) {
-            const { chunkCount } = metaSnap.data();
-            if (chunkCount === 0) {
-                cloudLabel.innerText = "Online (No Data)";
-                refreshIcon.classList.remove('animate-spin');
-                return;
-            }
-
-            let fullStr = "";
-            for (let i = 0; i < chunkCount; i++) {
-                const chunkRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_chunks', `chunk_${i}`);
-                const chunkSnap = await getDoc(chunkRef);
-                if (chunkSnap.exists()) {
-                    fullStr += chunkSnap.data().data;
-                }
-            }
-
-            if (fullStr) {
-                rawSheets = JSON.parse(fullStr);
-                processCloudData();
-            }
-            cloudLabel.innerText = "Online";
-        } else {
-            cloudLabel.innerText = "No Cloud Data";
-        }
-    } catch (e) {
-        console.error("Cloud Load Error:", e);
-        cloudLabel.innerText = "Load Failed";
-
-        // Show error alert with retry button
-        const retryBox = document.createElement('div');
-        retryBox.innerHTML = `
-            <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000]">
-                Data load failed: ${e.message}<br>
-                <button id="retryLoadBtn" class="mt-2 bg-white text-rose-600 px-4 py-1 rounded font-bold hover:bg-gray-100">
-                    Retry Load
-                </button>
-            </div>`;
-        document.body.appendChild(retryBox);
-
-        // Add click handler for retry
-        document.getElementById('retryLoadBtn').onclick = () => {
-            retryBox.remove();
-            loadFromCloud(); // Retry the load
-        };
-
-        // Auto-remove the alert after 15 seconds
-        setTimeout(() => {
-            if (retryBox.parentNode) retryBox.remove();
-        }, 15000);
-    } finally {
-        refreshIcon.classList.remove('animate-spin');
-    }
-}
 async function saveToCloud() {
     if (!isCloudEnabled || !auth.currentUser) {
         alert("Cloud sync is disabled or user not authenticated.");
@@ -1936,7 +1867,62 @@ async function saveToCloud() {
         }, 500);
     }
 }
+async function loadData(force = false) {
+    refreshIcon.classList.add('animate-spin');
+    cloudLabel.innerText = "Loading data...";
+    try {
+        const metaRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_meta', 'latest');
+        const metaSnap = await getDoc(metaRef);
+        if (metaSnap.exists()) {
+            const metaData = metaSnap.data();
+            const newUpdated = metaData.updatedAt;
+            if (force || !lastUpdated || newUpdated > lastUpdated) {
+                lastUpdated = newUpdated;
+                const { chunkCount } = metaData;
+                if (chunkCount === 0) {
+                    cloudLabel.innerText = "Online (No Data)";
+                    return;
+                }
+                let fullStr = "";
+                for (let i = 0; i < chunkCount; i++) {
+                    const chunkRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_chunks', `chunk_${i}`);
+                    const chunkSnap = await getDoc(chunkRef);
+                    if (chunkSnap.exists()) {
+                        fullStr += chunkSnap.data().data;
+                    }
+                }
+                if (fullStr) {
+                    rawSheets = JSON.parse(fullStr);
+                    processCloudData();
+                }
+                cloudLabel.innerText = "Online";
+            }
+        } else {
+            cloudLabel.innerText = "No Cloud Data";
+        }
+    } catch (e) {
+        console.error("Cloud Load Error:", e);
+        cloudLabel.innerText = "Load Failed";
+    } finally {
 
+        refreshIcon.classList.remove('animate-spin');
+if (currentSheetInView === 'website') {
+            window.viewSheetData('website');
+        }
+    }
+}
+function setupCloudListener() {
+    const metaRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_meta', 'latest');
+    onSnapshot(metaRef, (snap) => {
+        if (snap.exists()) {
+            const data = snap.data();
+            if (!lastUpdated || data.updatedAt > lastUpdated) {
+                lastUpdated = data.updatedAt;
+                loadData(true);  // डेटा ऑटो रिफ्रेश हो जाएगा
+            }
+        }
+    });
+}
 // Helper: Save only HKR filtered data quickly (faster than full save)
 async function quickSaveHkrData() {
     if (!isCloudEnabled || !auth.currentUser) return false;
@@ -2515,14 +2501,17 @@ window.deleteHkrRow = async (index) => {
         };
 
         onAuthStateChanged(auth, (user) => {
-            if (user) {
-                cloudIndicator.className = "w-2 h-2 rounded-full bg-emerald-500";
-                cloudLabel.innerText = "Online";
-                loadFromCloud();
-                const currentTimeEl = document.getElementById('currentTime');
-                if (currentTimeEl) currentTimeEl.innerText = formatToDDMMYYYY(new Date());
-            }
-        });
+    if (user) {
+        cloudIndicator.className = "w-2 h-2 rounded-full bg-emerald-500";
+        cloudLabel.innerText = "Online";
+        
+        setupCloudListener();   // ←←← ये लाइन जोड़ दो (real-time शुरू होगा)
+        loadData(true);         // पहली बार लोड करेगा
+        
+        const currentTimeEl = document.getElementById('currentTime');
+        if (currentTimeEl) currentTimeEl.innerText = formatToDDMMYYYY(new Date());
+    }
+});
 
         authBtn.addEventListener('click', handleLogin);
         document.getElementById('loginPassword').addEventListener('keypress', (e) => { if (e.key === 'Enter') handleLogin(); });
@@ -3548,7 +3537,7 @@ if (smtpExcelInput) {
         });
 
         refreshBtn.addEventListener('click', () => {
-    loadFromCloud();
+    loadData(true);  // मैन्युअल रिफ्रेश पर फोर्स लोड
 });
         saveImageBtn.addEventListener('click', () => {
             if (!selectedShipper || !rawSheets.shipper.length) return;
