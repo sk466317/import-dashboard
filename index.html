@@ -817,7 +817,7 @@ document.getElementById('deleteHtplUid103Btn').addEventListener('click', () => {
     });
 });
 // ────────────────────────────────────────────────
-// WhatsApp Message - REFINED & SIMPLE DESIGN
+// WhatsApp Message - REFINED DESIGN WITH SIGNATURE
 // ────────────────────────────────────────────────
 document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () => {
     const rows = Array.from(document.querySelectorAll('#railedDetailRows tr:not(.bg-blue-100\\/60):not([style*="display: none"])'));
@@ -856,7 +856,7 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
         }
     }
 
-    // 2. Message Header (Simple & Clean)
+    // 2. Message Header
     let message = `Dear Sir,\n\n`;
     message += `Following Containers has been railout from Mundra:- 🏗️\n\n`;
     message += `BL: ${currentBL} | Cont. ${totalUnits} | ${currentBLLine}\n\n`;
@@ -902,7 +902,6 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
             statusText = `🟢 TRAIN ARRIVED ${dateMatch ? dateMatch[0] : ""}`;
         }
 
-        // Section: Train | Date | Status
         message += `*${trainName}* | 📅 *${railDateFormatted}*\n`;
         message += `${statusText}\n`;
         message += `-----------------------------------\n`;
@@ -912,7 +911,7 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
             message += `${globalCounter}. ✅ ${cont}\n`;
             globalCounter++;
         });
-        message += `-----------------------------------\n\n`;
+        message += `-----------------------------------\n`;
     });
 
     // 6. Pending Section
@@ -926,7 +925,14 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
         message += `-----------------------------------\n\n`;
     }
 
-    message += `Regards,\nHind Terminals, Customer Service 🏢`;
+    // 7. Signature (As per your request)
+    message += `Container Tracking Link : 🌐\n`;
+    message += `https://tinyurl.com/import-tracking\n\n`;
+    message += `Thanks & Regards,\n`;
+    message += `*Hind Terminals Pvt Ltd.*,\n`;
+    message += `SCO No.14-15, Dhamija Tower,\n`;
+    message += `First Floor, Urban Estate, Phase -3,\n`;
+    message += `Point, Ludhiana- 141010`;
 
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
