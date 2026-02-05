@@ -673,6 +673,12 @@ table {
     </table>
 </div>
 
+<button id="sendRailedWhatsappBtn" 
+                class="bg-green-700 hover:bg-green-800 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-md active:scale-95">
+            <i data-lucide="send" class="w-4 h-4"></i>
+            Send WhatsApp Message
+        </button>
+    </div>
                 <div class="grid grid-cols-1 gap-5 pb-10 mt-10">
                     <div id="railedBreakdownContainer" class="report-box bg-white">
     <div class="bg-green-100 border-2 border-green-600 px-4 py-1.5 flex justify-between items-center">
@@ -809,6 +815,121 @@ document.getElementById('deleteHtplUid103Btn').addEventListener('click', () => {
         console.error('Request error:', error);
         alert("Error sending request. Check network/console (possible server or CORS issue).");
     });
+});
+// ────────────────────────────────────────────────
+// WhatsApp Message - REFINED & SIMPLE DESIGN
+// ────────────────────────────────────────────────
+document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () => {
+    const rows = Array.from(document.querySelectorAll('#railedDetailRows tr:not(.bg-blue-100\\/60):not([style*="display: none"])'));
+    
+    if (rows.length === 0) {
+        alert("Pehle report generate karein ya table mein data check karein.");
+        return;
+    }
+
+    const websiteData = rawSheets.website || [];
+    if (websiteData.length < 2) {
+        alert("Website sheet mein data nahi mila.");
+        return;
+    }
+
+    // Dynamic Indexing
+    const wsHeaders = websiteData[0].map(h => String(h).trim().toUpperCase());
+    const idxBL = wsHeaders.indexOf('BILL_NO');
+    const idxCont = wsHeaders.indexOf('CONTAINER_NO');
+    const idxRake = wsHeaders.indexOf('RAKE_NO');
+    const idxDate = wsHeaders.indexOf('RAILING_DATE');
+    const idxRemarks = wsHeaders.indexOf('REMARKS');
+
+    // 1. BL & Line Info
+    const firstRowCells = rows[0].querySelectorAll('td');
+    let blText = firstRowCells[0]?.textContent?.trim() || '';
+    let currentBL = "", currentBLLine = "MSC", totalUnits = "0";
+
+    if (blText && blText.includes('(')) {
+        currentBL = blText.split('(')[0].trim().toUpperCase(); 
+        const lineMatch = blText.match(/\(([^)]+)\)/);
+        if (lineMatch) {
+            const parts = lineMatch[1].split('/');
+            totalUnits = parts[0].trim();
+            currentBLLine = parts[1] ? parts[1].trim() : "MSC";
+        }
+    }
+
+    // 2. Message Header (Simple & Clean)
+    let message = `Dear Sir,\n\n`;
+    message += `Following Containers has been railout from Mundra:- 🏗️\n\n`;
+    message += `BL: ${currentBL} | Cont. ${totalUnits} | ${currentBLLine}\n\n`;
+
+    // 3. Filter Data
+    const allBlRows = websiteData.slice(1).filter(row => String(row[idxBL] || '').trim().toUpperCase() === currentBL);
+    const railedRows = allBlRows.filter(row => {
+        const status = String(row[idxDate] || '').trim().toUpperCase();
+        return status !== 'PENDING' && status !== '';
+    });
+    const pendingRows = allBlRows.filter(row => {
+        const status = String(row[idxDate] || '').trim().toUpperCase();
+        return status === 'PENDING';
+    });
+
+    // 4. Group by Train
+    const trainGroups = {};
+    railedRows.forEach(row => {
+        const train = String(row[idxRake] || 'N/A').trim().toUpperCase();
+        if (!trainGroups[train]) trainGroups[train] = [];
+        trainGroups[train].push(row);
+    });
+
+    // 5. Generate Railed Sections
+    let globalCounter = 1;
+    const sortedTrains = Object.keys(trainGroups).sort();
+
+    sortedTrains.forEach(trainName => {
+        const groupRows = trainGroups[trainName];
+        let railDateRaw = groupRows[0][idxDate];
+        let railDateFormatted = "";
+
+        const dateStr = formatToDDMMYYYY(railDateRaw);
+        if (dateStr && dateStr.includes('-')) {
+            const p = dateStr.split('-');
+            railDateFormatted = `${p[0]}-${p[1]}-${p[2].slice(-2)}`;
+        }
+
+        const remark = String(groupRows[0][idxRemarks] || '').toUpperCase();
+        let statusText = "⏳ RAILOUT FROM MUNDRA";
+        if (remark.includes("ARRIVED")) {
+            const dateMatch = remark.match(/\d{2}-\d{2}-\d{4}/);
+            statusText = `🟢 TRAIN ARRIVED ${dateMatch ? dateMatch[0] : ""}`;
+        }
+
+        // Section: Train | Date | Status
+        message += `*${trainName}* | 📅 *${railDateFormatted}*\n`;
+        message += `${statusText}\n`;
+        message += `-----------------------------------\n`;
+
+        groupRows.forEach(row => {
+            const cont = String(row[idxCont] || '').trim();
+            message += `${globalCounter}. ✅ ${cont}\n`;
+            globalCounter++;
+        });
+        message += `-----------------------------------\n\n`;
+    });
+
+    // 6. Pending Section
+    if (pendingRows.length > 0) {
+        message += `📌 Pending For Railout\n`;
+        message += `-----------------------------------\n`;
+        pendingRows.forEach((pRow, pIdx) => {
+            const pCont = String(pRow[idxCont] || '').trim();
+            message += `${pIdx + 1}. ${pCont}\n`;
+        });
+        message += `-----------------------------------\n\n`;
+    }
+
+    message += `Regards,\nHind Terminals, Customer Service 🏢`;
+
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
 });
 // Hidden file input for CSV selection
 const csvUploadInput = document.createElement('input');
