@@ -881,8 +881,8 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
             const remark = String(groupRows[0][idxRemarks] || '').toUpperCase();
             let statusText = remark.includes("ARRIVED") ? ` ✅TRAIN ARRIVED ${remark.match(/\d{2}-\d{2}-\d{4}/)?.[0] || ""}` : " RAILOUT FROM MUNDRA";
 
-            message += `*${trainName}* | Railout Date: *${dateStr.split('-')[0]}-${dateStr.split('-')[1]}-${dateStr.split('-')[2].slice(-2)}*\n${statusText}\n`;
-            groupRows.forEach((row, i) => message += `${i + 1}. ${String(row[idxCont]).trim()}\n`);
+            message += `*${trainName}* | Railout Dated: *${dateStr.split('-')[0]}-${dateStr.split('-')[1]}-${dateStr.split('-')[2].slice(-2)}*\n${statusText}\n`;
+            groupRows.forEach((row, i) => message += `${i + 1}.  ${String(row[idxCont]).trim()}\n`);
         });
 
         if (pendingRows.length > 0) {
@@ -914,13 +914,13 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
     let htmlContent = `<div style="font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #000; line-height: 1.2;">`;
     htmlContent += `Dear Sir,<br><br>`;
     htmlContent += `Greetings From Hind Terminals!!<br><br>`;
-    htmlContent += `Following Containers has been railout from Mundra:-<br><br>`;
+    htmlContent += `Please find below status of Containers / BLs:-<br><br>`;
 
     let allPendingContainers = [];
 
     blList.forEach(blInfo => {
         htmlContent += `<b>BL: ${blInfo.blNo} | Total Containers : ${blInfo.total} | Shipping Line : ${blInfo.line}</b><br>`;
-        htmlContent += `------------------------------------------------------------------------------------------------------------------------------------------------------------<br>`;
+        htmlContent += `<br>`;
 
         const allBlRows = websiteData.slice(1).filter(row => String(row[idxBL] || '').trim().toUpperCase() === blInfo.blNo);
         const railedRows = allBlRows.filter(row => !['PENDING', ''].includes(String(row[idxDate] || '').trim().toUpperCase()));
@@ -946,12 +946,12 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
             const remark = String(groupRows[0][idxRemarks] || '').trim();
 
             htmlContent += `<b>Train No ${trainName} , Railout on : ${dateStr} (${remark})</b><br>`;
-            htmlContent += `------------------------------------------------------------------------------------------------------------------------------------------------------------<br>`;
+            htmlContent += `<br>`;
 
             groupRows.forEach((row, i) => {
                 htmlContent += `${i + 1}. ✔️ ${String(row[idxCont]).trim()}<br>`;
             });
-            htmlContent += `------------------------------------------------------------------------------------------------------------------------------------------------------------<br>`;
+            htmlContent += `<br>`;
         });
     });
 
@@ -960,7 +960,7 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
         allPendingContainers.forEach((p, idx) => {
             htmlContent += `${idx + 1}. ✔️ ${p.cont} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; BL: ${p.bl}<br>`;
         });
-        htmlContent += `------------------------------------------------------------------------------------------------------------------------------------------------------------<br>`;
+        htmlContent += `<br>`;
     }
 
     htmlContent += `<br>Container Tracking Link : <a href="https://tinyurl.com/import-tracking">https://tinyurl.com/import-tracking</a><br>`;
@@ -5441,4 +5441,3 @@ if (hkrHmrExcelInput) {
 </div>
 </body>
 </html>
-
