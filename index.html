@@ -821,240 +821,165 @@ document.getElementById('deleteHtplUid103Btn').addEventListener('click', () => {
         alert("Error sending request. Check network/console (possible server or CORS issue).");
     });
 });
-// ────────────────────────────────────────────────
-// EMAIL COPY LOGIC - BOLD & FORMAL FOR OUTLOOK
-// ────────────────────────────────────────────────
-document.getElementById('copyEmailBtn').addEventListener('click', async () => {
+// Helper to extract all visible BLs from the report table
+const getVisibleBLs = () => {
     const rows = Array.from(document.querySelectorAll('#railedDetailRows tr:not(.bg-blue-100\\/60):not([style*="display: none"])'));
-    
-    if (rows.length === 0) {
-        alert("Pehle report generate karein.");
-        return;
-    }
+    const blList = [];
+    rows.forEach(row => {
+        const blCell = row.querySelector('td[rowspan], td:first-child');
+        if (blCell) {
+            let text = blCell.textContent.trim();
+            if (text.includes('(')) {
+                const blNo = text.split('(')[0].trim().toUpperCase();
+                const lineMatch = text.match(/\(([^)]+)\)/);
+                const info = lineMatch ? lineMatch[1].split('/') : ["0", "MSC"];
+                const total = info[0].trim();
+                const line = info[1] ? info[1].trim() : "MSC";
+                
+                // Duplicate check
+                if (!blList.find(b => b.blNo === blNo)) {
+                    blList.push({ blNo, total, line });
+                }
+            }
+        }
+    });
+    return blList;
+};
+
+// ────────────────────────────────────────────────
+// FINAL MULTI-BL WHATSAPP LOGIC
+// ────────────────────────────────────────────────
+document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () => {
+    const blList = getVisibleBLs();
+    if (blList.length === 0) { alert("No BL found."); return; }
 
     const websiteData = rawSheets.website || [];
     const wsHeaders = websiteData[0].map(h => String(h).trim().toUpperCase());
-    const idxBL = wsHeaders.indexOf('BILL_NO');
-    const idxCont = wsHeaders.indexOf('CONTAINER_NO');
-    const idxRake = wsHeaders.indexOf('RAKE_NO');
-    const idxDate = wsHeaders.indexOf('RAILING_DATE');
-    const idxRemarks = wsHeaders.indexOf('REMARKS');
+    const idxBL = wsHeaders.indexOf('BILL_NO'), idxCont = wsHeaders.indexOf('CONTAINER_NO'), 
+          idxRake = wsHeaders.indexOf('RAKE_NO'), idxDate = wsHeaders.indexOf('RAILING_DATE'), idxRemarks = wsHeaders.indexOf('REMARKS');
 
-    // 1. BL & Line Info Extraction
-    const firstRowCells = rows[0].querySelectorAll('td');
-    let blText = firstRowCells[0]?.textContent?.trim() || '';
-    let currentBL = "", currentBLLine = "MSC", totalUnits = "0";
+    let message = `Dear Sir,\n\nFollowing Containers has been railout from Mundra:- 🏗️\n\n`;
 
-    if (blText && blText.includes('(')) {
-        currentBL = blText.split('(')[0].trim().toUpperCase(); 
-        const lineMatch = blText.match(/\(([^)]+)\)/);
-        if (lineMatch) {
-            const parts = lineMatch[1].split('/');
-            totalUnits = parts[0].trim();
-            currentBLLine = parts[1] ? parts[1].trim() : "MSC";
+    blList.forEach(blInfo => {
+        message += `BL: ${blInfo.blNo} | Cont. ${blInfo.total} | ${blInfo.line}\n`;
+        message += `-----------------------------------\n`;
+
+        const allBlRows = websiteData.slice(1).filter(row => String(row[idxBL] || '').trim().toUpperCase() === blInfo.blNo);
+        const railedRows = allBlRows.filter(row => !['PENDING', ''].includes(String(row[idxDate] || '').trim().toUpperCase()));
+        const pendingRows = allBlRows.filter(row => String(row[idxDate] || '').trim().toUpperCase() === 'PENDING');
+
+        const trainGroups = {};
+        railedRows.forEach(row => {
+            const train = String(row[idxRake] || 'N/A').trim().toUpperCase();
+            if (!trainGroups[train]) trainGroups[train] = [];
+            trainGroups[train].push(row);
+        });
+
+        Object.keys(trainGroups).sort().forEach(trainName => {
+            const groupRows = trainGroups[trainName];
+            const dateStr = formatToDDMMYYYY(groupRows[0][idxDate]);
+            const remark = String(groupRows[0][idxRemarks] || '').toUpperCase();
+            let statusText = remark.includes("ARRIVED") ? ` ✅TRAIN ARRIVED ${remark.match(/\d{2}-\d{2}-\d{4}/)?.[0] || ""}` : " RAILOUT FROM MUNDRA";
+
+            message += `*${trainName}* | 📅 *${dateStr.split('-')[0]}-${dateStr.split('-')[1]}-${dateStr.split('-')[2].slice(-2)}*\n${statusText}\n`;
+            groupRows.forEach((row, i) => message += `${i + 1}. ✔️ ${String(row[idxCont]).trim()}\n`);
+        });
+
+        if (pendingRows.length > 0) {
+            message += `📌 Pending For Railout\n`;
+            pendingRows.forEach((pRow, pIdx) => message += `${pIdx + 1}. ${String(pRow[idxCont]).trim()}\n`);
         }
-    }
+        message += `-----------------------------------\n\n`;
+    });
 
-    // 2. Build HTML Content for Rich Text Copy
-    let htmlContent = `<div style="font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #000;">`;
+    message += `Container Tracking Link : 🌐\nhttps://tinyurl.com/import-tracking\n\nThanks & Regards,\n*Hind Terminals Pvt Ltd.*`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+});
+
+// ────────────────────────────────────────────────
+// EMAIL COPY LOGIC - COMPACT SINGLE SPACING
+// ────────────────────────────────────────────────
+document.getElementById('copyEmailBtn').addEventListener('click', async () => {
+    const blList = getVisibleBLs();
+    if (blList.length === 0) { alert("Pehle report generate karein."); return; }
+
+    const websiteData = rawSheets.website || [];
+    const wsHeaders = websiteData[0].map(h => String(h).trim().toUpperCase());
+    const idxBL = wsHeaders.indexOf('BILL_NO'), 
+          idxCont = wsHeaders.indexOf('CONTAINER_NO'), 
+          idxRake = wsHeaders.indexOf('RAKE_NO'), 
+          idxDate = wsHeaders.indexOf('RAILING_DATE'), 
+          idxRemarks = wsHeaders.indexOf('REMARKS');
+
+    let htmlContent = `<div style="font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #000; line-height: 1.2;">`;
     htmlContent += `Dear Sir,<br><br>`;
-    htmlContent += `<b>Greetings From Hind Terminals Pvt Ltd.,!!</b><br><br>`;
+    htmlContent += `Greetings From Hind Terminals!!<br><br>`;
     htmlContent += `Following Containers has been railout from Mundra:-<br><br>`;
-    htmlContent += `<b>BL: ${currentBL} | Total Containers : ${totalUnits} | Shipping Line : ${currentBLLine}</b><br>`;
-    htmlContent += `-----------------------------------------------------------------------------------------<br>`;
 
-    // 3. Data Processing
-    const allBlRows = websiteData.slice(1).filter(row => String(row[idxBL] || '').trim().toUpperCase() === currentBL);
-    const railedRows = allBlRows.filter(row => {
-        const status = String(row[idxDate] || '').trim().toUpperCase();
-        return status !== 'PENDING' && status !== '';
-    });
-    const pendingRows = allBlRows.filter(row => String(row[idxDate] || '').trim().toUpperCase() === 'PENDING');
+    let allPendingContainers = [];
 
-    const trainGroups = {};
-    railedRows.forEach(row => {
-        const train = String(row[idxRake] || 'N/A').trim().toUpperCase();
-        if (!trainGroups[train]) trainGroups[train] = [];
-        trainGroups[train].push(row);
-    });
+    blList.forEach(blInfo => {
+        htmlContent += `<b>BL: ${blInfo.blNo} | Total Containers : ${blInfo.total} | Shipping Line : ${blInfo.line}</b><br>`;
+        htmlContent += `------------------------------------------------------------------------------------------------------------------------------------------------------------<br>`;
 
-    // 4. Railed Sections
-    let globalCounter = 1;
-    const sortedTrains = Object.keys(trainGroups).sort();
+        const allBlRows = websiteData.slice(1).filter(row => String(row[idxBL] || '').trim().toUpperCase() === blInfo.blNo);
+        const railedRows = allBlRows.filter(row => !['PENDING', ''].includes(String(row[idxDate] || '').trim().toUpperCase()));
+        const pendingRows = allBlRows.filter(row => String(row[idxDate] || '').trim().toUpperCase() === 'PENDING');
 
-    sortedTrains.forEach(trainName => {
-        const groupRows = trainGroups[trainName];
-        const dateStr = formatToDDMMYYYY(groupRows[0][idxDate]);
-        let railDateFormatted = dateStr;
-        if (dateStr && dateStr.includes('-')) {
-            const p = dateStr.split('-');
-            railDateFormatted = `${p[0]}-${p[1]}-${p[2].slice(-2)}`;
-        }
-
-        const completeRemark = String(groupRows[0][idxRemarks] || '').trim();
-
-        htmlContent += `<b>Train No ${trainName} , Railout on : ${railDateFormatted}</b><br>`;
-        htmlContent += `${completeRemark}<br>`;
-        htmlContent += `-----------------------------------------------------------------------------------------<br>`;
-
-        groupRows.forEach(row => {
-            htmlContent += `${globalCounter}. ✔️ ${String(row[idxCont] || '').trim()}<br>`;
-            globalCounter++;
+        pendingRows.forEach(pRow => {
+            allPendingContainers.push({
+                cont: String(pRow[idxCont]).trim(),
+                bl: blInfo.blNo
+            });
         });
-        htmlContent += `-----------------------------------------------------------------------------------------<br>`;
+
+        const trainGroups = {};
+        railedRows.forEach(row => {
+            const train = String(row[idxRake] || 'N/A').trim();
+            if (!trainGroups[train]) trainGroups[train] = [];
+            trainGroups[train].push(row);
+        });
+
+        Object.keys(trainGroups).sort().forEach(trainName => {
+            const groupRows = trainGroups[trainName];
+            const dateStr = formatToDDMMYYYY(groupRows[0][idxDate]);
+            const remark = String(groupRows[0][idxRemarks] || '').trim();
+
+            htmlContent += `<b>Train No ${trainName} , Railout on : ${dateStr} (${remark})</b><br>`;
+            htmlContent += `------------------------------------------------------------------------------------------------------------------------------------------------------------<br>`;
+
+            groupRows.forEach((row, i) => {
+                htmlContent += `${i + 1}. ✔️ ${String(row[idxCont]).trim()}<br>`;
+            });
+            htmlContent += `------------------------------------------------------------------------------------------------------------------------------------------------------------<br>`;
+        });
     });
 
-    // 5. Pending Section
-    if (pendingRows.length > 0) {
-        htmlContent += `<b>Pending for Railout :-</b><br>`;
-        pendingRows.forEach((pRow, pIdx) => {
-            const pCont = String(pRow[idxCont] || '').trim();
-            const pRem = String(pRow[idxRemarks] || '').trim();
-            htmlContent += `${pIdx + 1}. 📌 ${pCont} , ${pRem}<br>`;
+    if (allPendingContainers.length > 0) {
+        htmlContent += `<br><b>Pending Containers :-</b><br>`;
+        allPendingContainers.forEach((p, idx) => {
+            htmlContent += `${idx + 1}. ✔️ ${p.cont} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; BL: ${p.bl}<br>`;
         });
-        htmlContent += `-----------------------------------------------------------------------------------------<br>`;
+        htmlContent += `------------------------------------------------------------------------------------------------------------------------------------------------------------<br>`;
     }
 
-    htmlContent += `<br>Container Tracking Link :<br>`;
-    htmlContent += `<a href="https://tinyurl.com/import-tracking">https://tinyurl.com/import-tracking</a><br>`;
+    htmlContent += `<br>Container Tracking Link : <a href="https://tinyurl.com/import-tracking">https://tinyurl.com/import-tracking</a><br>`;
     htmlContent += `</div>`;
 
-    // 6. Copy as HTML (Rich Text) for Outlook
     const blob = new Blob([htmlContent], { type: 'text/html' });
-    const clipboardItem = new ClipboardItem({ 'text/html': blob, 'text/plain': new Blob([htmlContent.replace(/<[^>]*>/g, '')], { type: 'text/plain' }) });
+    const clipboardItem = new ClipboardItem({ 
+        'text/html': blob, 
+        'text/plain': new Blob([htmlContent.replace(/<[^>]*>/g, '')], { type: 'text/plain' }) 
+    });
 
     navigator.clipboard.write([clipboardItem]).then(() => {
         const toast = document.createElement('div');
         toast.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-blue-800 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
-            ✅ Email Format Copied with BOLD Text!
+            ✅ Compact Format Copied!
         </div>`;
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 4000);
-    }).catch(err => {
-        console.error('Copy failed', err);
-        alert("Copy failed. Please use a modern browser.");
-    });
-});
-// ────────────────────────────────────────────────
-// WhatsApp Message - REFINED DESIGN WITH SIGNATURE
-// ────────────────────────────────────────────────
-document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () => {
-    const rows = Array.from(document.querySelectorAll('#railedDetailRows tr:not(.bg-blue-100\\/60):not([style*="display: none"])'));
-    
-    if (rows.length === 0) {
-        alert("Pehle report generate karein ya table mein data check karein.");
-        return;
-    }
-
-    const websiteData = rawSheets.website || [];
-    if (websiteData.length < 2) {
-        alert("Website sheet mein data nahi mila.");
-        return;
-    }
-
-    // Dynamic Indexing
-    const wsHeaders = websiteData[0].map(h => String(h).trim().toUpperCase());
-    const idxBL = wsHeaders.indexOf('BILL_NO');
-    const idxCont = wsHeaders.indexOf('CONTAINER_NO');
-    const idxRake = wsHeaders.indexOf('RAKE_NO');
-    const idxDate = wsHeaders.indexOf('RAILING_DATE');
-    const idxRemarks = wsHeaders.indexOf('REMARKS');
-
-    // 1. BL & Line Info
-    const firstRowCells = rows[0].querySelectorAll('td');
-    let blText = firstRowCells[0]?.textContent?.trim() || '';
-    let currentBL = "", currentBLLine = "MSC", totalUnits = "0";
-
-    if (blText && blText.includes('(')) {
-        currentBL = blText.split('(')[0].trim().toUpperCase(); 
-        const lineMatch = blText.match(/\(([^)]+)\)/);
-        if (lineMatch) {
-            const parts = lineMatch[1].split('/');
-            totalUnits = parts[0].trim();
-            currentBLLine = parts[1] ? parts[1].trim() : "MSC";
-        }
-    }
-
-    // 2. Message Header
-    let message = `Dear Sir,\n\n`;
-    message += `Following Containers has been railout from Mundra:- 🏗️\n\n`;
-    message += `BL: ${currentBL} | Cont. ${totalUnits} | ${currentBLLine}\n\n`;
-
-    // 3. Filter Data
-    const allBlRows = websiteData.slice(1).filter(row => String(row[idxBL] || '').trim().toUpperCase() === currentBL);
-    const railedRows = allBlRows.filter(row => {
-        const status = String(row[idxDate] || '').trim().toUpperCase();
-        return status !== 'PENDING' && status !== '';
-    });
-    const pendingRows = allBlRows.filter(row => {
-        const status = String(row[idxDate] || '').trim().toUpperCase();
-        return status === 'PENDING';
-    });
-
-    // 4. Group by Train
-    const trainGroups = {};
-    railedRows.forEach(row => {
-        const train = String(row[idxRake] || 'N/A').trim().toUpperCase();
-        if (!trainGroups[train]) trainGroups[train] = [];
-        trainGroups[train].push(row);
-    });
-
-    // 5. Generate Railed Sections
-    let globalCounter = 1;
-    const sortedTrains = Object.keys(trainGroups).sort();
-
-    sortedTrains.forEach(trainName => {
-        const groupRows = trainGroups[trainName];
-        let railDateRaw = groupRows[0][idxDate];
-        let railDateFormatted = "";
-
-        const dateStr = formatToDDMMYYYY(railDateRaw);
-        if (dateStr && dateStr.includes('-')) {
-            const p = dateStr.split('-');
-            railDateFormatted = `${p[0]}-${p[1]}-${p[2].slice(-2)}`;
-        }
-
-        const remark = String(groupRows[0][idxRemarks] || '').toUpperCase();
-        let statusText = "⏳ RAILOUT FROM MUNDRA";
-        if (remark.includes("ARRIVED")) {
-            const dateMatch = remark.match(/\d{2}-\d{2}-\d{4}/);
-            statusText = `🟢 TRAIN ARRIVED ${dateMatch ? dateMatch[0] : ""}`;
-        }
-
-        message += `*${trainName}* | 📅 *${railDateFormatted}*\n`;
-        message += `${statusText}\n`;
-        message += `-----------------------------------\n`;
-
-        groupRows.forEach(row => {
-            const cont = String(row[idxCont] || '').trim();
-            message += `${globalCounter}. ✅ ${cont}\n`;
-            globalCounter++;
-        });
-        message += `-----------------------------------\n`;
-    });
-
-    // 6. Pending Section
-    if (pendingRows.length > 0) {
-        message += `📌 Pending For Railout\n`;
-        message += `-----------------------------------\n`;
-        pendingRows.forEach((pRow, pIdx) => {
-            const pCont = String(pRow[idxCont] || '').trim();
-            message += `${pIdx + 1}. ${pCont}\n`;
-        });
-        message += `-----------------------------------\n\n`;
-    }
-
-    // 7. Signature (As per your request)
-    message += `Container Tracking Link : 🌐\n`;
-    message += `https://tinyurl.com/import-tracking\n\n`;
-    message += `Thanks & Regards,\n`;
-    message += `*Hind Terminals Pvt Ltd.*,\n`;
-    message += `SCO No.14-15, Dhamija Tower,\n`;
-    message += `First Floor, Urban Estate, Phase -3,\n`;
-    message += `Point, Ludhiana- 141010`;
-
-    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-    window.open(whatsappUrl, '_blank');
+    }).catch(err => alert("Copy failed: " + err));
 });
 // Hidden file input for CSV selection
 const csvUploadInput = document.createElement('input');
