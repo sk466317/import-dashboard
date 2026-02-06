@@ -881,8 +881,8 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
             const remark = String(groupRows[0][idxRemarks] || '').toUpperCase();
             let statusText = remark.includes("ARRIVED") ? ` ✅TRAIN ARRIVED ${remark.match(/\d{2}-\d{2}-\d{4}/)?.[0] || ""}` : " RAILOUT FROM MUNDRA";
 
-            message += `*${trainName}* | 📅 *${dateStr.split('-')[0]}-${dateStr.split('-')[1]}-${dateStr.split('-')[2].slice(-2)}*\n${statusText}\n`;
-            groupRows.forEach((row, i) => message += `${i + 1}. ✔️ ${String(row[idxCont]).trim()}\n`);
+            message += `*${trainName}* | Railout Date: *${dateStr.split('-')[0]}-${dateStr.split('-')[1]}-${dateStr.split('-')[2].slice(-2)}*\n${statusText}\n`;
+            groupRows.forEach((row, i) => message += `${i + 1}. ${String(row[idxCont]).trim()}\n`);
         });
 
         if (pendingRows.length > 0) {
@@ -5441,3 +5441,4 @@ if (hkrHmrExcelInput) {
 </div>
 </body>
 </html>
+
