@@ -672,14 +672,19 @@ table {
         <tfoot id="reportFooter" class="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-300"></tfoot>
     </table>
 </div>
+<div class="flex items-center gap-3 mt-4">
+    <button id="sendRailedWhatsappBtn" 
+            class="bg-green-700 hover:bg-green-800 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-md active:scale-95">
+        <i data-lucide="send" class="w-4 h-4"></i>
+        Send WhatsApp Message
+    </button>
 
-<button id="sendRailedWhatsappBtn" 
-                class="bg-green-700 hover:bg-green-800 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-md active:scale-95">
-            <i data-lucide="send" class="w-4 h-4"></i>
-            Send WhatsApp Message
-        </button>
-    </div>
-                <div class="grid grid-cols-1 gap-5 pb-10 mt-10">
+    <button id="copyEmailBtn" 
+            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-md active:scale-95">
+        <i data-lucide="mail" class="w-4 h-4"></i>
+        Copy To Outlook Email
+    </button>
+</div>                <div class="grid grid-cols-1 gap-5 pb-10 mt-10">
                     <div id="railedBreakdownContainer" class="report-box bg-white">
     <div class="bg-green-100 border-2 border-green-600 px-4 py-1.5 flex justify-between items-center">
                             <div class="flex items-center gap-2 text-green-800 animate-status-icon">
@@ -814,6 +819,120 @@ document.getElementById('deleteHtplUid103Btn').addEventListener('click', () => {
     .catch(error => {
         console.error('Request error:', error);
         alert("Error sending request. Check network/console (possible server or CORS issue).");
+    });
+});
+// ────────────────────────────────────────────────
+// EMAIL COPY LOGIC - BOLD & FORMAL FOR OUTLOOK
+// ────────────────────────────────────────────────
+document.getElementById('copyEmailBtn').addEventListener('click', async () => {
+    const rows = Array.from(document.querySelectorAll('#railedDetailRows tr:not(.bg-blue-100\\/60):not([style*="display: none"])'));
+    
+    if (rows.length === 0) {
+        alert("Pehle report generate karein.");
+        return;
+    }
+
+    const websiteData = rawSheets.website || [];
+    const wsHeaders = websiteData[0].map(h => String(h).trim().toUpperCase());
+    const idxBL = wsHeaders.indexOf('BILL_NO');
+    const idxCont = wsHeaders.indexOf('CONTAINER_NO');
+    const idxRake = wsHeaders.indexOf('RAKE_NO');
+    const idxDate = wsHeaders.indexOf('RAILING_DATE');
+    const idxRemarks = wsHeaders.indexOf('REMARKS');
+
+    // 1. BL & Line Info Extraction
+    const firstRowCells = rows[0].querySelectorAll('td');
+    let blText = firstRowCells[0]?.textContent?.trim() || '';
+    let currentBL = "", currentBLLine = "MSC", totalUnits = "0";
+
+    if (blText && blText.includes('(')) {
+        currentBL = blText.split('(')[0].trim().toUpperCase(); 
+        const lineMatch = blText.match(/\(([^)]+)\)/);
+        if (lineMatch) {
+            const parts = lineMatch[1].split('/');
+            totalUnits = parts[0].trim();
+            currentBLLine = parts[1] ? parts[1].trim() : "MSC";
+        }
+    }
+
+    // 2. Build HTML Content for Rich Text Copy
+    let htmlContent = `<div style="font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #000;">`;
+    htmlContent += `Dear Sir,<br><br>`;
+    htmlContent += `<b>Greetings From Hind Terminals Pvt Ltd.,!!</b><br><br>`;
+    htmlContent += `Following Containers has been railout from Mundra:-<br><br>`;
+    htmlContent += `<b>BL: ${currentBL} | Total Containers : ${totalUnits} | Shipping Line : ${currentBLLine}</b><br>`;
+    htmlContent += `-----------------------------------------------------------------------------------------<br>`;
+
+    // 3. Data Processing
+    const allBlRows = websiteData.slice(1).filter(row => String(row[idxBL] || '').trim().toUpperCase() === currentBL);
+    const railedRows = allBlRows.filter(row => {
+        const status = String(row[idxDate] || '').trim().toUpperCase();
+        return status !== 'PENDING' && status !== '';
+    });
+    const pendingRows = allBlRows.filter(row => String(row[idxDate] || '').trim().toUpperCase() === 'PENDING');
+
+    const trainGroups = {};
+    railedRows.forEach(row => {
+        const train = String(row[idxRake] || 'N/A').trim().toUpperCase();
+        if (!trainGroups[train]) trainGroups[train] = [];
+        trainGroups[train].push(row);
+    });
+
+    // 4. Railed Sections
+    let globalCounter = 1;
+    const sortedTrains = Object.keys(trainGroups).sort();
+
+    sortedTrains.forEach(trainName => {
+        const groupRows = trainGroups[trainName];
+        const dateStr = formatToDDMMYYYY(groupRows[0][idxDate]);
+        let railDateFormatted = dateStr;
+        if (dateStr && dateStr.includes('-')) {
+            const p = dateStr.split('-');
+            railDateFormatted = `${p[0]}-${p[1]}-${p[2].slice(-2)}`;
+        }
+
+        const completeRemark = String(groupRows[0][idxRemarks] || '').trim();
+
+        htmlContent += `<b>Train No ${trainName} , Railout on : ${railDateFormatted}</b><br>`;
+        htmlContent += `${completeRemark}<br>`;
+        htmlContent += `-----------------------------------------------------------------------------------------<br>`;
+
+        groupRows.forEach(row => {
+            htmlContent += `${globalCounter}. ✔️ ${String(row[idxCont] || '').trim()}<br>`;
+            globalCounter++;
+        });
+        htmlContent += `-----------------------------------------------------------------------------------------<br>`;
+    });
+
+    // 5. Pending Section
+    if (pendingRows.length > 0) {
+        htmlContent += `<b>Pending for Railout :-</b><br>`;
+        pendingRows.forEach((pRow, pIdx) => {
+            const pCont = String(pRow[idxCont] || '').trim();
+            const pRem = String(pRow[idxRemarks] || '').trim();
+            htmlContent += `${pIdx + 1}. 📌 ${pCont} , ${pRem}<br>`;
+        });
+        htmlContent += `-----------------------------------------------------------------------------------------<br>`;
+    }
+
+    htmlContent += `<br>Container Tracking Link :<br>`;
+    htmlContent += `<a href="https://tinyurl.com/import-tracking">https://tinyurl.com/import-tracking</a><br>`;
+    htmlContent += `</div>`;
+
+    // 6. Copy as HTML (Rich Text) for Outlook
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const clipboardItem = new ClipboardItem({ 'text/html': blob, 'text/plain': new Blob([htmlContent.replace(/<[^>]*>/g, '')], { type: 'text/plain' }) });
+
+    navigator.clipboard.write([clipboardItem]).then(() => {
+        const toast = document.createElement('div');
+        toast.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-blue-800 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
+            ✅ Email Format Copied with BOLD Text!
+        </div>`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+    }).catch(err => {
+        console.error('Copy failed', err);
+        alert("Copy failed. Please use a modern browser.");
     });
 });
 // ────────────────────────────────────────────────
