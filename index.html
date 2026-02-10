@@ -684,6 +684,11 @@ table {
         <i data-lucide="mail" class="w-4 h-4"></i>
         Copy To Outlook Email
     </button>
+<button id="lotBreakReportBtn" 
+        class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-md active:scale-95 ml-2">
+    <i data-lucide="split" class="w-4 h-4"></i>
+    LOT Break Report
+</button>
 </div>                <div class="grid grid-cols-1 gap-5 pb-10 mt-10">
                     <div id="railedBreakdownContainer" class="report-box bg-white">
     <div class="bg-green-100 border-2 border-green-600 px-4 py-1.5 flex justify-between items-center">
@@ -777,6 +782,196 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
         }
     } else {
         displayBox.classList.add('hidden');
+    }
+});
+// ────────────────────────────────────────────────
+// LOT BREAK REPORT - COMPLETE FIXED LOGIC
+// ────────────────────────────────────────────────
+
+// ────────────────────────────────────────────────
+// LOT BREAK REPORT - COMPLETE FIXED LOGIC
+// ────────────────────────────────────────────────
+
+// Global variable to store report data for Excel
+let lastLotBreakData = [];
+
+// 1. Modal Open aur Reset Logic
+document.getElementById('lotBreakReportBtn').addEventListener('click', () => {
+    document.getElementById('lotBreakModal').classList.remove('hidden');
+    // Download button ko shuruat mein chhupa dein
+    const downloadBtn = document.getElementById('downloadLotReportBtn');
+    if (downloadBtn) downloadBtn.classList.add('hidden');
+    
+    document.getElementById('lotBreakContent').innerHTML = `
+        <div class="h-full flex flex-col items-center justify-center text-slate-400 py-20">
+            <i data-lucide="play-circle" class="w-12 h-12 mb-2 opacity-20"></i>
+            <p class="font-bold text-xs uppercase tracking-widest">Click "Generate Report" to analyze split lots</p>
+        </div>`;
+    if (window.lucide) lucide.createIcons();
+});
+
+// 2. Main Generation Logic (Fixed Container-to-Container Matching)
+document.getElementById('generateLotReportBtn').addEventListener('click', () => {
+    // Data check
+    if (typeof rawSheets === 'undefined' || !rawSheets.smtp || !rawSheets.website) {
+        alert("Data missing! Please upload SMTP and Website files first.");
+        return;
+    }
+
+    const smtpData = rawSheets.smtp || [];
+    const websiteData = rawSheets.website || [];
+    if (smtpData.length < 2 || websiteData.length < 2) { 
+        alert("Sheets are empty. Please ensure data is loaded."); 
+        return; 
+    }
+
+    const wsHeaders = websiteData[0].map(h => String(h).trim().toUpperCase());
+    const wIdxCont = wsHeaders.indexOf('CONTAINER_NO'), 
+          wIdxDate = wsHeaders.indexOf('RAILING_DATE'), 
+          wIdxRemarks = wsHeaders.indexOf('REMARKS'), 
+          wIdxRake = wsHeaders.indexOf('RAKE_NO');
+
+    const blStatus = {};
+    
+    // Step A: SMTP se BL groups taiyar karein
+    smtpData.slice(1).forEach(row => {
+        const blNo = String(row[9] || '').trim().toUpperCase();
+        if (!blNo || blNo === 'N/A' || blNo === '') return;
+        
+        if (!blStatus[blNo]) {
+            blStatus[blNo] = { 
+                consignee: String(row[24] || 'TO ORDER'), 
+                vessel: String(row[5] || '-'), 
+                tpDate: typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(row[18] || row[17]) : (row[18] || row[17]), 
+                total: 0, railed: [], pending: [] 
+            };
+        }
+        // Shuruat mein sab Pending mein
+        blStatus[blNo].pending.push({ 
+            contNo: String(row[2] || '').trim().toUpperCase(), 
+            size: String(row[3] || '').includes('40') ? '40' : '20' 
+        });
+        blStatus[blNo].total++;
+    });
+
+    // Step B: Website data se container match karke 'Railed' mein move karein
+    websiteData.slice(1).forEach(row => {
+        const wCont = String(row[wIdxCont] || '').trim().toUpperCase();
+        if (!wCont) return;
+
+        for (const bl in blStatus) {
+            const pIdx = blStatus[bl].pending.findIndex(p => p.contNo === wCont);
+            if (pIdx !== -1) {
+                const remark = String(row[wIdxRemarks] || '').toUpperCase();
+                const railDateRaw = row[wIdxDate];
+                
+                // Railout Validation
+                const isRailed = remark.includes("ARRIVED") || 
+                                 remark.includes("RAILOUT") || 
+                                 (String(railDateRaw).toUpperCase() !== 'PENDING' && railDateRaw !== '' && railDateRaw !== null);
+
+                if (isRailed) {
+                    const info = blStatus[bl].pending.splice(pIdx, 1)[0];
+                    info.railDate = typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(railDateRaw) : railDateRaw;
+                    info.train = String(row[wIdxRake] || '-').split('(')[0];
+                    blStatus[bl].railed.push(info);
+                }
+                break; 
+            }
+        }
+    });
+
+    // Step C: Table HTML taiyar karein (Sirf Split LOTs ke liye)
+    lastLotBreakData = [];
+    let html = `<table class="w-full text-[10px] border-collapse bg-white shadow-sm border border-slate-300">
+        <thead class="bg-slate-900 text-white uppercase sticky top-0 z-20">
+            <tr>
+                <th class="p-2 border border-slate-700 text-left">Consignee & BL Number</th>
+                <th class="p-2 border border-slate-700 text-left">Vessel / Handover Date</th>
+                <th class="p-2 border border-slate-700 text-center bg-emerald-800 text-white">Railout Container Details</th>
+                <th class="p-2 border border-slate-700 text-center bg-rose-800 text-white">Pending Container Details</th>
+            </tr>
+        </thead><tbody>`;
+
+    let foundBreak = false;
+    Object.keys(blStatus).sort().forEach(bl => {
+        const data = blStatus[bl];
+        if (data.railed.length > 0 && data.pending.length > 0) {
+            foundBreak = true;
+            lastLotBreakData.push({ bl, ...data });
+          
+            const rHtml = data.railed.map(r => `<div class="mb-1 border-b border-emerald-100 last:border-0 pb-1"><b>${r.contNo}</b> (${r.size}")<br><span class="text-slate-800 text-[10px]">🚆 ${r.train} | ${r.railDate}</span></div>`).join('');
+            const pHtml = data.pending.map(p => `<div class="mb-1 border-b border-rose-100 last:border-0 pb-1"><b>${p.contNo}</b> (${p.size}")<br><span class="text-rose-600 text-[12px]">Pending at Port...</span></div>`).join('');
+            
+            html += `<tr class="border-b align-top hover:bg-slate-50">
+                <td class="p-2 border font-bold"><span class="text-blue-700 text-[15px] block uppercase">${data.consignee}</span><span class="text-slate-800 font-mono">BL: ${bl}</span><div class="mt-1 text-amber-600 text-[10px]">Lot Break: ${data.railed.length} Railout / ${data.pending.length} Not Railout</div></td>
+                <td class="p-2 border uppercase"><b>${data.vessel}</b><br><span class="text-slate-500 text-[10px]">Handover Date: ${data.tpDate}</span></td>
+                <td class="p-2 border bg-emerald-50/20">${rHtml}</td>
+                <td class="p-2 border bg-rose-50/20">${pHtml}</td>
+            </tr>`;
+        }
+    });
+
+    if (foundBreak) {
+        document.getElementById('lotBreakContent').innerHTML = html + "</tbody></table>";
+        document.getElementById('downloadLotReportBtn').classList.remove('hidden');
+    } else {
+        document.getElementById('lotBreakContent').innerHTML = `<div class="p-20 text-center font-bold text-slate-400 uppercase tracking-widest">✅ No LOT Breaks Found.</div>`;
+        document.getElementById('downloadLotReportBtn').classList.add('hidden');
+    }
+    if (window.lucide) lucide.createIcons();
+});
+
+// 3. Download Excel Logic (Fixed ExcelJS Implementation)
+document.getElementById('downloadLotReportBtn').addEventListener('click', async () => {
+    if (!lastLotBreakData || lastLotBreakData.length === 0) return;
+
+    if (typeof ExcelJS === 'undefined') {
+        alert("ExcelJS library is not loaded. Please check your internet connection.");
+        return;
+    }
+
+    try {
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('LOT Break Details');
+
+        sheet.columns = [
+            { header: 'Consignee', key: 'consignee', width: 30 },
+            { header: 'BL Number', key: 'bl', width: 25 },
+            { header: 'Vessel', key: 'vessel', width: 25 },
+            { header: 'TP Date', key: 'tp', width: 15 },
+            { header: 'Container No', key: 'cont', width: 20 },
+            { header: 'Size', key: 'size', width: 10 },
+            { header: 'Status', key: 'status', width: 15 },
+            { header: 'Train/Rake', key: 'train', width: 20 },
+            { header: 'Railout Date', key: 'date', width: 15 }
+        ];
+
+        lastLotBreakData.forEach(blItem => {
+            blItem.railed.forEach(r => {
+                sheet.addRow({ consignee: blItem.consignee, bl: blItem.bl, vessel: blItem.vessel, tp: blItem.tpDate, cont: r.contNo, size: r.size, status: 'RAILED', train: r.train, date: r.railDate });
+            });
+            blItem.pending.forEach(p => {
+                sheet.addRow({ consignee: blItem.consignee, bl: blItem.bl, vessel: blItem.vessel, tp: blItem.tpDate, cont: p.contNo, size: p.size, status: 'PENDING', train: '-', date: '-' });
+            });
+        });
+
+        // Header Style
+        sheet.getRow(1).eachCell(cell => {
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFBE123C' } };
+        });
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const today = new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
+        a.href = url;
+        a.download = `LOT_Break_Report_${today}.xlsx`;
+        a.click();
+    } catch (e) {
+        alert("Excel download failed: " + e.message);
     }
 });
 
@@ -5464,6 +5659,33 @@ if (hkrHmrExcelInput) {
             <button id="closeForecastModalFooter" class="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded shadow-lg font-bold text-[11px] uppercase transition-all">
                 Close Report
             </button>
+        </div>
+    </div>
+</div>
+<div id="lotBreakModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[99999] hidden flex items-center justify-center p-2 sm:p-6">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-[95vw] h-[90vh] flex flex-col border border-slate-300 overflow-hidden">
+        <div class="bg-rose-700 p-4 flex justify-between items-center text-white shrink-0">
+            <div class="flex items-center gap-3">
+                <i data-lucide="layout-list" class="w-6 h-6"></i>
+                <h2 class="font-bold uppercase tracking-tight text-sm">LOT Break Report (Detailed Split View)</h2>
+            </div>
+            <div class="flex gap-2">
+                <button id="downloadLotReportBtn" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase flex items-center gap-2 shadow-md transition-all active:scale-95">
+                    <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Download Excel
+                </button>
+                <button onclick="document.getElementById('lotBreakModal').classList.add('hidden')" class="text-white hover:rotate-90 transition-all">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+        </div>
+        <div class="flex-1 overflow-auto p-4 bg-slate-50 custom-scrollbar">
+            <div id="lotBreakContent" class="min-w-full">
+                </div>
+        </div>
+        <div class="p-3 bg-slate-100 border-t border-slate-200 flex justify-end gap-3 shrink-0">
+            <p class="text-[9px] text-slate-500 font-bold uppercase italic mr-auto mt-2">*Cross-verifying SMTP vs Website Data...</p>
+            <button id="generateLotReportBtn" class="bg-blue-700 text-white px-6 py-2 rounded-lg font-bold text-[10px] uppercase shadow-md hover:bg-blue-800 transition-all">Generate Report</button>
+            <button onclick="document.getElementById('lotBreakModal').classList.add('hidden')" class="bg-slate-800 text-white px-6 py-2 rounded-lg font-bold text-[10px] uppercase">Close</button>
         </div>
     </div>
 </div>
