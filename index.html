@@ -784,23 +784,14 @@ document.getElementById('blDataSearch').addEventListener('input', (e) => {
         displayBox.classList.add('hidden');
     }
 });
-// ────────────────────────────────────────────────
 // LOT BREAK REPORT - COMPLETE FIXED LOGIC
-// ────────────────────────────────────────────────
-
-// ────────────────────────────────────────────────
-// LOT BREAK REPORT - COMPLETE FIXED LOGIC
-// ────────────────────────────────────────────────
-
-// Global variable to store report data for Excel
 let lastLotBreakData = [];
-
-// 1. Modal Open aur Reset Logic
 document.getElementById('lotBreakReportBtn').addEventListener('click', () => {
     document.getElementById('lotBreakModal').classList.remove('hidden');
-    // Download button ko shuruat mein chhupa dein
     const downloadBtn = document.getElementById('downloadLotReportBtn');
+    const emailBtn = document.getElementById('sendLotEmailBtn');
     if (downloadBtn) downloadBtn.classList.add('hidden');
+    if (emailBtn) emailBtn.classList.add('hidden');
     
     document.getElementById('lotBreakContent').innerHTML = `
         <div class="h-full flex flex-col items-center justify-center text-slate-400 py-20">
@@ -810,30 +801,17 @@ document.getElementById('lotBreakReportBtn').addEventListener('click', () => {
     if (window.lucide) lucide.createIcons();
 });
 
-// 2. Main Generation Logic (Fixed Container-to-Container Matching)
+// 2. Main Generation Logic (UPDATED: Show SMTP No, Hide Railout Details)
 document.getElementById('generateLotReportBtn').addEventListener('click', () => {
-    // Data check
     if (typeof rawSheets === 'undefined' || !rawSheets.smtp || !rawSheets.website) {
-        alert("Data missing! Please upload SMTP and Website files first.");
-        return;
+        alert("Data missing!"); return;
     }
 
     const smtpData = rawSheets.smtp || [];
     const websiteData = rawSheets.website || [];
-    if (smtpData.length < 2 || websiteData.length < 2) { 
-        alert("Sheets are empty. Please ensure data is loaded."); 
-        return; 
-    }
-
-    const wsHeaders = websiteData[0].map(h => String(h).trim().toUpperCase());
-    const wIdxCont = wsHeaders.indexOf('CONTAINER_NO'), 
-          wIdxDate = wsHeaders.indexOf('RAILING_DATE'), 
-          wIdxRemarks = wsHeaders.indexOf('REMARKS'), 
-          wIdxRake = wsHeaders.indexOf('RAKE_NO');
-
     const blStatus = {};
     
-    // Step A: SMTP se BL groups taiyar karein
+    // Step A: SMTP Data Mapping (Using Index 13 for SMTP NO)
     smtpData.slice(1).forEach(row => {
         const blNo = String(row[9] || '').trim().toUpperCase();
         if (!blNo || blNo === 'N/A' || blNo === '') return;
@@ -842,11 +820,11 @@ document.getElementById('generateLotReportBtn').addEventListener('click', () => 
             blStatus[blNo] = { 
                 consignee: String(row[24] || 'TO ORDER'), 
                 vessel: String(row[5] || '-'), 
+                smtpNo: String(row[13] || '-'), // SMTP NO pick from Column 13
                 tpDate: typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(row[18] || row[17]) : (row[18] || row[17]), 
                 total: 0, railed: [], pending: [] 
             };
         }
-        // Shuruat mein sab Pending mein
         blStatus[blNo].pending.push({ 
             contNo: String(row[2] || '').trim().toUpperCase(), 
             size: String(row[3] || '').includes('40') ? '40' : '20' 
@@ -854,26 +832,19 @@ document.getElementById('generateLotReportBtn').addEventListener('click', () => 
         blStatus[blNo].total++;
     });
 
-    // Step B: Website data se container match karke 'Railed' mein move karein
+    // Step B: Website Matching logic (Same as before)
     websiteData.slice(1).forEach(row => {
-        const wCont = String(row[wIdxCont] || '').trim().toUpperCase();
+        const wCont = String(row[3] || '').trim().toUpperCase();
         if (!wCont) return;
-
         for (const bl in blStatus) {
             const pIdx = blStatus[bl].pending.findIndex(p => p.contNo === wCont);
             if (pIdx !== -1) {
-                const remark = String(row[wIdxRemarks] || '').toUpperCase();
-                const railDateRaw = row[wIdxDate];
-                
-                // Railout Validation
-                const isRailed = remark.includes("ARRIVED") || 
-                                 remark.includes("RAILOUT") || 
-                                 (String(railDateRaw).toUpperCase() !== 'PENDING' && railDateRaw !== '' && railDateRaw !== null);
-
+                const railDateRaw = row[8];
+                const isRailed = railDateRaw && !['PENDING', '', 'N/A'].includes(String(railDateRaw).toUpperCase());
                 if (isRailed) {
                     const info = blStatus[bl].pending.splice(pIdx, 1)[0];
                     info.railDate = typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(railDateRaw) : railDateRaw;
-                    info.train = String(row[wIdxRake] || '-').split('(')[0];
+                    info.train = String(row[4] || '-').split('(')[0];
                     blStatus[bl].railed.push(info);
                 }
                 break; 
@@ -881,15 +852,15 @@ document.getElementById('generateLotReportBtn').addEventListener('click', () => 
         }
     });
 
-    // Step C: Table HTML taiyar karein (Sirf Split LOTs ke liye)
     lastLotBreakData = [];
-    let html = `<table class="w-full text-[10px] border-collapse bg-white shadow-sm border border-slate-300">
+    // TABLE HEADERS UPDATED: SMTP No added, Railout Details removed
+    let html = `<div id="emailTableContainer"><table class="w-full text-[10px] border-collapse bg-white shadow-sm border border-slate-300">
         <thead class="bg-slate-900 text-white uppercase sticky top-0 z-20">
             <tr>
                 <th class="p-2 border border-slate-700 text-left">Consignee & BL Number</th>
                 <th class="p-2 border border-slate-700 text-left">Vessel / Handover Date</th>
-                <th class="p-2 border border-slate-700 text-center bg-emerald-800 text-white">Railout Container Details</th>
-                <th class="p-2 border border-slate-700 text-center bg-rose-800 text-white">Pending Container Details</th>
+                <th class="p-2 border border-slate-700 text-center bg-blue-800">SMTP NO</th>
+                <th class="p-2 border border-slate-700 text-center bg-rose-800">Pending Container Details</th>
             </tr>
         </thead><tbody>`;
 
@@ -899,29 +870,27 @@ document.getElementById('generateLotReportBtn').addEventListener('click', () => 
         if (data.railed.length > 0 && data.pending.length > 0) {
             foundBreak = true;
             lastLotBreakData.push({ bl, ...data });
-          
-            const rHtml = data.railed.map(r => `<div class="mb-1 border-b border-emerald-100 last:border-0 pb-1"><b>${r.contNo}</b> (${r.size}")<br><span class="text-slate-800 text-[10px]">🚆 ${r.train} | ${r.railDate}</span></div>`).join('');
-            const pHtml = data.pending.map(p => `<div class="mb-1 border-b border-rose-100 last:border-0 pb-1"><b>${p.contNo}</b> (${p.size}")<br><span class="text-rose-600 text-[12px]">Pending at Port...</span></div>`).join('');
+            const pHtml = data.pending.map(p => `<div class="mb-1 border-b border-rose-100 last:border-0 pb-1"><b>${p.contNo}</b> (${p.size}")</div>`).join('');
             
             html += `<tr class="border-b align-top hover:bg-slate-50">
-                <td class="p-2 border font-bold"><span class="text-blue-700 text-[15px] block uppercase">${data.consignee}</span><span class="text-slate-800 font-mono">BL: ${bl}</span><div class="mt-1 text-amber-600 text-[10px]">Lot Break: ${data.railed.length} Railout / ${data.pending.length} Not Railout</div></td>
+                <td class="p-2 border font-bold"><span class="text-blue-700 text-[13px] block uppercase">${data.consignee}</span><span class="text-slate-800 font-mono"> <br>(B/L No: ${bl})</span></td>
                 <td class="p-2 border uppercase"><b>${data.vessel}</b><br><span class="text-slate-500 text-[10px]">Handover Date: ${data.tpDate}</span></td>
-                <td class="p-2 border bg-emerald-50/20">${rHtml}</td>
+                <td class="p-2 border text-center font-bold text-blue-900 bg-blue-50/30">${data.smtpNo}</td>
                 <td class="p-2 border bg-rose-50/20">${pHtml}</td>
             </tr>`;
         }
     });
 
     if (foundBreak) {
-        document.getElementById('lotBreakContent').innerHTML = html + "</tbody></table>";
+        document.getElementById('lotBreakContent').innerHTML = html + "</tbody></table></div>";
+        document.getElementById('sendLotEmailBtn').classList.remove('hidden');
         document.getElementById('downloadLotReportBtn').classList.remove('hidden');
     } else {
         document.getElementById('lotBreakContent').innerHTML = `<div class="p-20 text-center font-bold text-slate-400 uppercase tracking-widest">✅ No LOT Breaks Found.</div>`;
         document.getElementById('downloadLotReportBtn').classList.add('hidden');
+        document.getElementById('sendLotEmailBtn').classList.add('hidden');
     }
-    if (window.lucide) lucide.createIcons();
 });
-
 // 3. Download Excel Logic (Fixed ExcelJS Implementation)
 document.getElementById('downloadLotReportBtn').addEventListener('click', async () => {
     if (!lastLotBreakData || lastLotBreakData.length === 0) return;
@@ -937,24 +906,50 @@ document.getElementById('downloadLotReportBtn').addEventListener('click', async 
 
         sheet.columns = [
             { header: 'Consignee', key: 'consignee', width: 30 },
-            { header: 'BL Number', key: 'bl', width: 25 },
-            { header: 'Vessel', key: 'vessel', width: 25 },
-            { header: 'TP Date', key: 'tp', width: 15 },
-            { header: 'Container No', key: 'cont', width: 20 },
-            { header: 'Size', key: 'size', width: 10 },
-            { header: 'Status', key: 'status', width: 15 },
-            { header: 'Train/Rake', key: 'train', width: 20 },
-            { header: 'Railout Date', key: 'date', width: 15 }
-        ];
+    { header: 'BL Number', key: 'bl', width: 25 },
+    { header: 'SMTP No', key: 'smtp', width: 20 }, // Ensure this key is 'smtp'
+    { header: 'Vessel', key: 'vessel', width: 25 },
+    { header: 'Handover Date', key: 'tp', width: 15 },
+    { header: 'Container No', key: 'cont', width: 20 },
+    { header: 'Size', key: 'size', width: 10 },
+    { header: 'Status', key: 'status', width: 15 },
+    { header: 'Train/Rake', key: 'train', width: 20 },
+    { header: 'Railout Date', key: 'date', width: 15 }
+];
 
         lastLotBreakData.forEach(blItem => {
-            blItem.railed.forEach(r => {
-                sheet.addRow({ consignee: blItem.consignee, bl: blItem.bl, vessel: blItem.vessel, tp: blItem.tpDate, cont: r.contNo, size: r.size, status: 'RAILED', train: r.train, date: r.railDate });
-            });
-            blItem.pending.forEach(p => {
-                sheet.addRow({ consignee: blItem.consignee, bl: blItem.bl, vessel: blItem.vessel, tp: blItem.tpDate, cont: p.contNo, size: p.size, status: 'PENDING', train: '-', date: '-' });
-            });
+    // 1. Railed Containers add karein
+    blItem.railed.forEach(r => {
+        sheet.addRow({
+            consignee: blItem.consignee,
+            bl: blItem.bl,
+            smtp: blItem.smtpNo || '-', // Yahan property name 'smtpNo' ensure karein
+            vessel: blItem.vessel,
+            tp: blItem.tpDate,
+            cont: r.contNo,
+            size: r.size,
+            status: 'RAILED',
+            train: r.train,
+            date: r.railDate
         });
+    });
+    
+    // 2. Pending Containers add karein
+    blItem.pending.forEach(p => {
+        sheet.addRow({
+            consignee: blItem.consignee,
+            bl: blItem.bl,
+            smtp: blItem.smtpNo || '-', // Yahan bhi update karein
+            vessel: blItem.vessel,
+            tp: blItem.tpDate,
+            cont: p.contNo,
+            size: p.size,
+            status: 'PENDING',
+            train: '-',
+            date: '-'
+        });
+    });
+});
 
         // Header Style
         sheet.getRow(1).eachCell(cell => {
@@ -974,7 +969,41 @@ document.getElementById('downloadLotReportBtn').addEventListener('click', async 
         alert("Excel download failed: " + e.message);
     }
 });
+// ────────────────────────────────────────────────
+// NEW: SEND EMAIL LOGIC (LOT BREAK REPORT)
+// ────────────────────────────────────────────────
+// Search for: document.getElementById('sendLotEmailBtn').addEventListener('click', () => {
+document.getElementById('sendLotEmailBtn').addEventListener('click', () => {
+    const tableElement = document.getElementById('emailTableContainer');
+    if (!tableElement) {
+        alert("Pehle report generate karein.");
+        return;
+    }
 
+    // 1. Table ko Clipboard mein copy karna
+    const range = document.createRange();
+    range.selectNode(tableElement);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    
+    try {
+        document.execCommand('copy');
+        window.getSelection().removeAllRanges();
+    } catch (err) {
+        alert("Copy failed, please select and copy manually.");
+    }
+
+    // 2. Outlook Details taiyar karna
+    const today = new Date().toLocaleDateString('en-GB'); 
+    const to = "satyam.pandey@hindterminals.com";
+    const cc = "railmundra@hindterminals.com;marketing.ludhiana@hindterminals.com;customerserviceludhiana@hindterminals.com";
+    const subject = `Import Lot Breaks Report Kilaraipur, Dated : ${today}`;
+    
+    const bodyText = `Dear Satyam Ji,%0D%0A%0D%0APlease find below details of Lot Breaks Containers/BL /Vessels Details%0D%0AKindly check the balance containers under lot breakage , and plan in todays train.,%0D%0A%0D%0A%0D%0A%0D%0A%0D%0ALOT Break Report Detailed Report :- .`;
+
+    window.location.href = `mailto:${to}?cc=${cc}&subject=${encodeURIComponent(subject)}&body=${bodyText}`;
+    alert("Report Table copy ho gayi hai! Outlook khulne par wahan Ctrl+V dabakar table paste kar dein.");
+});
 // Button to delete external HTPL data with fixed UID=103 after confirmation
 document.getElementById('deleteHtplUid103Btn').addEventListener('click', () => {
     const confirmed = confirm("Do you want to Delete HTPL website data?\n\n Yes or No).");
@@ -2865,7 +2894,7 @@ window.deleteHkrRow = async (index) => {
         const maxCols = Math.max(...data.map(r => r.length || 0));
         for (let colIndex = 0; colIndex < maxCols; colIndex++) {
             if (sheetName === 'smtp') {
-                const allowed = [1,2,3,5,9,17,18,22,23,24,26];
+                const allowed = [1,2,3,5,9,13,18,22,23,24,26];
                 if (!allowed.includes(colIndex)) continue;
             }
             const content = row[colIndex] ?? '';
@@ -3783,8 +3812,8 @@ function autoUpdateScanningRemarksInWebsite() {
 
     return updatedCount;
 }
-        // ==========================================
-// SMTP EXCEL IMPORT LOGIC (Auto Remark: MSC Check -> HKR Data Match Override)
+  // ==========================================
+// SMTP EXCEL IMPORT LOGIC (FIXED: Added Index 13)
 // ==========================================
 const smtpExcelInput = document.getElementById('smtpExcelInput');
 if (smtpExcelInput) {
@@ -3803,9 +3832,10 @@ if (smtpExcelInput) {
 
             let addedCount = 0;
             let transferCount = 0;
-            let hkrMatchCount = 0; // To track overrides
+            let hkrMatchCount = 0;
             
-            const activeIndices = [1, 2, 3, 5, 9, 11, 17, 18, 22, 23, 24, 26]; 
+            // CRITICAL FIX: Added 13 to this array
+            const activeIndices = [1, 2, 3, 5, 9, 11, 13, 17, 18, 22, 23, 24, 26]; 
 
             if (!rawSheets.website || rawSheets.website.length === 0) {
                 rawSheets.website = [["UID", "SR_NO", "BILL_NO", "CONTAINER_NO", "RAKE_NO", "STACK", "SOURCE", "DESTINATION", "RAILING_DATE", "REMARKS"]];
@@ -3813,38 +3843,26 @@ if (smtpExcelInput) {
 
             jsonData.slice(1).forEach(exRow => {
                 const contNo = String(exRow[2] || '').trim().toUpperCase();
-                const cellLValue = String(exRow[11] || '').toUpperCase(); // Location
+                const cellLValue = String(exRow[11] || '').toUpperCase();
 
-                // Filter: Only process if Location is KILARAIPUR or LUDHIANA
                 if (contNo && (cellLValue.includes("KILARAIPUR") || cellLValue.includes("LUDHIANA"))) {
                     
-                    // --- LOGIC START: Determine Remark ---
-                    let finalRemark = "HKR"; // Default
-
-                    // 1. MSC Check (Column X / Index 23)
+                    let finalRemark = "HKR";
                     const lineVal = String(exRow[23] || '').trim().toUpperCase();
-                    if (lineVal.includes("MSC")) {
-                        finalRemark = "-";
-                    }
+                    if (lineVal.includes("MSC")) finalRemark = "-";
 
-                    // 2. HKR DATA Match Check (Priority Override)
-                    // Check if this container exists in our saved HKR Data
                     if (rawSheets.hkrHmrFiltered && rawSheets.hkrHmrFiltered.length > 0) {
                         const hkrMatch = rawSheets.hkrHmrFiltered.find(row => 
                             String(row.ctr_no || '').trim().toUpperCase() === contNo
                         );
-                        
                         if (hkrMatch && hkrMatch.assigned_remark) {
-                            finalRemark = hkrMatch.assigned_remark; // Overwrite with HKR/HMR/HDL
+                            finalRemark = hkrMatch.assigned_remark;
                             hkrMatchCount++;
                         }
                     }
 
-                    // Set the Final Remark into Excel Row Data (Col W / Index 22)
                     exRow[22] = finalRemark;
-                    // --- LOGIC END ---
 
-                    // 1. Add to SMTP Sheet (if new)
                     const alreadyInSmtp = rawSheets.smtp.some(s => String(s[2] || '').trim() === contNo);
                     
                     if (!alreadyInSmtp) {
@@ -3854,23 +3872,13 @@ if (smtpExcelInput) {
                         });
                         rawSheets.smtp.push(optimizedRow);
                         addedCount++;
-                    } else {
-                        // Optional: If you want to UPDATE existing rows with new Remarks too
-                        // Uncomment below lines if needed:
-                        /*
-                        const existingIdx = rawSheets.smtp.findIndex(s => String(s[2]).trim() === contNo);
-                        if (existingIdx !== -1) {
-                            rawSheets.smtp[existingIdx][22] = finalRemark;
-                        }
-                        */
                     }
-
-                    // 2. Auto-Transfer to Website (if new)
+                    // Baaki ka transfer logic waisa hi rahega...
                     const alreadyInWebsite = rawSheets.website.some(w => String(w[3] || '').trim() === contNo);
                     if (!alreadyInWebsite) {
                         const blNo = String(exRow[9] || '').trim();
                         const rawTpDate = exRow[18] || exRow[17];
-                        const tpDateFormatted = formatToDDMMYYYY(rawTpDate);
+                        const tpDateFormatted = typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(rawTpDate) : rawTpDate;
                         
                         rawSheets.website.push([
                             103, 
@@ -3890,21 +3898,11 @@ if (smtpExcelInput) {
             });
 
             window.viewSheetData('smtp');
-            
-            // Notification
-            const box = document.createElement('div');
-            box.innerHTML = `
-                <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[10000] animate-bounce">
-                    ✓ SMTP Processing Complete!<br>
-                    Added: ${addedCount}<br>
-                    Synced to Website: ${transferCount}<br>
-                    Matched with HKR Data: ${hkrMatchCount}
-                </div>`;
-            document.body.appendChild(box);
-            setTimeout(() => box.remove(), 6000);
-
             saveToCloud(); 
             processCloudData();
+            
+            // Notification
+            alert(`✓ SMTP Processing Complete!\nAdded: ${addedCount}\nSynced: ${transferCount}\nSMTP NO (Col 13) included.`);
         };
         reader.readAsBinaryString(file);
         e.target.value = ''; 
@@ -5670,6 +5668,9 @@ if (hkrHmrExcelInput) {
                 <h2 class="font-bold uppercase tracking-tight text-sm">LOT Break Report (Detailed Split View)</h2>
             </div>
             <div class="flex gap-2">
+<button id="sendLotEmailBtn" class="hidden bg-blue-700 hover:bg-blue-800 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase flex items-center gap-2 shadow-md transition-all active:scale-95">
+    <i data-lucide="mail" class="w-4 h-4"></i> Send Email
+</button>
                 <button id="downloadLotReportBtn" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase flex items-center gap-2 shadow-md transition-all active:scale-95">
                     <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Download Excel
                 </button>
