@@ -972,7 +972,6 @@ document.getElementById('downloadLotReportBtn').addEventListener('click', async 
 // ────────────────────────────────────────────────
 // NEW: SEND EMAIL LOGIC (LOT BREAK REPORT)
 // ────────────────────────────────────────────────
-// Search for: document.getElementById('sendLotEmailBtn').addEventListener('click', () => {
 document.getElementById('sendLotEmailBtn').addEventListener('click', () => {
     const tableElement = document.getElementById('emailTableContainer');
     if (!tableElement) {
@@ -1148,7 +1147,7 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
 });
 
 // ────────────────────────────────────────────────
-// EMAIL COPY LOGIC - HEADER IN BOX WITH SPACING
+// EMAIL COPY LOGIC - FIXED ETA FROM REMARKS
 // ────────────────────────────────────────────────
 document.getElementById('copyEmailBtn').addEventListener('click', async () => {
     const blList = getVisibleBLs();
@@ -1173,20 +1172,20 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
         const railedRows = allBlRows.filter(row => !['PENDING', ''].includes(String(row[idxDate] || '').trim().toUpperCase()));
         const pendingRows = allBlRows.filter(row => String(row[idxDate] || '').trim().toUpperCase() === 'PENDING');
 
-        // --- Header Line in a BOX with Spacing ---
+        // --- Header Box (Autofit & Dark Blue) ---
         htmlContent += `
-    <br>
-    <table border="0" cellspacing="0" cellpadding="0" style="display: inline-table; margin-top: 10px; margin-bottom: 5px;">
-        <tr>
-            <td bgcolor="#1e3a8a" style="border: 1.5px solid #172554; padding: 10px 15px; border-radius: 4px;">
-                <b style="color: #ffffff; font-family: Calibri, Arial, sans-serif; font-size: 11pt; white-space: nowrap;">
-                    BL: ${blInfo.blNo} | Total : ${blInfo.total} | Railout ${railedRows.length} | Pending ${String(pendingRows.length).padStart(2, '0')} | Shipping Line : ${blInfo.line}
-                </b>
-            </td>
-        </tr>
-    </table>
-    <div style="height: 12px; line-height: 12px; font-size: 12px;">&nbsp;</div>
-`;
+            <br>
+            <table border="0" cellspacing="0" cellpadding="0" style="display: inline-table; margin-top: 10px; margin-bottom: 5px;">
+                <tr>
+                    <td bgcolor="#1e3a8a" style="border: 1.5px solid #172554; padding: 10px 15px; border-radius: 4px;">
+                        <b style="color: #ffffff; font-family: Calibri, sans-serif; font-size: 11pt; white-space: nowrap;">
+                            BL: ${blInfo.blNo} | Total : ${blInfo.total} | Railout ${railedRows.length} | Pending ${String(pendingRows.length).padStart(2, '0')} | Shipping Line : ${blInfo.line}
+                        </b>
+                    </td>
+                </tr>
+            </table>
+            <div style="height: 12px; line-height: 12px; font-size: 12px;">&nbsp;</div>
+        `;
 
         // --- Table Start ---
         htmlContent += `<table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse; font-family: Calibri, sans-serif; font-size: 10pt; width: 100%; max-width: 850px; margin-bottom: 30px;">
@@ -1211,22 +1210,33 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
         };
 
         railedRows.forEach(row => {
-            const cNo = String(row[idxCont]).trim();
-            const dateStr = typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(row[idxDate]) : row[idxDate];
-            const remark = String(row[idxRemarks] || '');
-            const etaMatch = remark.match(/\d{2}-\d{2}-\d{4}/);
-            const etaStr = etaMatch ? etaMatch[0] : '-';
+    const cNo = String(row[idxCont]).trim();
+    const railDate = typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(row[idxDate]) : row[idxDate];
+    
+    const remarkText = String(row[idxRemarks] || '').toUpperCase();
+    let etaStr = '-';
+    
+    // Logic: Pehle check karo ki "ETA" word hai ya nahi
+    if (remarkText.includes("ETA")) {
+        // ETA word ke baad ka hissa nikalo
+        const afterEta = remarkText.split("ETA")[1];
+        // Us hisse mein se dd-mm-yyyy format dhundo
+        const dateMatch = afterEta.match(/(\d{2}-\d{2}-\d{4})/);
+        if (dateMatch) {
+            etaStr = dateMatch[1]; // Ye pakka 19-02-2026 (dusri date) hi uthayega
+        }
+    }
 
-            htmlContent += `<tr style="text-align: center;">
-                <td style="border: 1px solid black;">${globalSerial++}</td>
-                <td style="border: 1px solid black;">${blInfo.blNo}</td>
-                <td style="border: 1px solid black;">${cNo}</td>
-                <td style="border: 1px solid black;">${getContSize(cNo)}"</td>
-                <td style="border: 1px solid black;">${String(row[idxRake]).trim().split('(')[0]}</td>
-                <td style="border: 1px solid black;">${dateStr}</td>
-                <td style="border: 1px solid black;">${etaStr}</td>
-            </tr>`;
-        });
+    htmlContent += `<tr style="text-align: center;">
+        <td style="border: 1px solid black;">${globalSerial++}</td>
+        <td style="border: 1px solid black;">${blInfo.blNo}</td>
+        <td style="border: 1px solid black;">${cNo}</td>
+        <td style="border: 1px solid black;">${getContSize(cNo)}"</td>
+        <td style="border: 1px solid black;">${String(row[idxRake]).trim().split('(')[0]}</td>
+        <td style="border: 1px solid black;">${railDate}</td>
+        <td style="border: 1px solid black; font-weight: bold; color: #1e40af;">${etaStr}</td>
+    </tr>`;
+});
 
         pendingRows.forEach(pRow => {
             const cNo = String(pRow[idxCont]).trim();
@@ -1247,10 +1257,11 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
     htmlContent += `<br><b>Container Tracking Link :</b> <a href="https://tinyurl.com/import-tracking">https://tinyurl.com/import-tracking</a><br><br>`;
     htmlContent += `Regards,<br><br>`;
     htmlContent += `<b>Hind Terminals Pvt Ltd</b><br>`;
-    htmlContent += `SCO No.14-15, Dhamija Tower, First Floor, Urban Estate, Phase -3, Opp. FCI Godown, Focal Point, Ludhiana- 141010<br>`;
+    htmlContent += `Address: SCO No.14-15, Dhamija Tower, First Floor, Urban Estate, Phase -3, Opp. FCI Godown, Focal Point, Ludhiana- 141010<br>`;
     htmlContent += `Phone: +91-9988466317 | Landline: 0161-4417569<br>`;
     htmlContent += `</div>`;
 
+    // Clipboard logic waisa hi rahega...
     const blob = new Blob([htmlContent], { type: 'text/html' });
     const clipboardItem = new ClipboardItem({ 
         'text/html': blob, 
@@ -1260,7 +1271,7 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
     navigator.clipboard.write([clipboardItem]).then(() => {
         const toast = document.createElement('div');
         toast.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-blue-800 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
-            ✅ Formatted Email Copied!
+            ✅ Email Copied! ETA Fixed from Remarks.
         </div>`;
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 4000);
