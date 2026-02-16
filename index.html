@@ -1071,7 +1071,7 @@ const getVisibleBLs = () => {
 };
 
 // ────────────────────────────────────────────────
-// WHATSAPP MESSAGE LOGIC - UPDATED FORMAT WITH BRACKETS & COUNTS
+// WHATSAPP MESSAGE LOGIC - COMPACT HEADER & BOLD TRAIN INFO
 // ────────────────────────────────────────────────
 document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () => {
     const blList = getVisibleBLs();
@@ -1088,27 +1088,18 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
     let message = `Dear Sir,\n \nPlease find below status B/L wise:- 🏗️\n`;
 
     blList.forEach(blInfo => {
-        message += `----------------------\n`;
         const allBlRows = websiteData.slice(1).filter(row => String(row[idxBL] || '').trim().toUpperCase() === blInfo.blNo);
-        
         const railedRows = allBlRows.filter(row => !['PENDING', ''].includes(String(row[idxDate] || '').trim().toUpperCase()));
         const pendingRows = allBlRows.filter(row => String(row[idxDate] || '').trim().toUpperCase() === 'PENDING');
         
-        // --- Calculate Arrived and In Transit ---
-        const arrivedCount = railedRows.filter(row => String(row[idxRemarks] || '').toUpperCase().includes("TRAIN ARRIVED ON")).length;
-        const inTransitCount = railedRows.length - arrivedCount;
-        
-        let lotStatusTag = (pendingRows.length === 0) ? `(✅ *Lot Completed*)` : `(🚩 *Lot Incomplete*)`;
+        let lotStatusTag = (pendingRows.length === 0) ? `🔰 *Lot Complete*` : `🚩 *Lot Incomplete*`;
 
-        message += `🔰 *BL:* ${blInfo.blNo}\n`;
-        message += `*Total:* ${blInfo.total} | *Line:* ${blInfo.line}\n`;
-        message += `----------------------\n`;
-        message += `🚆 *Railout* - ${railedRows.length}\n`;
-        message += `⚠️ *Pending* - ${pendingRows.length} \n`;
+        message += `--------------------------------------\n`;
+        // Header: BL/Total/Line format
+        message += `🔰 BL: *${blInfo.blNo}*/*${blInfo.total}*/*${blInfo.line}*\n`;
+        message += `🔰 Railout - ${railedRows.length}, Pending - ${pendingRows.length} \n`;
         message += `${lotStatusTag}\n`;
-        message += `🔰 *Arrived* - ${arrivedCount}\n`;
-        message += `⚠️ *In Transit* - ${inTransitCount}\n`;
-        message += `----------------------\n`;
+        message += `--------------------------------------\n`;
 
         const trainGroups = {};
         railedRows.forEach(row => {
@@ -1125,17 +1116,17 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
             const railOutDate = typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(rawDate) : rawDate;
             const remarkText = String(groupRows[0][idxRemarks] || '').toUpperCase();
 
-            // Train Line in Brackets: (Train JWHT-01/16-02-2026)
-            message += `(Train ${trainName}/${railOutDate})\n`;
+            // Train Info: Bold with Slash
+            message += `*Train ${trainName}/${railOutDate}*\n`;
 
-            // ETA or Arrived Line in Brackets
+            // ETA or Arrived Line (Bold)
             if (remarkText.includes("TRAIN ARRIVED ON")) {
                 const arrivedMatch = remarkText.match(/ARRIVED ON\s+(\d{2}-\d{2}-\d{4})/);
-                if (arrivedMatch) message += `(Arrived :${arrivedMatch[1]})\n`;
+                if (arrivedMatch) message += `*Arrived :${arrivedMatch[1]}*\n`;
             } else if (remarkText.includes("ETA")) {
                 const afterEta = remarkText.split("ETA")[1];
-                const etaMatch = afterEta.match(/(\d{2}-\d{2}-\d{4})/);
-                if (etaMatch) message += `(ETA: ${etaMatch[1]})\n`;
+                const dateMatch = afterEta.match(/(\d{2}-\d{2}-\d{4})/);
+                if (dateMatch) message += `*ETA: ${dateMatch[1]}*\n`;
             }
 
             groupRows.forEach((row) => {
@@ -1143,17 +1134,17 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
                 message += `${sn}. ${String(row[idxCont]).trim()}\n`;
                 globalSerial++;
             });
-            message += `----------------------\n`;
+            message += `------------------------------\n`;
         });
 
         if (pendingRows.length > 0) {
-            message += `*Pending - ${String(pendingRows.length).padStart(2, '0')}*\n`;
+            message += `⚠️ *Pending - ${String(pendingRows.length).padStart(2, '0')}*\n`;
             pendingRows.forEach((pRow) => {
                 let sn = globalSerial < 10 ? `0${globalSerial}` : globalSerial;
                 message += `${sn}. ${String(pRow[idxCont]).trim()}\n`;
                 globalSerial++;
             });
-            message += `----------------------\n`;
+            message += `------------------------------\n`;
         }
     });
 
@@ -1213,7 +1204,7 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
             } else if (remarkText.includes("ETA")) {
                 const afterEta = remarkText.split("ETA")[1];
                 const dateMatch = afterEta.match(/(\d{2}-\d{2}-\d{4})/);
-                statusText = dateMatch ? `EXPECTED ARRIVAL ON : ${dateMatch[1]}` : 'IN TRANSIT';
+                statusText = dateMatch ? `ETA ON : ${dateMatch[1]}` : 'IN TRANSIT';
             }
             return { ...row, statusText, statusType, statusColor, bgColor };
         });
@@ -1224,10 +1215,10 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
 
         // Header Box (Compact for Portrait)
         htmlContent += `
-            <table border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 10px; width: 100%;">
+            <table border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 10px; width: 90%;">
                 <tr>
                     <td bgcolor="#1e3a8a" style="border: 1px solid #172554; padding: 8px 12px;">
-                        <b style="color: #ffffff; font-size: 9pt;">
+                        <b style="color: #b6d7a8; font-size: 9pt;">
                             BL: ${blInfo.blNo} | Line : ${blInfo.line} | Total : ${blInfo.total} | Railout : ${railedRows.length} | Arrived : ${arrivedCount} | Transit : ${inTransitCount}
                         </b>
                     </td>
@@ -1235,9 +1226,9 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
             </table>`;
 
         // Data Table (Smaller font for Portrait fit)
-        htmlContent += `<table border="1" cellspacing="0" cellpadding="4" style="border-collapse: collapse; font-size: 8.5pt; width: 100%; table-layout: fixed; margin-bottom: 20px;">
+        htmlContent += `<table border="1" cellspacing="0" cellpadding="4" style="border-collapse: collapse; font-size: 8.5pt; width: 80%; table-layout: fixed; margin-bottom: 20px;">
             <thead>
-                <tr style="background-color: #f3f4f6; font-weight: bold; text-align: center;">
+                <tr style="background-color: #fff2cc; font-weight: bold; text-align: center;">
                     <th style="width: 30px;">Sr</th>
                     <th style="width: 100px;">BL Number</th>
                     <th style="width: 100px;">Container</th>
