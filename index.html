@@ -1219,15 +1219,16 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
                 <tr>
                     <td bgcolor="#ffffff" style="border: 0px solid #ffffff; padding: 8px 12px;">
                         <b style="color: #0b5394; font-size: 9pt;">
-                            BL: ${blInfo.blNo} | Line : ${blInfo.line} | Total : ${blInfo.total} | Railout : ${railedRows.length} | Arrived : ${arrivedCount} | Transit : ${inTransitCount}
+                            B/L No : ${blInfo.blNo} | S/Line : ${blInfo.line} | Total : ${blInfo.total} | Railout : ${railedRows.length} | Arrived : ${arrivedCount} | IN-Transit : ${inTransitCount}
                         </b>
                     </td>
                 </tr>
+		<br></br>
             </table>`;
-
-        // Data Table (Smaller font for Portrait fit)
+	   // Data Table (Smaller font for Portrait fit)
         htmlContent += `<table border="1" cellspacing="0" cellpadding="4" style="border-collapse: collapse; font-size: 8.5pt; width: 80%; table-layout: fixed; margin-bottom: 20px;">
             <thead>
+	       <br></br>
                 <tr style="background-color: #ffd966; font-weight: bold; text-align: center;">
                     <th style="width: 30px;">Sr</th>
                     <th style="width: 100px;">BL Number</th>
@@ -1272,13 +1273,13 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
         htmlContent += `</tbody></table></div>`; // B/L Block End
     });
 
-    htmlContent += `<br><div style="font-size: 9pt;"><b>Tracking Link:</b> https://tinyurl.com/import-tracking<br><br>Regards,<br><b>Hind Terminals Pvt Ltd</b><br>Vikram Singh (9988466317)</div></div>`;
+    htmlContent += `<br><div style="font-size: 9pt;"><b>Tracking Link:</b> https://tinyurl.com/import-tracking<br><br>Regards,<br><b>Hind Terminals Pvt Ltd</b><br></div></div>`;
 
     if (userChoice) {
         // --- PDF DOWNLOAD (PORTRAIT) ---
         const opt = {
             margin: [10, 5, 10, 5], // Top, Left, Bottom, Right
-            filename: `Import_Report_${blList[0].blNo}.pdf`,
+            filename: `Import_Status_Report_${blList[0].blNo}.pdf`,
             image: { type: 'jpeg', quality: 0.98 },
             html2canvas: { scale: 3, useCORS: true, letterRendering: true },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
