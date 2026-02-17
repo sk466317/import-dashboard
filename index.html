@@ -1985,23 +1985,24 @@ if (bl.isAnySmtp) {
         </tr>`;
 }
 
-        // ==========================================
-// RENDER DETAILED BREAKDOWN (Both Railed & Pending with Hyperlinks)
+ // ==========================================
+// RENDER DETAILED BREAKDOWN (STRICT CLEAN FORMAT)
 // ==========================================
 function renderDetailedBreakdown(groups) {
     const railedGroups = groups.filter(g => g.stats.railed > 0);
     const pendingGroups = groups.filter(g => g.stats.pending > 0);
     let totalRailedUnits = 0, totalPendingUnits = 0;
 
-    // Header Update for Railed Shipments
+    // Header Update
     const headingEl = document.getElementById('railedShipmentsHeading');
     if (headingEl) {
         headingEl.innerText = isInTransitFilterActive ? "Railed Out Shipments (Filtered: Mundra Railout)" : "Railed Out Shipments";
     }
 
     // --- 1. RAILED OUT TABLE ---
-    if (railedGroups.length === 0) document.getElementById('railedBreakdownContainer').classList.add('hidden');
-    else {
+    if (railedGroups.length === 0) {
+        document.getElementById('railedBreakdownContainer').classList.add('hidden');
+    } else {
         document.getElementById('railedBreakdownContainer').classList.remove('hidden');
         let rHtml = '';
         railedGroups.forEach(bl => {
@@ -2009,7 +2010,6 @@ function renderDetailedBreakdown(groups) {
             if (isInTransitFilterActive) {
                 detailsToShow = detailsToShow.filter(d => /RAILOUT FROM MUNDRA/i.test(d.remark));
             }
-
             if (detailsToShow.length > 0) {
                 let blTotal = 0;
                 detailsToShow.forEach((detail, idx) => {
@@ -2018,47 +2018,71 @@ function renderDetailedBreakdown(groups) {
                     const isArrived = /TRAIN ARRIVED/i.test(detail.remark);
                     const remarkClass = isArrived ? 'bg-yellow-100 text-slate-900' : 'text-slate-500';
                     rHtml += `<tr class="border-b border-slate-200 hover:bg-emerald-50/30">`;
-                    
-                    // Railed Link Logic (Already existed)
                     if (idx === 0) rHtml += `<td rowspan="${detailsToShow.length}" class="px-3 py-1 font-bold text-slate-900 border-r border-slate-300 align-top">
-                        <a href="javascript:void(0)" onclick="searchHTPL('${bl.blNo}')" class="text-blue-800 hover:text-blue-600 hover:underline cursor-pointer transition-colors">
-                            ${bl.blNo}
-                        </a>
+                        <a href="javascript:void(0)" onclick="searchHTPL('${bl.blNo}')" class="text-blue-800 hover:text-blue-600 hover:underline cursor-pointer transition-colors">${bl.blNo}</a>
                         <span class="text-blue-500 text-[10px] uppercase font-bold ml-1">(${bl.stats.total} / ${bl.line})</span>
                     </td>`;
-                    
                     rHtml += `<td class="px-3 py-1 text-center font-bold text-emerald-700 bg-emerald-50 border-r border-slate-300">${detail.count}</td><td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${detail.train}</td><td class="px-3 py-1 text-center text-blue-600 font-bold border-r border-slate-300 uppercase whitespace-nowrap">${detail.date}</td><td class="px-3 py-1 ${remarkClass} text-[9px] font-bold">${detail.remark}</td></tr>`;
                 });
                 rHtml += `<tr class="bg-blue-100/60 font-bold border-b border-blue-200"><td class="px-3 py-1 text-blue-800 uppercase text-[8px]">Group Total</td><td class="px-3 py-1 text-center text-blue-900 border-r border-blue-200">${blTotal}</td><td colspan="3"></td></tr>`;
             }
         });
         document.getElementById('railedDetailRows').innerHTML = rHtml;
-        document.getElementById('railedDetailFooter').innerHTML = `<tr class="bg-emerald-50 text-emerald-800 font-bold"><td class="px-3 py-1.5 text-right uppercase text-[9px]">Grand Total (Viewed)</td><td class="px-3 py-1.5 text-center text-[11px] border-r border-emerald-200">${totalRailedUnits}</td><td colspan="3"></td></tr>`;
+        document.getElementById('railedDetailFooter').innerHTML = `<tr class="bg-emerald-50 text-emerald-800 font-bold"><td class="px-3 py-1.5 text-right uppercase text-[9px]">Grand Total</td><td class="px-3 py-1.5 text-center text-[11px] border-r border-emerald-200">${totalRailedUnits}</td><td colspan="3"></td></tr>`;
     }
 
-    // --- 2. PENDING TABLE (UPDATED WITH LINKS) ---
-    if (pendingGroups.length === 0) document.getElementById('pendingBreakdownContainer').classList.add('hidden');
-    else {
+    // --- 2. PENDING TABLE (STRICT CLEANING & FORMATTING) ---
+    if (pendingGroups.length === 0) {
+        document.getElementById('pendingBreakdownContainer').classList.add('hidden');
+    } else {
         document.getElementById('pendingBreakdownContainer').classList.remove('hidden');
         let pHtml = '';
         pendingGroups.forEach(bl => {
             totalPendingUnits += bl.stats.pending;
             const statusLabel = bl.isAnySmtp ? `<span class="text-blue-600 uppercase font-bold text-[9px]">${bl.handoverDt}</span>` : '<span class="text-rose-600 uppercase font-bold text-[9px]">Pending</span>';
+            
+            // 1. Fetch Scanning Containers from SMTP
+            const scanningContainers = rawSheets.smtp
+                .slice(1)
+                .filter(sRow => 
+                    String(sRow[9] || '').trim().toUpperCase() === bl.blNo.toUpperCase() && 
+                    String(sRow[1] || '').trim().toUpperCase() === "UNDER SCANNING"
+                )
+                .map(sRow => String(sRow[2]).trim());
+
+            // 2. Logic to remove duplicate Handover messages
+            // Agar list mein scanning wala handover hai, toh normal handover ko uda do
+            let uniqueRemarks = [...new Set(bl.pendingRemarks)];
+            const hasScanningRemark = uniqueRemarks.some(r => r.toUpperCase().includes("UNDER SCANNING"));
+            
+            if (hasScanningRemark) {
+                // Filter out the basic handover if a detailed scanning handover exists
+                uniqueRemarks = uniqueRemarks.filter(r => !(!r.toUpperCase().includes("UNDER SCANNING") && r.toUpperCase().includes("HANDOVER")));
+            }
+            
+            let mainRemark = uniqueRemarks.join(' | ') || 'Awaiting dispatch';
+            let scanLabel = '';
+
+            if (scanningContainers.length > 0) {
+                scanLabel = `<br><span class="text-pink-600 font-black text-[10px] uppercase">[UNDER SCANNING: ${scanningContainers.join(', ')}]</span>`;
+            }
+
             const bRem = bl.smtpBRemarks.join(' | ');
-            const isUrgent = /scan|scanning|damage/i.test(bRem);
+            const isUrgent = /scan|scanning|damage/i.test(bRem) || scanningContainers.length > 0;
             
             pHtml += `<tr class="border-b border-slate-200 hover:bg-rose-50/30">
                 <td class="px-3 py-1 font-bold text-slate-900 border-r border-slate-300">
-                    <a href="javascript:void(0)" onclick="searchHTPL('${bl.blNo}')" class="text-blue-800 hover:text-blue-600 hover:underline cursor-pointer transition-colors">
-                        ${bl.blNo}
-                    </a>
+                    <a href="javascript:void(0)" onclick="searchHTPL('${bl.blNo}')" class="text-blue-800 hover:text-blue-600 hover:underline cursor-pointer transition-colors">${bl.blNo}</a>
                     <span class="text-blue-500 text-[8px] uppercase font-bold ml-1">(${bl.stats.total} / ${bl.line})</span>
                 </td>
                 <td class="px-3 py-1 text-slate-600 font-bold border-r border-slate-300 text-[8px] uppercase ${isUrgent ? 'text-rose-700 font-bold' : ''}">${bRem || '-'}</td>
                 <td class="px-3 py-1 text-center font-bold text-rose-700 bg-rose-50/50 border-r border-slate-300">${bl.stats.pending}</td>
                 <td class="px-3 py-1 text-slate-700 font-bold uppercase border-r border-slate-300">${bl.vessel}</td>
                 <td class="px-3 py-1 text-center font-bold uppercase border-r border-slate-300">${statusLabel}</td>
-                <td class="px-3 py-1 text-slate-500 text-[9px] font-bold">${bl.pendingRemarks.join(' | ') || 'Awaiting dispatch'}</td>
+                <td class="px-3 py-1 text-slate-700 text-[9px] font-bold leading-tight">
+                    ${mainRemark}
+                    ${scanLabel}
+                </td>
             </tr>`;
         });
         document.getElementById('pendingDetailRows').innerHTML = pHtml;
