@@ -1186,9 +1186,8 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
         htmlContent += `<div style="${pageBreakStyle}">`;
         
         if (index === 0) {
-            htmlContent += `Dear Sir,<br><br>Greetings From Hind Terminals!!<br><br>Please find below status of Containers / BLs:-<br><br>`;
+            htmlContent += `Dear Sir,<br><br>Greetings From Hind Terminals!!<br>Please find below status of Containers / BLs:-<br><br>`;
         }
-
         const allBlRows = websiteData.slice(1).filter(row => String(row[idxBL] || '').trim().toUpperCase() === blInfo.blNo);
         const railedRows = allBlRows.filter(row => !['PENDING', ''].includes(String(row[idxDate] || '').trim().toUpperCase()));
         const pendingRows = allBlRows.filter(row => String(row[idxDate] || '').trim().toUpperCase() === 'PENDING');
@@ -1203,7 +1202,7 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
             } else if (remarkText.includes("ETA")) {
                 const afterEta = remarkText.split("ETA")[1];
                 const dateMatch = afterEta.match(/(\d{2}-\d{2}-\d{4})/);
-                statusText = dateMatch ? `ETA ON : ${dateMatch[1]}` : 'IN TRANSIT';
+                statusText = dateMatch ? `Expected Arrival on: ${dateMatch[1]}` : 'IN TRANSIT';
             }
             return { ...row, statusText, statusType, statusColor, bgColor };
         });
@@ -1217,27 +1216,27 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
             <table border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 10px; width: 90%;">
                 <tr>
                     <td bgcolor="#ffffff" style="border: 0px solid #ffffff; padding: 8px 12px;">
-                        <b style="color: #0b5394; font-size: 11pt;">
+                        <b style="color: #055094; font-size: 11pt;">
                             B/L No : ${blInfo.blNo} | S/Line : ${blInfo.line} | Total : ${blInfo.total} | Railout : ${railedRows.length} | Arrived : ${arrivedCount} | IN-Transit : ${inTransitCount}
                         </b>
                     </td>
                 </tr>
             </table><br>`;
 
-        // Data Table
-        htmlContent += `<table border="1" cellspacing="0" cellpadding="4" style="border-collapse: collapse; font-size: 8pt; width: 100%; table-layout: fixed; margin-bottom: 20px;">
-            <thead>
-                <tr style="background-color: #ffd966; font-weight: bold; text-align: center;">
-                    <th style="width: 30px;">Sr</th>
-                    <th style="width: 100px;">BL Number</th>
-                    <th style="width: 100px;">Container</th>
-                    <th style="width: 40px;">Size</th>
-                    <th style="width: 80px;">Train</th>
-                    <th style="width: 70px;">Dated</th>
-		    <th style="width: 150px;">Status / ETA</th>
-                </tr>
-            </thead>
-            <tbody>`;
+        // Data Table - Fixed Width Logic
+htmlContent += `<table border="1" cellspacing="0" cellpadding="4" style="border-collapse: collapse; font-size: 8pt; width: 610px; table-layout: fixed; margin-bottom: 20px; overflow: hidden;">
+    <thead>
+        <tr style="background-color: #ffd966; font-weight: bold; text-align: center;">
+            <th style="width: 30px; overflow: hidden; white-space: nowrap;">Sr</th>
+            <th style="width: 90px; overflow: hidden; white-space: nowrap;">BL Number</th>
+            <th style="width: 80px; overflow: hidden; white-space: nowrap;">Container</th>
+            <th style="width: 60px; overflow: hidden; white-space: nowrap;">Size</th>
+            <th style="width: 90px; overflow: hidden; white-space: nowrap;">Train</th>
+            <th style="width: 100px; overflow: hidden; white-space: nowrap;">Dated</th>
+            <th style="width: 300px; overflow: hidden; white-space: nowrap;">Current Status of Container</th>
+        </tr>
+    </thead>
+    <tbody>`;
 
         let globalSerial = 1;
         const getContSize = (cNo) => {
