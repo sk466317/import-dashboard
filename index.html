@@ -1217,7 +1217,7 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
             <table border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 10px; width: 90%;">
                 <tr>
                     <td bgcolor="#ffffff" style="border: 0px solid #ffffff; padding: 8px 12px;">
-                        <b style="color: #0b5394; font-size: 9pt;">
+                        <b style="color: #0b5394; font-size: 11pt;">
                             B/L No : ${blInfo.blNo} | S/Line : ${blInfo.line} | Total : ${blInfo.total} | Railout : ${railedRows.length} | Arrived : ${arrivedCount} | IN-Transit : ${inTransitCount}
                         </b>
                     </td>
@@ -1225,7 +1225,7 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
             </table><br>`;
 
         // Data Table
-        htmlContent += `<table border="1" cellspacing="0" cellpadding="4" style="border-collapse: collapse; font-size: 8.5pt; width: 80%; table-layout: fixed; margin-bottom: 20px;">
+        htmlContent += `<table border="1" cellspacing="0" cellpadding="4" style="border-collapse: collapse; font-size: 8pt; width: 100%; table-layout: fixed; margin-bottom: 20px;">
             <thead>
                 <tr style="background-color: #ffd966; font-weight: bold; text-align: center;">
                     <th style="width: 30px;">Sr</th>
@@ -1234,7 +1234,7 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
                     <th style="width: 40px;">Size</th>
                     <th style="width: 80px;">Train</th>
                     <th style="width: 70px;">Dated</th>
-                    <th>Status / ETA</th>
+		    <th style="width: 150px;">Status / ETA</th>
                 </tr>
             </thead>
             <tbody>`;
@@ -1253,7 +1253,7 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
                 <td>${getContSize(String(row[idxCont]).trim())}"</td>
                 <td>${String(row[idxRake]).trim().split('(')[0]}</td>
                 <td>${typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(row[idxDate]) : row[idxDate]}</td>
-                <td bgcolor="${row.bgColor}" style="font-weight: bold; color: ${row.statusColor}; font-size: 8pt;">${row.statusText}</td>
+                <td bgcolor="${row.bgColor}" style="font-weight: bold; color: ${row.statusColor}; font-size: 7pt;">${row.statusText}</td>
             </tr>`;
         });
 
