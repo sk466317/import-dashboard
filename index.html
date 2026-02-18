@@ -1159,7 +1159,7 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
 });
 
 // ────────────────────────────────────────────────
-// EMAIL COPY & PDF LOGIC - PORTRAIT WITH PAGE BREAKS
+// EMAIL COPY & PDF LOGIC - PORTRAIT WITH PAGE BREAKS (LOGIC UPDATED)
 // ────────────────────────────────────────────────
 document.getElementById('copyEmailBtn').addEventListener('click', async () => {
     const blList = getVisibleBLs();
@@ -1181,7 +1181,6 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
     
     blList.forEach((blInfo, index) => {
         // --- PAGE BREAK LOGIC ---
-        // Pehle B/L ko chhod kar baaki sabse pehle page-break add hoga
         const pageBreakStyle = index > 0 ? 'page-break-before: always; padding-top: 20px;' : '';
         
         htmlContent += `<div style="${pageBreakStyle}">`;
@@ -1223,12 +1222,11 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
                         </b>
                     </td>
                 </tr>
-		<br></br>
-            </table>`;
-	   // Data Table (Smaller font for Portrait fit)
+            </table><br>`;
+
+        // Data Table
         htmlContent += `<table border="1" cellspacing="0" cellpadding="4" style="border-collapse: collapse; font-size: 8.5pt; width: 80%; table-layout: fixed; margin-bottom: 20px;">
             <thead>
-	       <br></br>
                 <tr style="background-color: #ffd966; font-weight: bold; text-align: center;">
                     <th style="width: 30px;">Sr</th>
                     <th style="width: 100px;">BL Number</th>
@@ -1260,14 +1258,32 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
         });
 
         pendingRows.forEach(pRow => {
+            const contNo = String(pRow[idxCont]).trim().toUpperCase();
+            
+            // --- SCANNING LOGIC START ---
+            // Check in SMTP if container is Under Scanning
+            const isScanning = smtpData.some(sRow => 
+                String(sRow[2] || '').trim().toUpperCase() === contNo && 
+                String(sRow[1] || '').trim().toUpperCase() === "UNDER SCANNING"
+            );
+
+            let statusText = "Pending Railout";
+            let statusColor = "red"; // Default Pending color
+
+            if (isScanning) {
+                statusText = "UNDER SCANNING";
+                statusColor = "#990000"; // Dark Red Color
+            }
+            // --- SCANNING LOGIC END ---
+
             htmlContent += `<tr style="text-align: center; color: red;">
                 <td>${globalSerial++}</td>
                 <td>${blInfo.blNo}</td>
-                <td>${String(pRow[idxCont]).trim()}</td>
-                <td>${getContSize(String(pRow[idxCont]).trim())}"</td>
+                <td>${contNo}</td>
+                <td>${getContSize(contNo)}"</td>
                 <td>Pending</td>
                 <td>-</td>
-                <td style="font-weight: bold;">Pending Railout</td>
+                <td style="font-weight: bold; color: ${statusColor};">${statusText}</td>
             </tr>`;
         });
         htmlContent += `</tbody></table></div>`; // B/L Block End
@@ -1276,9 +1292,8 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
     htmlContent += `<br><div style="font-size: 9pt;"><b>Tracking Link:</b> https://tinyurl.com/import-tracking<br><br>Regards,<br><b>Hind Terminals Pvt Ltd</b><br></div></div>`;
 
     if (userChoice) {
-        // --- PDF DOWNLOAD (PORTRAIT) ---
         const opt = {
-            margin: [10, 5, 10, 5], // Top, Left, Bottom, Right
+            margin: [10, 5, 10, 5],
             filename: `Import_Status_Report_${blList[0].blNo}.pdf`,
             image: { type: 'jpeg', quality: 0.98 },
             html2canvas: { scale: 3, useCORS: true, letterRendering: true },
@@ -1286,7 +1301,6 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
         };
         html2pdf().set(opt).from(htmlContent).save();
     } else {
-        // --- CLIPBOARD COPY ---
         const blob = new Blob([htmlContent], { type: 'text/html' });
         const clipboardItem = new ClipboardItem({ 'text/html': blob });
         navigator.clipboard.write([clipboardItem]).then(() => alert("✅ Copied to Clipboard!"));
@@ -1985,8 +1999,8 @@ if (bl.isAnySmtp) {
         </tr>`;
 }
 
- // ==========================================
-// RENDER DETAILED BREAKDOWN (STRICT CLEAN FORMAT)
+// ==========================================
+// RENDER DETAILED BREAKDOWN (STRICT CLEAN FORMAT + SCANNING CONDITION)
 // ==========================================
 function renderDetailedBreakdown(groups) {
     const railedGroups = groups.filter(g => g.stats.railed > 0);
@@ -2031,7 +2045,7 @@ function renderDetailedBreakdown(groups) {
         document.getElementById('railedDetailFooter').innerHTML = `<tr class="bg-emerald-50 text-emerald-800 font-bold"><td class="px-3 py-1.5 text-right uppercase text-[9px]">Grand Total</td><td class="px-3 py-1.5 text-center text-[11px] border-r border-emerald-200">${totalRailedUnits}</td><td colspan="3"></td></tr>`;
     }
 
-    // --- 2. PENDING TABLE (STRICT CLEANING & FORMATTING) ---
+    // --- 2. PENDING TABLE (STRICT CLEANING + PENDING RAILING DATE CONDITION) ---
     if (pendingGroups.length === 0) {
         document.getElementById('pendingBreakdownContainer').classList.add('hidden');
     } else {
@@ -2041,28 +2055,41 @@ function renderDetailedBreakdown(groups) {
             totalPendingUnits += bl.stats.pending;
             const statusLabel = bl.isAnySmtp ? `<span class="text-blue-600 uppercase font-bold text-[9px]">${bl.handoverDt}</span>` : '<span class="text-rose-600 uppercase font-bold text-[9px]">Pending</span>';
             
-            // 1. Fetch Scanning Containers from SMTP
+            // --- NEW CONDITION LOGIC START ---
+            // 1. SMTP se "Under Scanning" uthao aur WEBSITE se "Pending" Railout verify karo
             const scanningContainers = rawSheets.smtp
                 .slice(1)
-                .filter(sRow => 
-                    String(sRow[9] || '').trim().toUpperCase() === bl.blNo.toUpperCase() && 
-                    String(sRow[1] || '').trim().toUpperCase() === "UNDER SCANNING"
-                )
-                .map(sRow => String(sRow[2]).trim());
+                .filter(sRow => {
+                    const contNo = String(sRow[2] || '').trim().toUpperCase();
+                    const blNo = String(sRow[9] || '').trim().toUpperCase();
+                    const smtpStatus = String(sRow[1] || '').trim().toUpperCase();
 
-            // 2. Logic to remove duplicate Handover messages
-            // Agar list mein scanning wala handover hai, toh normal handover ko uda do
+                    // Pehle SMTP mein BL aur Status match karo
+                    if (blNo === bl.blNo.toUpperCase() && smtpStatus === "UNDER SCANNING") {
+                        // Phir WEBSITE sheet (rawSheets.website) mein check karo ki kya yeh container abhi bhi PENDING hai
+                        const webMatch = rawSheets.website.find(wRow => 
+                            String(wRow[3] || '').trim().toUpperCase() === contNo && 
+                            String(wRow[8] || '').trim().toUpperCase() === "PENDING" // RAILING_DATE is index 8
+                        );
+                        return webMatch ? true : false;
+                    }
+                    return false;
+                })
+                .map(sRow => String(sRow[2]).trim());
+            // --- NEW CONDITION LOGIC END ---
+
+            // Duplicate Remarks removal
             let uniqueRemarks = [...new Set(bl.pendingRemarks)];
             const hasScanningRemark = uniqueRemarks.some(r => r.toUpperCase().includes("UNDER SCANNING"));
             
             if (hasScanningRemark) {
-                // Filter out the basic handover if a detailed scanning handover exists
                 uniqueRemarks = uniqueRemarks.filter(r => !(!r.toUpperCase().includes("UNDER SCANNING") && r.toUpperCase().includes("HANDOVER")));
             }
             
             let mainRemark = uniqueRemarks.join(' | ') || 'Awaiting dispatch';
             let scanLabel = '';
 
+            // Sirf wahi container numbers dikhayega jo abhi tak railout nahi huye (WEBSITE: PENDING)
             if (scanningContainers.length > 0) {
                 scanLabel = `<br><span class="text-pink-600 font-black text-[10px] uppercase">[UNDER SCANNING: ${scanningContainers.join(', ')}]</span>`;
             }
