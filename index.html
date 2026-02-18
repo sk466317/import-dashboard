@@ -1159,13 +1159,31 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
 });
 
 // ────────────────────────────────────────────────
-// EMAIL COPY & PDF LOGIC - PORTRAIT WITH PAGE BREAKS (LOGIC UPDATED)
+// STEP 2: FIXED DUPLICATE-FREE EMAIL & PDF LOGIC
 // ────────────────────────────────────────────────
 document.getElementById('copyEmailBtn').addEventListener('click', async () => {
-    const blList = getVisibleBLs();
-    if (blList.length === 0) { alert("Pehle report generate karein."); return; }
+    
+    // --- DUPLICATE REMOVAL LOGIC ---
+    // Pehle dono groups ko merge karte hain
+    const rawList = [...(globalRailedGroups || []), ...(globalPendingGroups || [])];
+    
+    // Map ka use karke duplicates ko hatate hain (BL Number ke basis par)
+    const uniqueMap = new Map();
+    rawList.forEach(item => {
+        if (!uniqueMap.has(item.blNo)) {
+            uniqueMap.set(item.blNo, item);
+        }
+    });
+    
+    // Ab humare paas final clean list hai
+    const blList = Array.from(uniqueMap.values());
 
-    const userChoice = confirm("Do you want to Download PDF?\n\n[OK] = Download PDF (Portrait/Page Breaks)\n[Cancel] = Copy to Clipboard");
+    if (blList.length === 0) { 
+        alert("Pehle report generate karein."); 
+        return; 
+    }
+
+    const userChoice = confirm("Do you want to Download PDF?\n\n[OK] = Download PDF (Letterhead)\n[Cancel] = Copy to Clipboard");
 
     const websiteData = rawSheets.website || [];
     const smtpData = rawSheets.smtp || []; 
@@ -1176,21 +1194,33 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
           idxDate = wsHeaders.indexOf('RAILING_DATE'), 
           idxRemarks = wsHeaders.indexOf('REMARKS');
 
-    // Container wrapper with specific PDF styling
+    const letterheadHeader = `
+        <div style="border-bottom: 2px solid #055094; padding-bottom: 10px; margin-bottom: 15px; text-align: left; font-family: Calibri, sans-serif;">
+            <b style="font-size: 13pt; color: #055094; text-transform: uppercase;">Hind Terminals Pvt Ltd</b><br>
+            <div style="font-size: 8.5pt; color: #333; line-height: 1.4; margin-top: 3px;">
+                Address: SCO No.14-15, Dhamija Tower, First Floor, Urban Estate, Phase -3, Opp. FCI Godown,<br>
+                Focal Point, Ludhiana- 141010<br>
+                Landline: 0161-4417569 | Email: customerserviceludhiana@hindterminals.com<br>
+                Website: www.hindterminals.com
+            </div>
+        </div>
+    `;
+
     let htmlContent = `<div id="pdf-report-content" style="font-family: Calibri, sans-serif; color: #000; padding: 10px;">`;
     
     blList.forEach((blInfo, index) => {
-        // --- PAGE BREAK LOGIC ---
         const pageBreakStyle = index > 0 ? 'page-break-before: always; padding-top: 20px;' : '';
-        
         htmlContent += `<div style="${pageBreakStyle}">`;
         
+        if (userChoice) { htmlContent += letterheadHeader; }
+
         if (index === 0) {
             htmlContent += `Dear Sir,<br><br>Greetings From Hind Terminals!!<br>Please find below status of Containers / BLs:-<br><br>`;
         }
-        const allBlRows = websiteData.slice(1).filter(row => String(row[idxBL] || '').trim().toUpperCase() === blInfo.blNo);
+
+        const allBlRows = websiteData.slice(1).filter(row => String(row[idxBL] || '').trim().toUpperCase() === blInfo.blNo.toUpperCase());
         const railedRows = allBlRows.filter(row => !['PENDING', ''].includes(String(row[idxDate] || '').trim().toUpperCase()));
-        const pendingRows = allBlRows.filter(row => String(row[idxDate] || '').trim().toUpperCase() === 'PENDING');
+        const pendingRows = allBlRows.filter(row => String(row[idxDate] || '').trim().toUpperCase() === 'PENDING' || String(row[idxDate] || '').trim() === '');
 
         const processedRows = railedRows.map(row => {
             const remarkText = String(row[idxRemarks] || '').toUpperCase();
@@ -1211,26 +1241,26 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
         const arrivedCount = processedRows.filter(r => r.statusType === 1).length;
         const inTransitCount = processedRows.length - arrivedCount;
 
-        // Header Box (Compact for Portrait)
+        // B/L Box
         htmlContent += `
-            <table border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 10px; width: 90%;">
+            <table border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 10px; width: 95%;">
                 <tr>
                     <td bgcolor="#ffffff" style="border: 0px solid #ffffff; padding: 8px 12px;">
                         <b style="color: #055094; font-size: 11pt;">
-                            B/L No : ${blInfo.blNo} | S/Line : ${blInfo.line} | Total : ${blInfo.total} | Railout : ${railedRows.length} | Arrived : ${arrivedCount} | IN-Transit : ${inTransitCount}
+                            B/L No : ${blInfo.blNo} | S/Line : ${blInfo.line} | Total : ${blInfo.stats.total} | Railout : ${railedRows.length} | Arrived : ${arrivedCount} | IN-Transit : ${inTransitCount}
                         </b>
                     </td>
                 </tr>
             </table><br>`;
 
-        // Data Table - Fixed Width Logic
-htmlContent += `<table border="1" cellspacing="0" cellpadding="4" style="border-collapse: collapse; font-size: 8pt; width: 610px; table-layout: fixed; margin-bottom: 20px; overflow: hidden;">
+        // Table
+           htmlContent += `<table border="1" cellspacing="0" cellpadding="4" style="border-collapse: collapse; font-size: 8pt; width: 610px; table-layout: fixed; margin-bottom: 20px; overflow: hidden;">
     <thead>
         <tr style="background-color: #ffd966; font-weight: bold; text-align: center;">
             <th style="width: 30px; overflow: hidden; white-space: nowrap;">Sr</th>
-            <th style="width: 90px; overflow: hidden; white-space: nowrap;">BL Number</th>
-            <th style="width: 80px; overflow: hidden; white-space: nowrap;">Container</th>
-            <th style="width: 60px; overflow: hidden; white-space: nowrap;">Size</th>
+            <th style="width: 100px; overflow: hidden; white-space: nowrap;">BL Number</th>
+            <th style="width: 90px; overflow: hidden; white-space: nowrap;">Container</th>
+            <th style="width: 50px; overflow: hidden; white-space: nowrap;">Size</th>
             <th style="width: 90px; overflow: hidden; white-space: nowrap;">Train</th>
             <th style="width: 100px; overflow: hidden; white-space: nowrap;">Dated</th>
             <th style="width: 300px; overflow: hidden; white-space: nowrap;">Current Status of Container</th>
@@ -1258,22 +1288,12 @@ htmlContent += `<table border="1" cellspacing="0" cellpadding="4" style="border-
 
         pendingRows.forEach(pRow => {
             const contNo = String(pRow[idxCont]).trim().toUpperCase();
-            
-            // --- SCANNING LOGIC START ---
-            // Check in SMTP if container is Under Scanning
             const isScanning = smtpData.some(sRow => 
                 String(sRow[2] || '').trim().toUpperCase() === contNo && 
                 String(sRow[1] || '').trim().toUpperCase() === "UNDER SCANNING"
             );
-
-            let statusText = "Pending Railout";
-            let statusColor = "red"; // Default Pending color
-
-            if (isScanning) {
-                statusText = "UNDER SCANNING";
-                statusColor = "#990000"; // Dark Red Color
-            }
-            // --- SCANNING LOGIC END ---
+            let sText = isScanning ? "UNDER SCANNING" : "Pending Railout";
+            let sCol = isScanning ? "#990000" : "red";
 
             htmlContent += `<tr style="text-align: center; color: red;">
                 <td>${globalSerial++}</td>
@@ -1282,27 +1302,30 @@ htmlContent += `<table border="1" cellspacing="0" cellpadding="4" style="border-
                 <td>${getContSize(contNo)}"</td>
                 <td>Pending</td>
                 <td>-</td>
-                <td style="font-weight: bold; color: ${statusColor};">${statusText}</td>
+                <td style="font-weight: bold; color: ${sCol}; font-size: 7pt;">${sText}</td>
             </tr>`;
         });
-        htmlContent += `</tbody></table></div>`; // B/L Block End
+        htmlContent += `</tbody></table></div>`;
     });
 
     htmlContent += `<br><div style="font-size: 9pt;"><b>Tracking Link:</b> https://tinyurl.com/import-tracking<br><br>Regards,<br><b>Hind Terminals Pvt Ltd</b><br></div></div>`;
 
     if (userChoice) {
         const opt = {
-            margin: [10, 5, 10, 5],
-            filename: `Import_Status_Report_${blList[0].blNo}.pdf`,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 3, useCORS: true, letterRendering: true },
+            margin: [5, 5, 10, 5],
+            filename: `Import_Status_Report.pdf`,
+            image: { type: 'jpeg', quality: 0.95 },
+            html2canvas: { scale: 2, useCORS: true, letterRendering: true },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
         };
         html2pdf().set(opt).from(htmlContent).save();
     } else {
-        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = htmlContent;
+        tempDiv.querySelectorAll('div[style*="border-bottom"]').forEach(h => h.remove());
+        const blob = new Blob([tempDiv.innerHTML], { type: 'text/html' });
         const clipboardItem = new ClipboardItem({ 'text/html': blob });
-        navigator.clipboard.write([clipboardItem]).then(() => alert("✅ Copied to Clipboard!"));
+        navigator.clipboard.write([clipboardItem]).then(() => alert("✅ Duplicates Removed & Copied!"));
     }
 });
 // Hidden file input for CSV selection
@@ -2001,9 +2024,19 @@ if (bl.isAnySmtp) {
 // ==========================================
 // RENDER DETAILED BREAKDOWN (STRICT CLEAN FORMAT + SCANNING CONDITION)
 // ==========================================
+// Function ke bahar declare karein taaki ye global ban jayein
+var globalRailedGroups = []; 
+var globalPendingGroups = [];
+
 function renderDetailedBreakdown(groups) {
-    const railedGroups = groups.filter(g => g.stats.railed > 0);
-    const pendingGroups = groups.filter(g => g.stats.pending > 0);
+    // global variables ko update karein (const hata diya gaya hai)
+    globalRailedGroups = groups.filter(g => g.stats.railed > 0);
+    globalPendingGroups = groups.filter(g => g.stats.pending > 0);
+    
+    // Niche aapke code mein jahan bhi railedGroups ya pendingGroups use hua hai 
+    // wahan ab ye global wale naam use honge:
+    const railedGroups = globalRailedGroups;
+    const pendingGroups = globalPendingGroups;
     let totalRailedUnits = 0, totalPendingUnits = 0;
 
     // Header Update
@@ -2044,7 +2077,7 @@ function renderDetailedBreakdown(groups) {
         document.getElementById('railedDetailFooter').innerHTML = `<tr class="bg-emerald-50 text-emerald-800 font-bold"><td class="px-3 py-1.5 text-right uppercase text-[9px]">Grand Total</td><td class="px-3 py-1.5 text-center text-[11px] border-r border-emerald-200">${totalRailedUnits}</td><td colspan="3"></td></tr>`;
     }
 
-    // --- 2. PENDING TABLE (STRICT CLEANING + PENDING RAILING DATE CONDITION) ---
+    // --- 2. PENDING TABLE ---
     if (pendingGroups.length === 0) {
         document.getElementById('pendingBreakdownContainer').classList.add('hidden');
     } else {
