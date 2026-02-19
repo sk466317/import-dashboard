@@ -569,22 +569,22 @@ table {
         <i data-lucide="search" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-blue-600"></i>
         <input type="text" id="smtpBlSearch" placeholder="Search By Container Or B/L Number " class="w-full pl-8 pr-3 py-1.5 bg-white border border-blue-400 rounded-lg text-[10px] font-bold outline-none focus:ring-2 focus:ring-orange-800 shadow-sm">
     </div>
-    <div id="smtpConsigneeBox" class="p-2 bg-white rounded-lg border-2 border-blue-400 hidden cursor-pointer hover:bg-blue-600 hover:text-white transition-all shadow-md group">
-        <p class="text-[7px] text-blue-500 font-bold uppercase group-hover:text-blue-100">Found Consignee (SMTP):</p>
-        <p id="smtpConsigneeName" class="text-[9px] font-black break-words uppercase"></p>
-        <p class="text-[6px] mt-1 italic opacity-70">Click to generate SMTP report</p>
+    <div id="smtpConsigneeBox" class="p-2 bg-white rounded-lg border-2 border-yellow-600 hidden cursor-pointer hover:bg-white hover:text-white transition-all shadow-md group">
+        <p class="text-[9px] text-red-700 font-bold uppercase group-hover:text-blue-100">Record Found:</p>
+        <p id="smtpConsigneeName" class="text-[11px] font-black break-words uppercase"></p>
+        <p class="text-[7px] opacity-90"></p>
     </div>
 </div>
 <div class="p-3 border-b border-slate-200 bg-blue-50 hidden">
     <div class="relative mb-2">
         <i data-lucide="search" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-blue-500"></i>
-        <input type="text" id="blDataSearch" placeholder="Search BL No..." class="w-full pl-8 pr-3 py-1.5 bg-white border border-blue-300 rounded-lg text-[10px] font-bold outline-none focus:ring-1 focus:ring-blue-500">
+        <input type="text" id="blDataSearch" placeholder="Search BL No..." class="w-full pl-8 pr-3 py-2.5 bg-white border border-blue-300 rounded-lg text-[10px] font-bold outline-none focus:ring-1 focus:ring-blue-500">
     </div>
     <div id="consigneeDisplay" class="p-2 bg-white rounded border border-blue-200 hidden cursor-pointer hover:bg-blue-100 transition-all active:scale-95 shadow-sm" title="Click to view report">
     <p class="text-[7px] text-blue-500 font-bold uppercase flex items-center gap-1">
         <i data-lucide="external-link" class="w-2 h-1"></i> View Report for:
     </p>
-    <p id="consigneeValue" class="text-[9px] font-black text-slate-800 break-words uppercase"></p>
+    <p id="consigneeValue" class="text-[11px] font-black text-slate-800 break-words uppercase"></p>
 </div>
 
 </div>
@@ -747,42 +747,182 @@ table {
     </main>
 
     <script type="module">
-// New BL Search & Report Trigger Logic
-document.getElementById('blDataSearch').addEventListener('input', (e) => {
+// ==========================================
+// SEARCH LOGIC with SUGGESTIONS
+// Search by: B/L No, Container No, or Consignee Name
+// Grouped by: Disch_Vsl_Name / Handover
+// Format: Consignee Name (Bold)
+//         Vessel: VESSEL NAME / Handover: DD-MM-YYYY
+//         📦: XX, ⏳: XX
+// ==========================================
+document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
     const searchVal = e.target.value.trim().toUpperCase();
-    const displayBox = document.getElementById('consigneeDisplay');
-    const valueEl = document.getElementById('consigneeValue');
-    if (searchVal.length > 3 && rawSheets.smtp.length > 1) {
+    const resultBox = document.getElementById('smtpConsigneeBox');
+    const nameDisplay = document.getElementById('smtpConsigneeName');
 
-        // SMTP: Cell 10 (Index 9) = BL No, Cell 25 (Index 24) = Consignee
-        const match = rawSheets.smtp.find(row => String(row[9] || '').toUpperCase().includes(searchVal));        
-        if (match && match[24]) {
-            const consigneeName = String(match[24]).trim();
-            valueEl.innerText = consigneeName;
-            displayBox.classList.remove('hidden');
+    // Clear previous content
+    nameDisplay.innerHTML = '';
+    
+    // Reset box styling
+    resultBox.className = 'p-2 bg-white rounded-lg border-2 hidden';
+    
+    // 3 characters minimum
+    if (searchVal.length >= 3 && rawSheets.smtp && rawSheets.smtp.length > 1) {
+        
+        // Collect ALL matching rows
+        const matches = rawSheets.smtp.slice(1).filter(row => {
+            const bl = String(row[9] || '').toUpperCase();
+            const cont = String(row[2] || '').toUpperCase();
+            const consignee = String(row[24] || '').toUpperCase();
+            return bl.includes(searchVal) || cont.includes(searchVal) || consignee.includes(searchVal);
+        });
+
+        // Get unique consignees with vessel and handover info
+        const consigneeStats = new Map();
+        
+        matches.forEach(row => {
+            const consignee = String(row[24] || '').trim();
+            const contNo = String(row[2] || '').trim().toUpperCase();
+            const vesselName = String(row[5] || '').trim();
+            const handoverDate = formatToDDMMYYYY(row[18] || row[17] || '');
+            const blNo = String(row[9] || '').trim();
             
-            // Jab Consignee Box par click ho
-            displayBox.onclick = () => {
-                const headers = rawSheets.shipper[0];
-                // Shipper sheet mein Consignee column ka index dhundo
-                const consIndexInShipper = headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE'));
-                
-                if (consIndexInShipper !== -1) {
-                    // Report generate karne wala main function call karein
-                    window.selectShipper(consigneeName, consIndexInShipper);
-                    
-                    // Search box reset karein (Optional)
-                    e.target.value = ''; 
-                    displayBox.classList.add('hidden');
-                } else {
-                    alert("Consignee column not found in Shipper sheet!");
+            if (!consignee) return;
+            
+            // Check if this container is pending in website data
+            let isPending = true;
+            if (rawSheets.website && rawSheets.website.length > 1) {
+                const webRow = rawSheets.website.find(w => 
+                    String(w[3] || '').trim().toUpperCase() === contNo
+                );
+                if (webRow) {
+                    const railDate = String(webRow[8] || '').trim().toUpperCase();
+                    isPending = (railDate === 'PENDING' || railDate === '' || railDate === '-');
                 }
-            };
+            }
+            
+            // Create unique key combining consignee + vessel + handover
+            const uniqueKey = `${consignee}||${vesselName}||${handoverDate}`;
+            
+            if (!consigneeStats.has(uniqueKey)) {
+                consigneeStats.set(uniqueKey, {
+                    name: consignee,
+                    vessel: vesselName || 'UNKNOWN VESSEL',
+                    handover: handoverDate || 'N/A',
+                    sampleBL: blNo,
+                    total: 0,
+                    pending: 0,
+                    railed: 0,
+                    hasPending: false
+                });
+            }
+            
+            const stats = consigneeStats.get(uniqueKey);
+            stats.total++;
+            if (isPending) {
+                stats.pending++;
+                stats.hasPending = true;
+            } else {
+                stats.railed++;
+            }
+        });
+
+        if (consigneeStats.size > 0) {
+            resultBox.classList.remove('hidden');
+            resultBox.classList.add('border-2', 'border-blue-600');
+            
+            // Scrollable container
+            resultBox.style.maxHeight = '400px';
+            resultBox.style.overflowY = 'auto';
+
+            // Convert to array and sort: 
+            // 1. By handover date (newest first)
+            // 2. Pending first within same date
+            // 3. Then by vessel name
+            const sortedConsignees = Array.from(consigneeStats.values()).sort((a, b) => {
+                // Parse dates for comparison
+                const parseDate = (dateStr) => {
+                    if (!dateStr || dateStr === 'N/A') return 0;
+                    const parts = dateStr.split('-');
+                    if (parts.length === 3) {
+                        return new Date(parts[2], parts[1]-1, parts[0]).getTime();
+                    }
+                    return 0;
+                };
+                
+                const dateA = parseDate(a.handover);
+                const dateB = parseDate(b.handover);
+                
+                // Sort by date (newest first)
+                if (dateB !== dateA) return dateB - dateA;
+                
+                // Then pending first
+                if (a.hasPending && !b.hasPending) return -1;
+                if (!a.hasPending && b.hasPending) return 1;
+                
+                // Then by vessel name
+                return a.vessel.localeCompare(b.vessel);
+            });
+
+            // Build suggestions with vessel/handover grouping
+            let suggestionsHtml = '';
+            sortedConsignees.forEach(data => {
+                const hasPending = data.pending > 0;
+                const bgColor = hasPending ? 'bg-red-300' : 'bg-gray-300';
+                
+                suggestionsHtml += `
+                    <div class="suggestion-item p-2 mb-1.5 ${bgColor} border border-slate-200 rounded hover:bg-yellow-400 hover:text-black cursor-pointer text-[9px]" 
+                         data-consignee="${data.name.replace(/'/g, "\\'")}"
+                         data-vessel="${data.vessel}"
+                         data-handover="${data.handover}">
+                        
+                        <!-- Consignee Name (Bold) -->
+                        <div class="font-bold text-[10px] uppercase">${data.name}</div>
+                        
+                        <!-- Vessel Name / Handover Date -->
+                        <div class="text-[9px] text-slate-900 mt-0.5 font-bold flex items-center gap-1">
+                            <span class="bg-white px-1 py-0.5 rounded">🚢 ${data.vessel}</span>
+                            <span class="bg-white px-1 py-0.5 rounded"> ${data.handover}</span>
+                        </div>
+                        
+                        <!-- Stats: 📦: Total, ⏳: Pending and Sample BL -->
+                        <div class="flex items-center justify-between mt-1">
+                            <div class="flex gap-2 text-[8px]">
+                                <span class="bg-white px-1.5 py-0.5 rounded">Total: ${data.total}</span>
+                                <span class="${hasPending ? 'bg-white font-bold' : 'bg-white'} px-1.5 py-0.5 rounded">Pending: ${data.pending}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            nameDisplay.innerHTML = suggestionsHtml;
+
+            // Click handlers
+            document.querySelectorAll('.suggestion-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    const consignee = this.getAttribute('data-consignee');
+                    
+                    selectedShipper = consignee;
+                    document.getElementById('activeShipperName').innerText = consignee;
+                    document.getElementById('emptyState').classList.add('hidden');
+                    document.getElementById('reportContainer').classList.remove('hidden');
+
+                    processAndRenderReport(24, true);
+                    
+                    e.target.value = '';
+                    resultBox.classList.add('hidden');
+                    resultBox.style.maxHeight = '';
+                });
+            });
         } else {
-            displayBox.classList.add('hidden');
+            resultBox.classList.remove('hidden');
+            resultBox.classList.add('border-2', 'border-red-600');
+            nameDisplay.innerHTML = '<div class="text-rose-600 font-bold text-[9px] text-center p-3">❌ No Records Found</div>';
         }
     } else {
-        displayBox.classList.add('hidden');
+        resultBox.classList.add('hidden');
+        resultBox.style.maxHeight = '';
     }
 });
 // LOT BREAK REPORT - COMPLETE FIXED LOGIC
@@ -4126,69 +4266,8 @@ if (smtpExcelInput) {
             };
             reader.readAsBinaryString(file);
         });
-// Yaha se paste karein (Line 809 ke paas)
 
-// ==========================================
-// SEARCH LOGIC (B/L OR CONTAINER)
-// ==========================================
-document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
-    const searchVal = e.target.value.trim().toUpperCase();
-    const resultBox = document.getElementById('smtpConsigneeBox');
-    const nameDisplay = document.getElementById('smtpConsigneeName');
-
-    // 4 characters minimum to avoid too many random matches
-    if (searchVal.length >= 4 && rawSheets.smtp && rawSheets.smtp.length > 1) {
-        
-        // --- NEW LOGIC: Check BL (Index 9) OR Container (Index 2) ---
-        const match = rawSheets.smtp.find(row => {
-            const bl = String(row[9] || '').toUpperCase();
-            const cont = String(row[2] || '').toUpperCase();
-            return bl.includes(searchVal) || cont.includes(searchVal);
-        });
-
-        if (match && match[24]) { // Index 24 is Consignee Name
-            const foundConsignee = String(match[24]).trim();
-            const associatedBL = String(match[9] || '').trim(); // Get the BL of this container
-            
-            nameDisplay.innerText = foundConsignee;
-            resultBox.classList.remove('hidden');
-
-            // Click Event
-            resultBox.onclick = () => {
-                selectedShipper = foundConsignee; 
-                
-                // Header update
-                document.getElementById('activeShipperName').innerText = `${foundConsignee} (Found: ${searchVal})`;
-                
-                // Show Main Report
-                document.getElementById('emptyState').classList.add('hidden');
-                document.getElementById('reportContainer').classList.remove('hidden');
-
-                // Generate Report
-                processAndRenderReport(24, true); 
-
-                // --- SMART FILTER LOGIC ---
-                // Agar user ne Container search kiya hai, to bhi hum uske BL ko filter me lagayenge
-                // taaki report me us container ka group dikhe.
-                setTimeout(() => {
-                    blFilter.value = associatedBL; // Set dropdown to the actual BL
-                    applyFilters(); // Filter data
-                }, 100);
-                
-                // Reset Search Box
-                e.target.value = '';
-                resultBox.classList.add('hidden');
-            };
-        } else {
-            resultBox.classList.remove('hidden');
-            nameDisplay.innerText = "NO MATCH FOUND";
-            // Remove click event if no match
-            resultBox.onclick = null;
-        }
-    } else {
-        resultBox.classList.add('hidden');
-    }
-});        document.getElementById('downloadWebsiteCsvBtn').addEventListener('click', () => {
+  document.getElementById('downloadWebsiteCsvBtn').addEventListener('click', () => {
     const data = rawSheets.website;
     if (!data || data.length <= 1) {
         alert("No website data available to export!");
