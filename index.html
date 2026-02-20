@@ -745,15 +745,9 @@ table {
             </div>
         </section>
     </main>
-
     <script type="module">
 // ==========================================
-// SEARCH LOGIC with SUGGESTIONS
-// Search by: B/L No, Container No, or Consignee Name
-// Grouped by: Disch_Vsl_Name / Handover
-// Format: Consignee Name (Bold)
-//         Vessel: VESSEL NAME / Handover: DD-MM-YYYY
-//         📦: XX, ⏳: XX
+// SEARCH LOGIC with SUGGESTIONS - WITH VESSEL FILTERING
 // ==========================================
 document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
     const searchVal = e.target.value.trim().toUpperCase();
@@ -898,17 +892,52 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
 
             nameDisplay.innerHTML = suggestionsHtml;
 
-            // Click handlers
+            // Click handlers - UPDATED to filter by selected vessel
             document.querySelectorAll('.suggestion-item').forEach(item => {
                 item.addEventListener('click', function() {
                     const consignee = this.getAttribute('data-consignee');
+                    const vessel = this.getAttribute('data-vessel');
+                    const handover = this.getAttribute('data-handover');
                     
                     selectedShipper = consignee;
                     document.getElementById('activeShipperName').innerText = consignee;
                     document.getElementById('emptyState').classList.add('hidden');
                     document.getElementById('reportContainer').classList.remove('hidden');
 
+                    // First generate the report
                     processAndRenderReport(24, true);
+                    
+                    // THEN filter to show ONLY the selected vessel
+                    setTimeout(() => {
+                        // Clear any existing vessel selections
+                        window.selectedVessels = [];
+                        
+                        // Find and check the checkbox for this specific vessel
+                        const vesselCheckboxes = document.querySelectorAll('#vesselDropdownMenu .vessel-checkbox');
+                        vesselCheckboxes.forEach(cb => {
+                            const cbValue = cb.value;
+                            // Check if this checkbox matches our vessel
+                            if (cbValue.includes(vessel) || cbValue === vessel) {
+                                cb.checked = true;
+                                window.selectedVessels.push(cbValue);
+                            } else {
+                                cb.checked = false;
+                            }
+                        });
+                        
+                        // Update the dropdown label
+                        const label = document.getElementById('vesselDropdownLabel');
+                        if (label) {
+                            if (window.selectedVessels.length === 1) {
+                                label.innerText = `${vessel} / ${handover}`;
+                            }
+                        }
+                        
+                        // Apply filters to show only this vessel
+                        if (typeof applyFilters === 'function') {
+                            applyFilters();
+                        }
+                    }, 500); // Small delay to ensure report is generated first
                     
                     e.target.value = '';
                     resultBox.classList.add('hidden');
@@ -925,23 +954,6 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
         resultBox.style.maxHeight = '';
     }
 });
-// LOT BREAK REPORT - COMPLETE FIXED LOGIC
-let lastLotBreakData = [];
-document.getElementById('lotBreakReportBtn').addEventListener('click', () => {
-    document.getElementById('lotBreakModal').classList.remove('hidden');
-    const downloadBtn = document.getElementById('downloadLotReportBtn');
-    const emailBtn = document.getElementById('sendLotEmailBtn');
-    if (downloadBtn) downloadBtn.classList.add('hidden');
-    if (emailBtn) emailBtn.classList.add('hidden');
-    
-    document.getElementById('lotBreakContent').innerHTML = `
-        <div class="h-full flex flex-col items-center justify-center text-slate-400 py-20">
-            <i data-lucide="play-circle" class="w-12 h-12 mb-2 opacity-20"></i>
-            <p class="font-bold text-xs uppercase tracking-widest">Click "Generate Report" to analyze split lots</p>
-        </div>`;
-    if (window.lucide) lucide.createIcons();
-});
-
 // 2. Main Generation Logic (UPDATED: Show SMTP No, Hide Railout Details)
 document.getElementById('generateLotReportBtn').addEventListener('click', () => {
     if (typeof rawSheets === 'undefined' || !rawSheets.smtp || !rawSheets.website) {
@@ -1211,13 +1223,22 @@ const getVisibleBLs = () => {
 };
 
 // ────────────────────────────────────────────────
-// WHATSAPP MESSAGE LOGIC - COMPACT HEADER & BOLD TRAIN INFO
+// WHATSAPP MESSAGE LOGIC - EXACT FORMAT AS REQUESTED
 // ────────────────────────────────────────────────
 document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () => {
-    const blList = getVisibleBLs();
-    if (blList.length === 0) { alert("Pehle report generate karein."); return; }
+    // Get currently selected shipper
+    const currentShipper = document.getElementById('activeShipperName').innerText;
+    
+    // Get selected vessels from global variable
+    const selectedVessels = window.selectedVessels || [];
+    
+    if (!currentShipper || currentShipper === '') { 
+        alert("Please select a shipper first."); 
+        return; 
+    }
 
     const websiteData = rawSheets.website || [];
+    const smtpData = rawSheets.smtp || [];
     const wsHeaders = websiteData[0].map(h => String(h).trim().toUpperCase());
     const idxBL = wsHeaders.indexOf('BILL_NO'), 
           idxCont = wsHeaders.indexOf('CONTAINER_NO'), 
@@ -1225,72 +1246,170 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
           idxDate = wsHeaders.indexOf('RAILING_DATE'), 
           idxRemarks = wsHeaders.indexOf('REMARKS');
 
-    let message = `Dear Sir,\n \nPlease find below status B/L wise:- 🏗️\n`;
-
-    blList.forEach(blInfo => {
-        const allBlRows = websiteData.slice(1).filter(row => String(row[idxBL] || '').trim().toUpperCase() === blInfo.blNo);
-        const railedRows = allBlRows.filter(row => !['PENDING', ''].includes(String(row[idxDate] || '').trim().toUpperCase()));
-        const pendingRows = allBlRows.filter(row => String(row[idxDate] || '').trim().toUpperCase() === 'PENDING');
-        
-        let lotStatusTag = (pendingRows.length === 0) ? `🔰 *Lot Complete*` : `🚩 *Lot Incomplete*`;
-
-        message += `--------------------------------------\n`;
-        // Header: BL/Total/Line format
-        message += `🔰 BL: *${blInfo.blNo}*/*${blInfo.total}*/*${blInfo.line}*\n`;
-        message += `🔰 Railout - ${railedRows.length}, Pending - ${pendingRows.length} \n`;
-        message += `${lotStatusTag}\n`;
-        message += `--------------------------------------\n`;
-
-        const trainGroups = {};
-        railedRows.forEach(row => {
-            const train = String(row[idxRake] || 'N/A').trim().toUpperCase();
-            if (!trainGroups[train]) trainGroups[train] = [];
-            trainGroups[train].push(row);
-        });
-
-        let globalSerial = 1;
-
-        Object.keys(trainGroups).sort().forEach(trainName => {
-            const groupRows = trainGroups[trainName];
-            const rawDate = groupRows[0][idxDate];
-            const railOutDate = typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(rawDate) : rawDate;
-            const remarkText = String(groupRows[0][idxRemarks] || '').toUpperCase();
-
-            // Train Info: Bold with Slash
-            message += `*Train ${trainName}/${railOutDate}*\n`;
-
-            // ETA or Arrived Line (Bold)
-            if (remarkText.includes("TRAIN ARRIVED ON")) {
-                const arrivedMatch = remarkText.match(/ARRIVED ON\s+(\d{2}-\d{2}-\d{4})/);
-                if (arrivedMatch) message += `*Arrived :${arrivedMatch[1]}*\n`;
-            } else if (remarkText.includes("ETA")) {
-                const afterEta = remarkText.split("ETA")[1];
-                const dateMatch = afterEta.match(/(\d{2}-\d{2}-\d{4})/);
-                if (dateMatch) message += `*ETA: ${dateMatch[1]}*\n`;
+    // Get ALL containers for current shipper from SMTP
+    const shipperContainers = new Map(); // Map to store container -> vessel info
+    if (smtpData.length > 1) {
+        smtpData.slice(1).forEach(row => {
+            const consignee = String(row[24] || '').trim().toUpperCase();
+            if (consignee === currentShipper.toUpperCase()) {
+                const contNo = String(row[2] || '').trim().toUpperCase();
+                const vessel = String(row[5] || '').trim().toUpperCase();
+                if (contNo) {
+                    shipperContainers.set(contNo, vessel);
+                }
             }
-
-            groupRows.forEach((row) => {
-                let sn = globalSerial < 10 ? `0${globalSerial}` : globalSerial;
-                message += `${sn}. ${String(row[idxCont]).trim()}\n`;
-                globalSerial++;
-            });
-            message += `------------------------------\n`;
         });
+    }
 
-        if (pendingRows.length > 0) {
-            message += `⚠️ *Pending - ${String(pendingRows.length).padStart(2, '0')}*\n`;
-            pendingRows.forEach((pRow) => {
-                let sn = globalSerial < 10 ? `0${globalSerial}` : globalSerial;
-                message += `${sn}. ${String(pRow[idxCont]).trim()}\n`;
-                globalSerial++;
+    if (shipperContainers.size === 0) {
+        alert("No containers found for this shipper in SMTP data.");
+        return;
+    }
+
+    // Get all BLs for this shipper from website data, filtered by vessel
+    const blGroups = {};
+    
+    websiteData.slice(1).forEach(row => {
+        const contNo = String(row[idxCont] || '').trim().toUpperCase();
+        
+        // Only process if this container belongs to current shipper
+        if (!shipperContainers.has(contNo)) return;
+        
+        // Get vessel for this container
+        const containerVessel = shipperContainers.get(contNo);
+        
+        // Apply vessel filter if vessels are selected
+        if (selectedVessels.length > 0) {
+            const vesselMatches = selectedVessels.some(selected => 
+                selected === containerVessel ||
+                (selected === 'NOT HANDOVER' && containerVessel === '')
+            );
+            if (!vesselMatches) return;
+        }
+        
+        const blNo = String(row[idxBL] || '').trim().toUpperCase();
+        const railDate = String(row[idxDate] || '').trim().toUpperCase();
+        const isRailed = !(railDate === 'PENDING' || railDate === '' || railDate === '-');
+        
+        if (!blGroups[blNo]) {
+            blGroups[blNo] = {
+                blNo: blNo,
+                line: '-',
+                total: 0,
+                railed: [],
+                pending: []
+            };
+        }
+        
+        // Get line info from SMTP if available
+        const smtpRow = smtpData.find(s => String(s[2] || '').trim().toUpperCase() === contNo);
+        if (smtpRow && blGroups[blNo].line === '-') {
+            blGroups[blNo].line = String(smtpRow[23] || '-').trim();
+        }
+        
+        if (isRailed) {
+            blGroups[blNo].railed.push({
+                cont: contNo,
+                train: String(row[idxRake] || 'N/A').trim(),
+                date: railDate,
+                remark: String(row[idxRemarks] || '').trim()
+            });
+        } else {
+            blGroups[blNo].pending.push(contNo);
+        }
+        blGroups[blNo].total++;
+    });
+
+    if (Object.keys(blGroups).length === 0) {
+        alert("No data found for this shipper with selected vessel filter.");
+        return;
+    }
+
+    // Build message with exact format
+    let message = `Dear Sir,\n`;
+    message += `Please find below status B/L wise:- 🏗️\n`;
+
+    // Process each BL
+    Object.values(blGroups).forEach(bl => {
+        const railedCount = bl.railed.length;
+        const pendingCount = bl.pending.length;
+        const lotStatus = pendingCount === 0 ? '🔰 *Lot Complete*' : '🚩 *Lot Incomplete*';
+        
+        message += `--------------------------------------\n`;
+        message += `🔰 BL: *${bl.blNo}*/*${bl.total}*/*${bl.line}*\n`;
+        message += `🔰 Railout - ${railedCount}, Pending - ${pendingCount}\n`;
+        message += `${lotStatus}\n`;
+        message += `--------------------------------------\n`;
+
+        // PER BL SERIAL NUMBER - resets to 1 for each BL
+        let blSerial = 1;
+
+        // Group railed containers by train
+        if (railedCount > 0) {
+            const trainGroups = {};
+            bl.railed.forEach(r => {
+                const trainKey = r.train;
+                if (!trainGroups[trainKey]) {
+                    trainGroups[trainKey] = {
+                        train: r.train,
+                        date: r.date,
+                        remark: r.remark,
+                        containers: []
+                    };
+                }
+                trainGroups[trainKey].containers.push(r.cont);
+            });
+
+            // Process each train group
+            Object.values(trainGroups).forEach(train => {
+                const formattedDate = formatToDDMMYYYY(train.date);
+                const remark = train.remark.toUpperCase();
+                
+                message += `*Train ${train.train}/${formattedDate}*\n`;
+                
+                if (remark.includes('ETA')) {
+                    const etaMatch = remark.match(/ETA\s+(\d{2}-\d{2}-\d{4})/);
+                    const etaDate = etaMatch ? etaMatch[1] : '';
+                    message += `*ETA: ${etaDate}*\n`;
+                }
+                
+                train.containers.forEach(cont => {
+                    const sn = blSerial < 10 ? `0${blSerial}` : blSerial;
+                    message += `${sn}. ${cont}\n`;
+                    blSerial++;
+                });
             });
             message += `------------------------------\n`;
         }
+
+        // Show pending containers
+        if (pendingCount > 0) {
+            message += `⚠️ *Pending - ${String(pendingCount).padStart(2, '0')}*\n`;
+            
+            bl.pending.forEach(cont => {
+                const sn = blSerial < 10 ? `0${blSerial}` : blSerial;
+                
+                // Check if under scanning
+                const smtpMatch = smtpData.find(s => 
+                    String(s[2] || '').trim().toUpperCase() === cont && 
+                    String(s[1] || '').trim().toUpperCase() === "UNDER SCANNING"
+                );
+                
+                let contLine = `${sn}. ${cont}`;
+                if (smtpMatch) contLine += ` 🔴 *[UNDER SCANNING]*`;
+                
+                message += `${contLine}\n`;
+                blSerial++;
+            });
+            message += `------------------------------\n`;
+        }
+        
+        message += ` \n`; // Empty line between BLs
     });
 
-    message += `\nFor Complete Details kindly visit\n`;
+    message += `For Complete Details kindly visit\n`;
     message += `*Container Tracking Link :* 🌐\n`;
-    message += `https://tinyurl.com/import-tracking\n \n`;
+    message += `https://tinyurl.com/import-tracking\n`;
     message += `Thanks & Regards,\n`;
     message += `*Hind Terminals Pvt Ltd.*\n`;
     message += `*Vikram Singh*`;
