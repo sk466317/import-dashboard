@@ -954,6 +954,23 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
         resultBox.style.maxHeight = '';
     }
 });
+// LOT BREAK REPORT - COMPLETE FIXED LOGIC
+let lastLotBreakData = [];
+document.getElementById('lotBreakReportBtn').addEventListener('click', () => {
+    document.getElementById('lotBreakModal').classList.remove('hidden');
+    const downloadBtn = document.getElementById('downloadLotReportBtn');
+    const emailBtn = document.getElementById('sendLotEmailBtn');
+    if (downloadBtn) downloadBtn.classList.add('hidden');
+    if (emailBtn) emailBtn.classList.add('hidden');
+    
+    document.getElementById('lotBreakContent').innerHTML = `
+        <div class="h-full flex flex-col items-center justify-center text-slate-400 py-20">
+            <i data-lucide="play-circle" class="w-12 h-12 mb-2 opacity-20"></i>
+            <p class="font-bold text-xs uppercase tracking-widest">Click "Generate Report" to analyze split lots</p>
+        </div>`;
+    if (window.lucide) lucide.createIcons();
+});
+
 // 2. Main Generation Logic (UPDATED: Show SMTP No, Hide Railout Details)
 document.getElementById('generateLotReportBtn').addEventListener('click', () => {
     if (typeof rawSheets === 'undefined' || !rawSheets.smtp || !rawSheets.website) {
