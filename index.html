@@ -685,6 +685,11 @@ table {
         <i data-lucide="mail" class="w-4 h-4"></i>
         Copy To Outlook Email
     </button>
+<button id="downloadAndCopyBtn"
+        class="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-md active:scale-95">
+    <i data-lucide="download" class="w-4 h-4"></i>
+    Download PDF & Copy
+</button>
 <button id="lotBreakReportBtn" 
         class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-md active:scale-95 ml-2">
     <i data-lucide="split" class="w-4 h-4"></i>
@@ -1240,7 +1245,7 @@ const getVisibleBLs = () => {
 };
 
 // ────────────────────────────────────────────────
-// WHATSAPP MESSAGE LOGIC - EXACT FORMAT AS REQUESTED
+// WHATSAPP MESSAGE LOGIC - STRICT FORMAT AS SHOWN
 // ────────────────────────────────────────────────
 document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () => {
     // Get currently selected shipper
@@ -1311,30 +1316,39 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
         if (!blGroups[blNo]) {
             blGroups[blNo] = {
                 blNo: blNo,
+                total20: 0,
+                total40: 0,
                 line: '-',
-                total: 0,
                 railed: [],
                 pending: []
             };
         }
         
-        // Get line info from SMTP if available
+        // Get line and size info from SMTP
         const smtpRow = smtpData.find(s => String(s[2] || '').trim().toUpperCase() === contNo);
-        if (smtpRow && blGroups[blNo].line === '-') {
-            blGroups[blNo].line = String(smtpRow[23] || '-').trim();
+        if (smtpRow) {
+            if (blGroups[blNo].line === '-') {
+                blGroups[blNo].line = String(smtpRow[23] || '-').trim();
+            }
+            // Count container sizes
+            const size = String(smtpRow[3] || '').includes('40') ? 40 : 20;
+            if (size === 40) {
+                blGroups[blNo].total40++;
+            } else {
+                blGroups[blNo].total20++;
+            }
         }
         
         if (isRailed) {
             blGroups[blNo].railed.push({
                 cont: contNo,
                 train: String(row[idxRake] || 'N/A').trim(),
-                date: railDate,
+                date: formatToDDMMYYYY(row[idxDate]),
                 remark: String(row[idxRemarks] || '').trim()
             });
         } else {
             blGroups[blNo].pending.push(contNo);
         }
-        blGroups[blNo].total++;
     });
 
     if (Object.keys(blGroups).length === 0) {
@@ -1342,27 +1356,26 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
         return;
     }
 
-    // Build message with exact format
-    let message = `Dear Sir,\n`;
-    message += `Please find below status B/L wise:- 🏗️\n`;
+    // Build message with strict format
+    let message = `Dear Sir,\n \n`;
+    message += `Please find below B/L status :-\n`;
 
     // Process each BL
     Object.values(blGroups).forEach(bl => {
-        const railedCount = bl.railed.length;
-        const pendingCount = bl.pending.length;
-        const lotStatus = pendingCount === 0 ? '🔰 *Lot Complete*' : '🚩 *Lot Incomplete*';
+        const totalContainers = bl.total20 + bl.total40;
+        // Format total with leading zero if less than 10 (e.g., 09x20)
+        const totalFormatted = totalContainers < 10 ? `0${totalContainers}` : totalContainers;
+        const sizeInfo = bl.total40 > 0 ? `${totalFormatted}x40` : `${totalFormatted}x20`;
         
-        message += `--------------------------------------\n`;
-        message += `🔰 BL: *${bl.blNo}*/*${bl.total}*/*${bl.line}*\n`;
-        message += `🔰 Railout - ${railedCount}, Pending - ${pendingCount}\n`;
-        message += `${lotStatus}\n`;
-        message += `--------------------------------------\n`;
+        message += ` \n`;
+        message += `*BL: ${bl.blNo} | ${sizeInfo}${bl.line !== '-' ? ` | ${bl.line}` : ''}*\n`;
+        message += ` \n`;
 
         // PER BL SERIAL NUMBER - resets to 1 for each BL
         let blSerial = 1;
 
         // Group railed containers by train
-        if (railedCount > 0) {
+        if (bl.railed.length > 0) {
             const trainGroups = {};
             bl.railed.forEach(r => {
                 const trainKey = r.train;
@@ -1379,15 +1392,18 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
 
             // Process each train group
             Object.values(trainGroups).forEach(train => {
-                const formattedDate = formatToDDMMYYYY(train.date);
                 const remark = train.remark.toUpperCase();
                 
-                message += `*Train ${train.train}/${formattedDate}*\n`;
+                message += `Railout : ${train.train} | ${train.date}\n`;
                 
-                if (remark.includes('ETA')) {
+                if (remark.includes('ARRIVED')) {
+                    const arrivedMatch = remark.match(/ARRIVED ON\s+(\d{2}-\d{2}-\d{4})/);
+                    const arrivedDate = arrivedMatch ? arrivedMatch[1] : '';
+                    message += `*Arrived : ${arrivedDate}* \n`;
+                } else if (remark.includes('ETA')) {
                     const etaMatch = remark.match(/ETA\s+(\d{2}-\d{2}-\d{4})/);
                     const etaDate = etaMatch ? etaMatch[1] : '';
-                    message += `*ETA: ${etaDate}*\n`;
+                    message += `*ETA : ${etaDate}*\n`;
                 }
                 
                 train.containers.forEach(cont => {
@@ -1396,40 +1412,56 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
                     blSerial++;
                 });
             });
-            message += `------------------------------\n`;
         }
 
-        // Show pending containers
-        if (pendingCount > 0) {
-            message += `⚠️ *Pending - ${String(pendingCount).padStart(2, '0')}*\n`;
+        // Separate pending containers with proper headers
+        if (bl.pending.length > 0) {
+            // Separate normal pending vs under scanning
+            const normalPending = [];
+            const scanningPending = [];
             
             bl.pending.forEach(cont => {
-                const sn = blSerial < 10 ? `0${blSerial}` : blSerial;
-                
-                // Check if under scanning
                 const smtpMatch = smtpData.find(s => 
                     String(s[2] || '').trim().toUpperCase() === cont && 
                     String(s[1] || '').trim().toUpperCase() === "UNDER SCANNING"
                 );
                 
-                let contLine = `${sn}. ${cont}`;
-                if (smtpMatch) contLine += ` 🔴 *[UNDER SCANNING]*`;
-                
-                message += `${contLine}\n`;
-                blSerial++;
+                if (smtpMatch) {
+                    scanningPending.push(cont);
+                } else {
+                    normalPending.push(cont);
+                }
             });
-            message += `------------------------------\n`;
+            
+            // Add normal pending with *Not Railout :-* header
+            if (normalPending.length > 0) {
+                message += `*Not Railout :-*\n`;
+                normalPending.forEach(cont => {
+                    const sn = blSerial < 10 ? `0${blSerial}` : blSerial;
+                    message += `${sn}. ${cont}\n`;
+                    blSerial++;
+                });
+            }
+            
+            // Add scanning pending with *Under Scanning*🔴 header
+            if (scanningPending.length > 0) {
+                message += `*Under Scanning*🔴\n`;
+                scanningPending.forEach(cont => {
+                    const sn = blSerial < 10 ? `0${blSerial}` : blSerial;
+                    message += `${sn}. ${cont}\n`;
+                    blSerial++;
+                });
+            }
         }
-        
-        message += ` \n`; // Empty line between BLs
     });
 
-    message += `For Complete Details kindly visit\n`;
-    message += `*Container Tracking Link :* 🌐\n`;
+    message += `\n\n`;
+    message += `Tracking Link\n`;
     message += `https://tinyurl.com/import-tracking\n`;
     message += `Thanks & Regards,\n`;
-    message += `*Hind Terminals Pvt Ltd.*\n`;
-    message += `*Vikram Singh*`;
+    message += `Hind Terminals Pvt. Ltd.\n`;
+    message += `Vikram Singh\n`;
+    message += ``;
 
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
 });
@@ -1438,38 +1470,29 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
 // STEP 2: FIXED DUPLICATE-FREE EMAIL & PDF LOGIC
 // ────────────────────────────────────────────────
 document.getElementById('copyEmailBtn').addEventListener('click', async () => {
-    
     // --- DUPLICATE REMOVAL LOGIC ---
-    // Pehle dono groups ko merge karte hain
     const rawList = [...(globalRailedGroups || []), ...(globalPendingGroups || [])];
-    
-    // Map ka use karke duplicates ko hatate hain (BL Number ke basis par)
     const uniqueMap = new Map();
     rawList.forEach(item => {
         if (!uniqueMap.has(item.blNo)) {
             uniqueMap.set(item.blNo, item);
         }
     });
-    
-    // Ab humare paas final clean list hai
     const blList = Array.from(uniqueMap.values());
-
-    if (blList.length === 0) { 
-        alert("Pehle report generate karein."); 
-        return; 
+    if (blList.length === 0) {
+        alert("Pehle report generate karein.");
+        return;
     }
-
-    const userChoice = confirm("Do you want to Download PDF?\n\n[OK] = Download PDF (Letterhead)\n[Cancel] = Copy to Clipboard");
-
+    // Force copy mode (no confirmation, no letterhead for copy)
+    const userChoice = false;
     const websiteData = rawSheets.website || [];
-    const smtpData = rawSheets.smtp || []; 
+    const smtpData = rawSheets.smtp || [];
     const wsHeaders = websiteData[0].map(h => String(h).trim().toUpperCase());
-    const idxBL = wsHeaders.indexOf('BILL_NO'), 
-          idxCont = wsHeaders.indexOf('CONTAINER_NO'), 
-          idxRake = wsHeaders.indexOf('RAKE_NO'), 
-          idxDate = wsHeaders.indexOf('RAILING_DATE'), 
+    const idxBL = wsHeaders.indexOf('BILL_NO'),
+          idxCont = wsHeaders.indexOf('CONTAINER_NO'),
+          idxRake = wsHeaders.indexOf('RAKE_NO'),
+          idxDate = wsHeaders.indexOf('RAILING_DATE'),
           idxRemarks = wsHeaders.indexOf('REMARKS');
-
     const letterheadHeader = `
         <div style="border-bottom: 2px solid #055094; padding-bottom: 10px; margin-bottom: 15px; text-align: left; font-family: Calibri, sans-serif;">
             <b style="font-size: 13pt; color: #055094; text-transform: uppercase;">Hind Terminals Pvt Ltd</b><br>
@@ -1481,23 +1504,17 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
             </div>
         </div>
     `;
-
     let htmlContent = `<div id="pdf-report-content" style="font-family: Calibri, sans-serif; color: #000; padding: 10px;">`;
-    
     blList.forEach((blInfo, index) => {
         const pageBreakStyle = index > 0 ? 'page-break-before: always; padding-top: 20px;' : '';
         htmlContent += `<div style="${pageBreakStyle}">`;
-        
         if (userChoice) { htmlContent += letterheadHeader; }
-
         if (index === 0) {
             htmlContent += `Dear Sir,<br><br>Greetings From Hind Terminals!!<br>Please find below status of Containers / BLs:-<br><br>`;
         }
-
         const allBlRows = websiteData.slice(1).filter(row => String(row[idxBL] || '').trim().toUpperCase() === blInfo.blNo.toUpperCase());
         const railedRows = allBlRows.filter(row => !['PENDING', ''].includes(String(row[idxDate] || '').trim().toUpperCase()));
         const pendingRows = allBlRows.filter(row => String(row[idxDate] || '').trim().toUpperCase() === 'PENDING' || String(row[idxDate] || '').trim() === '');
-
         const processedRows = railedRows.map(row => {
             const remarkText = String(row[idxRemarks] || '').toUpperCase();
             let statusText = '-', statusType = 2, statusColor = "#1e40af", bgColor = "transparent";
@@ -1512,12 +1529,9 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
             }
             return { ...row, statusText, statusType, statusColor, bgColor };
         });
-
         processedRows.sort((a, b) => a.statusType - b.statusType);
         const arrivedCount = processedRows.filter(r => r.statusType === 1).length;
         const inTransitCount = processedRows.length - arrivedCount;
-
-        // B/L Box
         htmlContent += `
             <table border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 10px; width: 95%;">
                 <tr>
@@ -1528,28 +1542,24 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
                     </td>
                 </tr>
             </table><br>`;
-
-        // Table
-           htmlContent += `<table border="1" cellspacing="0" cellpadding="4" style="border-collapse: collapse; font-size: 8pt; width: 610px; table-layout: fixed; margin-bottom: 20px; overflow: hidden;">
-    <thead>
-        <tr style="background-color: #ffd966; font-weight: bold; text-align: center;">
-            <th style="width: 30px; overflow: hidden; white-space: nowrap;">Sr</th>
-            <th style="width: 100px; overflow: hidden; white-space: nowrap;">BL Number</th>
-            <th style="width: 90px; overflow: hidden; white-space: nowrap;">Container</th>
-            <th style="width: 50px; overflow: hidden; white-space: nowrap;">Size</th>
-            <th style="width: 90px; overflow: hidden; white-space: nowrap;">Train</th>
-            <th style="width: 100px; overflow: hidden; white-space: nowrap;">Dated</th>
-            <th style="width: 300px; overflow: hidden; white-space: nowrap;">Current Status of Container</th>
-        </tr>
-    </thead>
-    <tbody>`;
-
+        htmlContent += `<table border="1" cellspacing="0" cellpadding="4" style="border-collapse: collapse; font-size: 8pt; width: 610px; table-layout: fixed; margin-bottom: 20px; overflow: hidden;">
+            <thead>
+                <tr style="background-color: #ffd966; font-weight: bold; text-align: center;">
+                    <th style="width: 30px; overflow: hidden; white-space: nowrap;">Sr</th>
+                    <th style="width: 100px; overflow: hidden; white-space: nowrap;">BL Number</th>
+                    <th style="width: 90px; overflow: hidden; white-space: nowrap;">Container</th>
+                    <th style="width: 50px; overflow: hidden; white-space: nowrap;">Size</th>
+                    <th style="width: 90px; overflow: hidden; white-space: nowrap;">Train</th>
+                    <th style="width: 100px; overflow: hidden; white-space: nowrap;">Railout Date</th>
+                    <th style="width: 300px; overflow: hidden; white-space: nowrap;">ETA & Current Status</th>
+                </tr>
+            </thead>
+            <tbody>`;
         let globalSerial = 1;
         const getContSize = (cNo) => {
             const row = smtpData.find(r => String(r[2] || '').trim().toUpperCase() === cNo.toUpperCase());
             return row ? (String(row[3]).includes('40') ? '40' : '20') : '-';
         };
-
         processedRows.forEach(row => {
             htmlContent += `<tr style="text-align: center;">
                 <td>${globalSerial++}</td>
@@ -1561,16 +1571,14 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
                 <td bgcolor="${row.bgColor}" style="font-weight: bold; color: ${row.statusColor}; font-size: 7pt;">${row.statusText}</td>
             </tr>`;
         });
-
         pendingRows.forEach(pRow => {
             const contNo = String(pRow[idxCont]).trim().toUpperCase();
-            const isScanning = smtpData.some(sRow => 
-                String(sRow[2] || '').trim().toUpperCase() === contNo && 
+            const isScanning = smtpData.some(sRow =>
+                String(sRow[2] || '').trim().toUpperCase() === contNo &&
                 String(sRow[1] || '').trim().toUpperCase() === "UNDER SCANNING"
             );
             let sText = isScanning ? "UNDER SCANNING" : "Pending Railout";
             let sCol = isScanning ? "#990000" : "red";
-
             htmlContent += `<tr style="text-align: center; color: red;">
                 <td>${globalSerial++}</td>
                 <td>${blInfo.blNo}</td>
@@ -1583,26 +1591,166 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
         });
         htmlContent += `</tbody></table></div>`;
     });
-
     htmlContent += `<br><div style="font-size: 9pt;"><b>Tracking Link:</b> https://tinyurl.com/import-tracking<br><br>Regards,<br><b>Hind Terminals Pvt Ltd</b><br></div></div>`;
-
-    if (userChoice) {
-        const opt = {
-            margin: [5, 5, 10, 5],
-            filename: `Import_Status_Report.pdf`,
-            image: { type: 'jpeg', quality: 0.95 },
-            html2canvas: { scale: 2, useCORS: true, letterRendering: true },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        };
-        html2pdf().set(opt).from(htmlContent).save();
-    } else {
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = htmlContent;
-        tempDiv.querySelectorAll('div[style*="border-bottom"]').forEach(h => h.remove());
-        const blob = new Blob([tempDiv.innerHTML], { type: 'text/html' });
-        const clipboardItem = new ClipboardItem({ 'text/html': blob });
-        navigator.clipboard.write([clipboardItem]).then(() => alert("✅ Duplicates Removed & Copied!"));
+    // Perform copy to clipboard (without letterhead)
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = htmlContent;
+    tempDiv.querySelectorAll('div[style*="border-bottom"]').forEach(h => h.remove());
+    const htmlBlob = new Blob([tempDiv.innerHTML], { type: 'text/html' });
+    const textBlob = new Blob([tempDiv.innerText], { type: 'text/plain' }); // Fallback plain text
+    try {
+        const clipboardItem = new ClipboardItem({
+            'text/html': htmlBlob,
+            'text/plain': textBlob // Fallback for plain text if HTML fails
+        });
+        await navigator.clipboard.write([clipboardItem]);
+        alert("✅ Status Copied! Paste in Outlook.");
+        console.log('Clipboard write successful.');
+    } catch (err) {
+        console.error('Clipboard write failed:', err);
+        // Fallback to legacy execCommand for older browsers
+        const textarea = document.createElement('textarea');
+        textarea.value = tempDiv.innerText; // Use plain text as ultimate fallback
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        alert("✅ Status Copied (Plain Text Fallback)! Paste in Outlook.");
     }
+});
+document.getElementById('downloadAndCopyBtn').addEventListener('click', async () => {
+    // --- DUPLICATE REMOVAL LOGIC ---
+    const rawList = [...(globalRailedGroups || []), ...(globalPendingGroups || [])];
+    const uniqueMap = new Map();
+    rawList.forEach(item => {
+        if (!uniqueMap.has(item.blNo)) {
+            uniqueMap.set(item.blNo, item);
+        }
+    });
+    const blList = Array.from(uniqueMap.values());
+    if (blList.length === 0) {
+        alert("Pehle report generate karein.");
+        return;
+    }
+    // Force download mode for PDF (with letterhead)
+    const userChoice = true;
+    const websiteData = rawSheets.website || [];
+    const smtpData = rawSheets.smtp || [];
+    const wsHeaders = websiteData[0].map(h => String(h).trim().toUpperCase());
+    const idxBL = wsHeaders.indexOf('BILL_NO'),
+          idxCont = wsHeaders.indexOf('CONTAINER_NO'),
+          idxRake = wsHeaders.indexOf('RAKE_NO'),
+          idxDate = wsHeaders.indexOf('RAILING_DATE'),
+          idxRemarks = wsHeaders.indexOf('REMARKS');
+    const letterheadHeader = `
+        <div style="border-bottom: 2px solid #055094; padding-bottom: 10px; margin-bottom: 15px; text-align: left; font-family: Calibri, sans-serif;">
+            <b style="font-size: 13pt; color: #055094; text-transform: uppercase;">Hind Terminals Pvt Ltd</b><br>
+            <div style="font-size: 8.5pt; color: #333; line-height: 1.4; margin-top: 3px;">
+                Address: SCO No.14-15, Dhamija Tower, First Floor, Urban Estate, Phase -3, Opp. FCI Godown,<br>
+                Focal Point, Ludhiana- 141010<br>
+                Landline: 0161-4417569 | Email: customerserviceludhiana@hindterminals.com<br>
+                Website: www.hindterminals.com
+            </div>
+        </div>
+    `;
+    let htmlContent = `<div id="pdf-report-content" style="font-family: Calibri, sans-serif; color: #000; padding: 10px;">`;
+    blList.forEach((blInfo, index) => {
+        const pageBreakStyle = index > 0 ? 'page-break-before: always; padding-top: 20px;' : '';
+        htmlContent += `<div style="${pageBreakStyle}">`;
+        if (userChoice) { htmlContent += letterheadHeader; }
+        if (index === 0) {
+            htmlContent += `Dear Sir,<br><br>Greetings From Hind Terminals!!<br>Please find below status of Containers / BLs:-<br><br>`;
+        }
+        const allBlRows = websiteData.slice(1).filter(row => String(row[idxBL] || '').trim().toUpperCase() === blInfo.blNo.toUpperCase());
+        const railedRows = allBlRows.filter(row => !['PENDING', ''].includes(String(row[idxDate] || '').trim().toUpperCase()));
+        const pendingRows = allBlRows.filter(row => String(row[idxDate] || '').trim().toUpperCase() === 'PENDING' || String(row[idxDate] || '').trim() === '');
+        const processedRows = railedRows.map(row => {
+            const remarkText = String(row[idxRemarks] || '').toUpperCase();
+            let statusText = '-', statusType = 2, statusColor = "#1e40af", bgColor = "transparent";
+            if (remarkText.includes("TRAIN ARRIVED ON")) {
+                const arrivedMatch = remarkText.match(/ARRIVED ON\s+\d{2}-\d{2}-\d{4}(\s+\d{2}:\d{2})?/);
+                statusText = arrivedMatch ? arrivedMatch[0] : 'TRAIN ARRIVED';
+                statusType = 1; statusColor = "#15803d"; bgColor = "#dcfce7";
+            } else if (remarkText.includes("ETA")) {
+                const afterEta = remarkText.split("ETA")[1];
+                const dateMatch = afterEta.match(/(\d{2}-\d{2}-\d{4})/);
+                statusText = dateMatch ? `Expected Arrival on: ${dateMatch[1]}` : 'IN TRANSIT';
+            }
+            return { ...row, statusText, statusType, statusColor, bgColor };
+        });
+        processedRows.sort((a, b) => a.statusType - b.statusType);
+        const arrivedCount = processedRows.filter(r => r.statusType === 1).length;
+        const inTransitCount = processedRows.length - arrivedCount;
+        htmlContent += `
+            <table border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 10px; width: 95%;">
+                <tr>
+                    <td bgcolor="#ffffff" style="border: 0px solid #ffffff; padding: 8px 12px;">
+                        <b style="color: #055094; font-size: 11pt;">
+                            B/L No : ${blInfo.blNo} | S/Line : ${blInfo.line} | Total : ${blInfo.stats.total} | Railout : ${railedRows.length} | Arrived : ${arrivedCount} | IN-Transit : ${inTransitCount}
+                        </b>
+                    </td>
+                </tr>
+            </table><br>`;
+        htmlContent += `<table border="1" cellspacing="0" cellpadding="4" style="border-collapse: collapse; font-size: 8pt; width: 610px; table-layout: fixed; margin-bottom: 20px; overflow: hidden;">
+            <thead>
+                <tr style="background-color: #ffd966; font-weight: bold; text-align: center;">
+                    <th style="width: 30px; overflow: hidden; white-space: nowrap;">Sr</th>
+                    <th style="width: 100px; overflow: hidden; white-space: nowrap;">BL Number</th>
+                    <th style="width: 90px; overflow: hidden; white-space: nowrap;">Container</th>
+                    <th style="width: 50px; overflow: hidden; white-space: nowrap;">Size</th>
+                    <th style="width: 90px; overflow: hidden; white-space: nowrap;">Train</th>
+                    <th style="width: 100px; overflow: hidden; white-space: nowrap;">Railout Date</th>
+                    <th style="width: 300px; overflow: hidden; white-space: nowrap;">ETA & Current Status</th>
+                </tr>
+            </thead>
+            <tbody>`;
+        let globalSerial = 1;
+        const getContSize = (cNo) => {
+            const row = smtpData.find(r => String(r[2] || '').trim().toUpperCase() === cNo.toUpperCase());
+            return row ? (String(row[3]).includes('40') ? '40' : '20') : '-';
+        };
+        processedRows.forEach(row => {
+            htmlContent += `<tr style="text-align: center;">
+                <td>${globalSerial++}</td>
+                <td style="word-break: break-all;">${blInfo.blNo}</td>
+                <td>${String(row[idxCont]).trim()}</td>
+                <td>${getContSize(String(row[idxCont]).trim())}"</td>
+                <td>${String(row[idxRake]).trim().split('(')[0]}</td>
+                <td>${typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(row[idxDate]) : row[idxDate]}</td>
+                <td bgcolor="${row.bgColor}" style="font-weight: bold; color: ${row.statusColor}; font-size: 7pt;">${row.statusText}</td>
+            </tr>`;
+        });
+        pendingRows.forEach(pRow => {
+            const contNo = String(pRow[idxCont]).trim().toUpperCase();
+            const isScanning = smtpData.some(sRow =>
+                String(sRow[2] || '').trim().toUpperCase() === contNo &&
+                String(sRow[1] || '').trim().toUpperCase() === "UNDER SCANNING"
+            );
+            let sText = isScanning ? "UNDER SCANNING" : "Pending Railout";
+            let sCol = isScanning ? "#990000" : "red";
+            htmlContent += `<tr style="text-align: center; color: red;">
+                <td>${globalSerial++}</td>
+                <td>${blInfo.blNo}</td>
+                <td>${contNo}</td>
+                <td>${getContSize(contNo)}"</td>
+                <td>Pending</td>
+                <td>-</td>
+                <td style="font-weight: bold; color: ${sCol}; font-size: 7pt;">${sText}</td>
+            </tr>`;
+        });
+        htmlContent += `</tbody></table></div>`;
+    });
+    htmlContent += `<br><div style="font-size: 9pt;"><b>Tracking Link:</b> https://tinyurl.com/import-tracking<br><br>Regards,<br><b>Hind Terminals Pvt Ltd</b><br></div></div>`;
+    // Perform PDF download (with letterhead)
+    const opt = {
+        margin: [5, 5, 10, 5],
+        filename: `Import_Status_Report.pdf`,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    await html2pdf().set(opt).from(htmlContent).save();
+    alert("✅ PDF Downloaded!");
 });
 // Hidden file input for CSV selection
 const csvUploadInput = document.createElement('input');
