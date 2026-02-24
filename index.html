@@ -1245,7 +1245,7 @@ const getVisibleBLs = () => {
 };
 
 // ────────────────────────────────────────────────
-// WHATSAPP MESSAGE LOGIC - STRICT FORMAT AS SHOWN
+// WHATSAPP MESSAGE LOGIC - NEW FORMAT WITH EMOJIS
 // ────────────────────────────────────────────────
 document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () => {
     // Get currently selected shipper
@@ -1356,23 +1356,21 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
         return;
     }
 
-    // Build message with strict format
-    let message = `Dear Sir,\n \n`;
-    message += `Please find below B/L status :-\n`;
+    // Build message with new format
+    let message = `Dear Sir,\n\n`;
+    message += `Please find below B/L status :-\n\n`;
 
     // Process each BL
     Object.values(blGroups).forEach(bl => {
         const totalContainers = bl.total20 + bl.total40;
-        // Format total with leading zero if less than 10 (e.g., 09x20)
+        // Format total with leading zero if less than 10
         const totalFormatted = totalContainers < 10 ? `0${totalContainers}` : totalContainers;
         const sizeInfo = bl.total40 > 0 ? `${totalFormatted}x40` : `${totalFormatted}x20`;
         
-        message += ` \n`;
         message += `*BL: ${bl.blNo} | ${sizeInfo}${bl.line !== '-' ? ` | ${bl.line}` : ''}*\n`;
-        message += ` \n`;
 
-        // PER BL SERIAL NUMBER - resets to 1 for each BL
-        let blSerial = 1;
+        // PER BL - No serial numbers, just emojis before containers
+        let containerCount = 0;
 
         // Group railed containers by train
         if (bl.railed.length > 0) {
@@ -1394,29 +1392,32 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
             Object.values(trainGroups).forEach(train => {
                 const remark = train.remark.toUpperCase();
                 
-                message += `Railout : ${train.train} | ${train.date}\n`;
+                message += `🚆${train.train} | ${train.date}\n`;
                 
                 if (remark.includes('ARRIVED')) {
                     const arrivedMatch = remark.match(/ARRIVED ON\s+(\d{2}-\d{2}-\d{4})/);
                     const arrivedDate = arrivedMatch ? arrivedMatch[1] : '';
-                    message += `*Arrived : ${arrivedDate}* \n`;
+                    message += `✅*Arrived* : ${arrivedDate}\n`;
+                    
+                    train.containers.forEach(cont => {
+                        message += `✅${cont}\n`;
+                        containerCount++;
+                    });
                 } else if (remark.includes('ETA')) {
                     const etaMatch = remark.match(/ETA\s+(\d{2}-\d{2}-\d{4})/);
                     const etaDate = etaMatch ? etaMatch[1] : '';
-                    message += `*ETA : ${etaDate}*\n`;
+                    message += `🔰*ETA* : ${etaDate}\n`;
+                    
+                    train.containers.forEach(cont => {
+                        message += `🔰${cont}\n`;
+                        containerCount++;
+                    });
                 }
-                
-                train.containers.forEach(cont => {
-                    const sn = blSerial < 10 ? `0${blSerial}` : blSerial;
-                    message += `${sn}. ${cont}\n`;
-                    blSerial++;
-                });
             });
         }
 
-        // Separate pending containers with proper headers
+        // Separate pending containers by type
         if (bl.pending.length > 0) {
-            // Separate normal pending vs under scanning
             const normalPending = [];
             const scanningPending = [];
             
@@ -1433,39 +1434,36 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
                 }
             });
             
-            // Add normal pending with *Not Railout :-* header
+            // Add normal pending with ⚠️ emoji
             if (normalPending.length > 0) {
-                message += `*Not Railout :-*\n`;
+                message += `⚠️*Pending*\n`;
                 normalPending.forEach(cont => {
-                    const sn = blSerial < 10 ? `0${blSerial}` : blSerial;
-                    message += `${sn}. ${cont}\n`;
-                    blSerial++;
+                    message += `⚠️${cont}\n`;
+                    containerCount++;
                 });
             }
             
-            // Add scanning pending with *Under Scanning*🔴 header
+            // Add scanning pending with 🔴 emoji
             if (scanningPending.length > 0) {
-                message += `*Under Scanning*🔴\n`;
+                message += `🔴*Under Scanning*\n`;
                 scanningPending.forEach(cont => {
-                    const sn = blSerial < 10 ? `0${blSerial}` : blSerial;
-                    message += `${sn}. ${cont}\n`;
-                    blSerial++;
+                    message += `🔴${cont}\n`;
+                    containerCount++;
                 });
             }
         }
+        
+        message += `\n\n`; // Blank line between BLs
     });
 
-    message += `\n\n`;
     message += `Tracking Link\n`;
-    message += `https://tinyurl.com/import-tracking\n`;
+    message += `https://tinyurl.com/import-tracking\n\n`;
     message += `Thanks & Regards,\n`;
-    message += `Hind Terminals Pvt. Ltd.\n`;
-    message += `Vikram Singh\n`;
-    message += ``;
+    message += `*Hind Terminals Pvt. Ltd.*\n`;
+    message += `*Vikram Singh*`;
 
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
 });
-
 // ────────────────────────────────────────────────
 // STEP 2: FIXED DUPLICATE-FREE EMAIL & PDF LOGIC
 // ────────────────────────────────────────────────
