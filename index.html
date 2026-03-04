@@ -376,6 +376,10 @@ table {
                                     Update Remarks
                                 </button>
                             </div>
+</button>    
+<button id="saveLocalChangesBtn" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase shadow-md transition-all">
+        Save Changes
+    </button>
                         </div>
                 <div class="flex items-center gap-2 pl-1">
                             <div class="h-6 w-px"></div>
@@ -3212,21 +3216,29 @@ document.getElementById('updateCustomRemarksBtn').addEventListener('click', () =
         }
     });
 
-    // 3. Save & Notify
+    // 3. Update UI & Notify (NO AUTO SAVE)
     if (updateCount > 0) {
-        saveToCloud();
-        processCloudData(); // UI Refresh
+        // UI Refresh sirf local data se karein (cloud reload nahi hoga)
+        window.viewSheetData('website'); 
 
+        // Naya Popup Message
         const box = document.createElement('div');
-        box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-amber-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">
-            ✓ Remarks Updated Successfully!<br>
-            Count: ${updateCount} containers<br>
-            (Only 'RAILOUT FROM' entries updated)
+        box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[10000] animate-bounce text-center border-2 border-white">
+            ✓ Remarks Updated Locally (${updateCount} containers)<br>
+            <span class="text-yellow-300 font-black text-[12px] mt-1 block">⚠️ Don't Forget to Save Data!</span>
+            Click on "Save Changes" Button Below.
         </div>`;
         document.body.appendChild(box);
-        setTimeout(() => box.remove(), 4000);
+        setTimeout(() => box.remove(), 6000); // User ko padhne ke liye 6 seconds diye
         
         customRemarksInput.blur();
+        
+        // Ek chhota sa effect: 'Save Changes' button thodi der ke liye blink karega dhyan aakarshit karne ke liye
+        const saveBtn = document.getElementById('saveLocalChangesBtn');
+        if(saveBtn) {
+            saveBtn.classList.add('ring-4', 'ring-rose-500', 'animate-pulse');
+            setTimeout(() => saveBtn.classList.remove('ring-4', 'ring-rose-500', 'animate-pulse'), 6000);
+        }
     } else {
         alert("No matching containers found!\nCheck if:\n1. Train & Date match\n2. Existing remarks contain 'RAILOUT FROM'");
     }
@@ -3435,50 +3447,101 @@ window.deleteHkrRow = async (index) => {
         return;
     }
 
-    // ────────────────────────────────────────────────
-    // DEFAULT BEHAVIOR FOR OTHER TABS
+// ────────────────────────────────────────────────
+    // DEFAULT BEHAVIOR FOR OTHER TABS (LOAD ON DEMAND)
     // ────────────────────────────────────────────────
     const data = rawSheets[sheetName] || [];
 
     if (data.length === 0) {
-        container.innerHTML = `<div class="p-10 text-center font-bold text-slate-400 uppercase text-[10px]">No data found in ${sheetName.toUpperCase()}</div>`;
+        container.innerHTML = `<div class="p-10 text-center font-bold text-slate-400 uppercase text-[10px]">Is sheet mein koi data nahi hai (${sheetName.toUpperCase()})</div>`;
         return;
     }
 
-    let html = `<table id="editableTable" class="min-w-full text-[9px] uppercase border-collapse">`;
-    data.forEach((row, rowIndex) => {
-        const isHeader = rowIndex === 0;
-        const rowClass = isHeader ? 'bg-slate-800 text-white font-bold sticky top-0' : 'border-b border-slate-200 hover:bg-slate-50';
-        html += `<tr class="${rowClass}">`;
+    const maxCols = Math.max(...data.map(r => r?.length || 0)); 
+    
+    // Trash icon SVG format mein
+    const trashSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>`;
 
-        // Delete column
-        if (isHeader) {
-            html += `<th class="px-2 py-1.5 border-r border-slate-200 w-10 text-center">ACTION</th>`;
-        } else {
-            html += `<td class="px-2 py-1.5 border-r border-slate-200 text-center">
-                        <button onclick="window.deleteRow(${rowIndex})" class="delete-row-btn text-rose-500 transition-all">
-                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                        </button>
-                     </td>`;
-        }
+    let tableRows = [];
+    tableRows.push(`<table id="editableTable" class="min-w-full text-[9px] uppercase border-collapse">`);
+    tableRows.push(`<tbody>`); 
+    
+    // Row render karne ka function
+    const renderRows = (start, end) => {
+        let chunk = [];
+        for(let rowIndex = start; rowIndex < end && rowIndex < data.length; rowIndex++) {
+            const row = data[rowIndex];
+            const isHeader = rowIndex === 0;
+            const rowClass = isHeader ? 'bg-slate-800 text-white font-bold sticky top-0 z-10' : 'border-b border-slate-200 hover:bg-slate-50';
+            let rowHtml = `<tr class="${rowClass}">`;
 
-        const maxCols = Math.max(...data.map(r => r.length || 0));
-        for (let colIndex = 0; colIndex < maxCols; colIndex++) {
-            if (sheetName === 'smtp') {
-                const allowed = [1,2,3,5,9,13,18,22,23,24,26];
-                if (!allowed.includes(colIndex)) continue;
+            if (isHeader) {
+                rowHtml += `<th class="px-2 py-1.5 border-r border-slate-200 w-10 text-center bg-slate-800 sticky left-0">ACTION</th>`;
+            } else {
+                rowHtml += `<td class="px-2 py-1.5 border-r border-slate-200 text-center bg-white sticky left-0 z-0 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                            <button onclick="window.deleteRow(${rowIndex})" class="delete-row-btn text-rose-500 transition-all" title="Row Delete Karein">
+                                ${trashSvg}
+                            </button>
+                         </td>`;
             }
-            const content = row[colIndex] ?? '';
-            html += `<td class="px-2 py-1.5 border-r border-slate-200 truncate max-w-[200px] ${!isHeader ? 'editable-cell' : ''}"
-                        ${!isHeader ? 'contenteditable="true"' : ''}
-                        data-row="${rowIndex}" data-col="${colIndex}">${content}</td>`;
+
+            for (let colIndex = 0; colIndex < maxCols; colIndex++) {
+                if (sheetName === 'smtp') {
+                    const allowed = [1,2,3,5,9,13,18,22,23,24,26];
+                    if (!allowed.includes(colIndex)) continue;
+                }
+                const content = row[colIndex] ?? '';
+                rowHtml += `<td class="px-2 py-1.5 border-r border-slate-200 truncate max-w-[200px] ${!isHeader ? 'editable-cell' : ''}"
+                            ${!isHeader ? 'contenteditable="true"' : ''}
+                            data-row="${rowIndex}" data-col="${colIndex}">${content}</td>`;
+            }
+            rowHtml += `</tr>`;
+            chunk.push(rowHtml);
         }
-        html += `</tr>`;
-    });
-    html += `</table>`;
-    container.innerHTML = html;
-    lucide.createIcons();
-};
+        return chunk.join('');
+    };
+
+    // Shuru mein SIRF Header (Row 0) render hoga, baki kuch nahi
+    tableRows.push(renderRows(0, 1));
+    tableRows.push(`</tbody></table>`);
+    
+    // Agar data mein rows hain, toh "Load All" button dikhayenge
+    if (data.length > 1) {
+        tableRows.push(`
+            <div id="loadMoreContainer" class="flex justify-center py-8 bg-slate-50 border-t border-slate-200 w-full sticky left-0">
+                <button id="loadAllBtn" class="bg-green-700 hover:bg-red-800 text-white px-8 py-3 rounded-lg font-black text-[11px] uppercase shadow-lg transition-all flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Show All !! ${data.length - 1} Records 
+                </button>
+            </div>
+        `);
+    }
+
+    container.innerHTML = tableRows.join('');
+    
+    // Load All Button ka Event
+    const loadAllBtn = document.getElementById('loadAllBtn');
+    if (loadAllBtn) {
+        loadAllBtn.addEventListener('click', () => {
+            // Button ko loading state mein badlein
+            loadAllBtn.innerHTML = "Loading... Please Wait";
+            loadAllBtn.classList.add('opacity-50', 'cursor-wait');
+            
+            // Timeout lagaya hai taaki browser text update kar sake pehle
+            setTimeout(() => {
+                const tableBody = document.querySelector('#editableTable tbody');
+                
+                // Row 1 se lekar aakhri row tak sab ek sath render karein
+                const newHTML = renderRows(1, data.length);
+                tableBody.insertAdjacentHTML('beforeend', newHTML); 
+                
+                // Button ko hamesha ke liye gayab kar dein
+                document.getElementById('loadMoreContainer').style.display = 'none';
+            }, 10); // 10ms ka delay taaki UI freeze na ho button dabate hi
+        });
+    }
+
+}; 
 
         // ------------------------------------------
         // 6. MAIN APP INITIALIZATION & EVENTS
