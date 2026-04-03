@@ -264,7 +264,7 @@ table {
                 <p class="text-slate-500 text-xs font-semibold">Enter password to continue</p>
             </div>
             <div class="space-y-4">
-                <input type="password" id="loginPassword" placeholder="••••••••" class="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl font-bold text-center tracking-widest focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+                <input type="password" id="loginPassword" placeholder="••••••••••••••••" class="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl font-bold text-center tracking-widest focus:ring-2 focus:ring-blue-500 outline-none transition-all">
                 <button id="authBtn" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 rounded-xl shadow-lg transition-all transform active:scale-95">
                     Enter Password To Login
                 </button>
@@ -320,6 +320,10 @@ table {
                             <i data-lucide="user-x" class="w-3.5 h-3.5"></i>
                             DELETE BY SHIPPER NAME
                         </button>
+                        <button id="deleteByShipperBlBtn" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
+                            <i data-lucide="badge-minus" class="w-3.5 h-3.5"></i>
+                            DELETE BY BL_NO.
+                        </button>
                     </div>
                     <!-- SMTP Tab Context Tools -->
                     <div id="smtpUpdateSection" class="hidden items-center gap-3 bg-white p-2 rounded-xl border border-slate-300 shadow-sm flex-wrap">
@@ -340,11 +344,15 @@ table {
         <input type="file" id="gateOutExcelInput" class="hidden" accept=".xlsx, .xls">
     </label>
 
-    <label id="scanningBtnLabel" class="bg-pink-600 hover:bg-pink-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase shrink-0">
+<label id="scanningBtnLabel" class="bg-pink-600 hover:bg-pink-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase shrink-0">
         <i data-lucide="scan" class="w-3.5 h-3.5"></i>
         Update Scanning
         <input type="file" id="scanningExcelInput" class="hidden" accept=".xlsx, .xls">
     </label>
+<button id="openSmtpDeleteFilterBtn" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-sm shrink-0">
+        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+        DELETE DATA BY
+    </button>
 <label class="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase shrink-0">
         <i data-lucide="file-up" class="w-3.5 h-3.5"></i>
         UPLOAD HKR/HMR EXCEL
@@ -425,6 +433,10 @@ table {
     <i data-lucide="upload-cloud" class="w-3.5 h-3.5"></i>
     Upload CSV to HTPL Server
 </button>
+<button id="openWebsiteDeleteFilterBtn" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-sm">
+    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+    DELETE DATA BY
+</button>
 <button onclick="window.hideModal()" class="bg-blue-800 hover:bg-yellow-800 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all shadow-sm">
         Close This Tab
     </button>
@@ -478,7 +490,7 @@ table {
 <div id="deleteShipperModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100002] hidden flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-slate-300 overflow-hidden">
         <div class="bg-rose-600 p-4 flex justify-between items-center text-white">
-            <h3 class="font-bold uppercase text-sm flex items-center gap-2">
+            <h3 id="deleteShipperModalTitle" class="font-bold uppercase text-sm flex items-center gap-2">
                 <i data-lucide="user-x" class="w-4 h-4"></i> Delete Shipper Data
             </h3>
             <button onclick="document.getElementById('deleteShipperModal').classList.add('hidden')">
@@ -486,7 +498,7 @@ table {
             </button>
         </div>
         <div class="p-6 space-y-4 max-h-96 overflow-y-auto custom-scrollbar">
-            <p class="text-[11px] font-bold text-slate-600">Select a shipper to delete <strong>all related rows</strong> from the Shipper sheet:</p>
+            <p id="deleteShipperModalDesc" class="text-[11px] font-bold text-slate-600">Select a shipper to delete <strong>all related rows</strong> from the Shipper sheet:</p>
             <div id="shipperDeleteList" class="space-y-2"></div>
             <div class="pt-4 border-t border-slate-200">
                 <p id="deleteWarning" class="text-[10px] font-bold text-rose-600 uppercase hidden">
@@ -501,6 +513,60 @@ table {
             <button id="confirmDeleteShipperBtn" class="px-6 py-2 bg-rose-600 text-white rounded-lg font-bold text-[10px] uppercase opacity-50 cursor-not-allowed" disabled>
                 Confirm Delete
             </button>
+        </div>
+    </div>
+</div>
+<div id="sourceDeleteModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100003] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-5xl border border-slate-300 overflow-hidden">
+        <div class="bg-rose-600 p-4 flex justify-between items-center text-white">
+            <div>
+                <h3 id="sourceDeleteModalTitle" class="font-bold uppercase text-sm flex items-center gap-2">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i> Delete Source Data
+                </h3>
+                <p id="sourceDeleteModalDesc" class="text-[10px] font-bold text-rose-100 uppercase tracking-wide mt-1">Select rows and permanently delete records.</p>
+            </div>
+            <button id="closeSourceDeleteModalBtn" class="text-white">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <div class="p-5 space-y-4 bg-slate-50">
+            <div class="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-3">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-500 uppercase mb-1">Delete By</label>
+                    <select id="sourceDeleteFieldSelect" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-[11px] font-bold outline-none focus:ring-2 focus:ring-rose-300">
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-500 uppercase mb-1">Search Value</label>
+                    <input type="text" id="sourceDeleteSearchInput" placeholder="Type SMTP No., BL No. or Container No." class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-[11px] font-bold outline-none focus:ring-2 focus:ring-rose-300">
+                </div>
+            </div>
+            <div class="flex items-center justify-between flex-wrap gap-3">
+                <div class="flex items-center gap-2">
+                    <button id="sourceDeleteShowBtn" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-[10px] uppercase transition-all">
+                        Show Records
+                    </button>
+                    <button id="sourceDeleteSelectAllBtn" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-bold text-[10px] uppercase transition-all">
+                        Select All Visible
+                    </button>
+                    <button id="sourceDeleteClearSearchBtn" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg font-bold text-[10px] uppercase transition-all">
+                        Clear Search
+                    </button>
+                </div>
+                <p id="sourceDeleteSummaryText" class="text-[10px] font-bold text-slate-500 uppercase">0 rows showing</p>
+            </div>
+            <div id="sourceDeleteResults" class="max-h-[48vh] overflow-y-auto custom-scrollbar space-y-2 pr-1"></div>
+            <div class="pt-3 border-t border-slate-200 flex items-center justify-between gap-3 flex-wrap">
+                <p id="sourceDeleteWarning" class="text-[10px] font-bold text-rose-600 uppercase hidden">Warning: <span id="sourceDeleteCount">0</span> selected rows will be permanently deleted.</p>
+                <div class="flex items-center gap-3 ml-auto">
+                    <button id="cancelSourceDeleteBtn" class="px-6 py-2 bg-slate-300 text-slate-700 rounded-lg font-bold text-[10px] uppercase">
+                        Cancel
+                    </button>
+                    <button id="confirmSourceDeleteBtn" class="px-6 py-2 bg-rose-600 text-white rounded-lg font-bold text-[10px] uppercase opacity-50 cursor-not-allowed" disabled>
+                        Delete Selected
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -2107,8 +2173,48 @@ exportBtn.onclick = async () => {
         let trainDateRemarksMap = {}; 
         let currentShipperAllGroups = []; 
         let isInTransitFilterActive = false; // New global filter state
+        let currentSourceDeleteSheet = null;
+        let sourceDeleteSelectedRows = new Set();
+        let sourceDeleteVisibleRows = [];
+        let sourceDeleteHasSearched = false;
         lucide.createIcons();
 	
+function normalizeText(value) {
+    return String(value || '').trim().toUpperCase();
+}
+
+function buildContBlKey(cont, bl) {
+    return `${normalizeText(cont)}__${normalizeText(bl)}`;
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function findHeaderIndex(headers, matchers, fallback = -1) {
+    if (!Array.isArray(headers)) return fallback;
+    for (const matcher of matchers) {
+        const idx = headers.findIndex(header => {
+            const text = normalizeText(header);
+            return matcher instanceof RegExp ? matcher.test(text) : text.includes(normalizeText(matcher));
+        });
+        if (idx !== -1) return idx;
+    }
+    return fallback;
+}
+
+function showTopToast(message, bgClass = 'bg-rose-600', timeout = 3500) {
+    const box = document.createElement('div');
+    box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 ${bgClass} text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce text-center">${message}</div>`;
+    document.body.appendChild(box);
+    setTimeout(() => box.remove(), timeout);
+}
+
 	// --- GLOBAL HELPER: Get Vessel Name (Standardized) ---
 function getGroupVessel(g) {
     if (g.vessel && g.vessel !== '-' && g.vessel !== '') {
@@ -4477,6 +4583,7 @@ if (smtpExcelInput) {
 
             jsonData.slice(1).forEach(exRow => {
                 const contNo = String(exRow[2] || '').trim().toUpperCase();
+                const blNo = String(exRow[9] || '').trim();
                 const cellLValue = String(exRow[11] || '').toUpperCase();
 
                 if (contNo && (cellLValue.includes("KILARAIPUR") || cellLValue.includes("LUDHIANA"))) {
@@ -4497,7 +4604,10 @@ if (smtpExcelInput) {
 
                     exRow[22] = finalRemark;
 
-                    const alreadyInSmtp = rawSheets.smtp.some(s => String(s[2] || '').trim() === contNo);
+                    const currentContBlKey = buildContBlKey(contNo, blNo);
+                    const alreadyInSmtp = rawSheets.smtp.some((s, idx) =>
+                        idx > 0 && buildContBlKey(s[2], s[9]) === currentContBlKey
+                    );
                     
                     if (!alreadyInSmtp) {
                         let optimizedRow = new Array(27).fill(""); 
@@ -4508,9 +4618,10 @@ if (smtpExcelInput) {
                         addedCount++;
                     }
                     // Baaki ka transfer logic waisa hi rahega...
-                    const alreadyInWebsite = rawSheets.website.some(w => String(w[3] || '').trim() === contNo);
+                    const alreadyInWebsite = rawSheets.website.some((w, idx) =>
+                        idx > 0 && buildContBlKey(w[3], w[2]) === currentContBlKey
+                    );
                     if (!alreadyInWebsite) {
-                        const blNo = String(exRow[9] || '').trim();
                         const rawTpDate = exRow[18] || exRow[17];
                         const tpDateFormatted = typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(rawTpDate) : rawTpDate;
                         
@@ -5883,8 +5994,8 @@ window.toggleAllVessels = (checkbox) => {
                 menu.classList.add('hidden');
             }
         });
-// === DELETE BY SHIPPER NAME WITH DROPDOWN SELECTION ===
-document.getElementById('deleteByShipperBtn').addEventListener('click', () => {
+// === SHIPPER BULK DELETE HELPERS ===
+function openShipperDeleteModal(deleteMode) {
     if (currentSheetInView !== 'shipper') {
         alert("Please switch to the SHIPPER tab first.");
         return;
@@ -5896,52 +6007,68 @@ document.getElementById('deleteByShipperBtn').addEventListener('click', () => {
         return;
     }
 
-    const consIndex = headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE'));
-    if (consIndex === -1) {
-        alert("Consignee column not found in Shipper sheet.");
+    const isBlMode = deleteMode === 'bl';
+    const targetIndex = isBlMode
+        ? findHeaderIndex(headers, [/^BL/i, /BL/i], 2)
+        : findHeaderIndex(headers, [/CONSIGNEE/i], -1);
+
+    if (targetIndex === -1) {
+        alert(isBlMode ? "BL column not found in Shipper sheet." : "Consignee column not found in Shipper sheet.");
         return;
     }
 
-    // Get unique shippers with row counts
-    const shipperMap = new Map();
+    const valueMap = new Map();
     rawSheets.shipper.slice(1).forEach(row => {
-        const name = String(row[consIndex] || '').trim();
-        if (name) {
-            shipperMap.set(name, (shipperMap.get(name) || 0) + 1);
+        const value = String(row[targetIndex] || '').trim();
+        if (value) {
+            valueMap.set(value, (valueMap.get(value) || 0) + 1);
         }
     });
 
-    if (shipperMap.size === 0) {
-        alert("No shipper data found to delete.");
+    if (valueMap.size === 0) {
+        alert(isBlMode ? "No BL data found to delete." : "No shipper data found to delete.");
         return;
     }
 
-    // Populate dropdown list
+    const modal = document.getElementById('deleteShipperModal');
+    const titleEl = document.getElementById('deleteShipperModalTitle');
+    const descEl = document.getElementById('deleteShipperModalDesc');
     const listContainer = document.getElementById('shipperDeleteList');
     const warningEl = document.getElementById('deleteWarning');
     const countEl = document.getElementById('deleteCount');
     const confirmBtn = document.getElementById('confirmDeleteShipperBtn');
 
-    listContainer.innerHTML = '';
-    let selectedShipper = null;
+    titleEl.innerHTML = `
+        <i data-lucide="${isBlMode ? 'badge-minus' : 'user-x'}" class="w-4 h-4"></i>
+        ${isBlMode ? 'Delete By B/L No.' : 'Delete Shipper Data'}
+    `;
+    descEl.innerHTML = isBlMode
+        ? 'Select a <strong>B/L No.</strong> to delete <strong>all related rows</strong> from the Shipper sheet:'
+        : 'Select a shipper to delete <strong>all related rows</strong> from the Shipper sheet:';
 
-    [...shipperMap.entries()].sort((a, b) => a[0].localeCompare(b[0])).forEach(([name, count]) => {
+    listContainer.innerHTML = '';
+    warningEl.classList.add('hidden');
+    confirmBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    confirmBtn.disabled = true;
+
+    let selectedValue = null;
+
+    [...valueMap.entries()].sort((a, b) => a[0].localeCompare(b[0])).forEach(([value, count]) => {
         const item = document.createElement('div');
         item.className = 'flex items-center justify-between p-3 bg-slate-50 hover:bg-rose-50 rounded-lg cursor-pointer transition-all border border-slate-200';
         item.innerHTML = `
-            <div>
-                <p class="font-bold text-slate-800 text-[11px] uppercase">${name}</p>
-                <p class="text-[9px] text-slate-500">${count} container${count > 1 ? 's' : ''}</p>
+            <div class="min-w-0">
+                <p class="font-bold text-slate-800 text-[11px] uppercase break-all">${escapeHtml(value)}</p>
+                <p class="text-[9px] text-slate-500">${count} row${count > 1 ? 's' : ''}</p>
             </div>
-            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400"></i>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400 shrink-0"></i>
         `;
         item.onclick = () => {
-            // Deselect others
             document.querySelectorAll('#shipperDeleteList > div').forEach(el => {
                 el.classList.remove('bg-rose-100', 'border-rose-400');
             });
             item.classList.add('bg-rose-100', 'border-rose-400');
-            selectedShipper = name;
+            selectedValue = value;
             countEl.textContent = count;
             warningEl.classList.remove('hidden');
             confirmBtn.classList.remove('opacity-50', 'cursor-not-allowed');
@@ -5950,44 +6077,328 @@ document.getElementById('deleteByShipperBtn').addEventListener('click', () => {
         listContainer.appendChild(item);
     });
 
-    // Confirm button action
     confirmBtn.onclick = () => {
-        if (!selectedShipper) return;
+        if (!selectedValue) return;
 
-        const count = shipperMap.get(selectedShipper);
-        const finalConfirm = confirm(`PERMANENTLY delete all ${count} rows for "${selectedShipper}"?\nThis action cannot be undone.`);
-
+        const count = valueMap.get(selectedValue) || 0;
+        const label = isBlMode ? 'B/L No.' : 'shipper';
+        const finalConfirm = confirm(`PERMANENTLY delete all ${count} rows for ${label} "${selectedValue}"?\nThis action cannot be undone.`);
         if (!finalConfirm) return;
 
-        // Perform deletion
         rawSheets.shipper = [
             headers,
-            ...rawSheets.shipper.slice(1).filter(row => String(row[consIndex] || '').trim() !== selectedShipper)
+            ...rawSheets.shipper.slice(1).filter(row => String(row[targetIndex] || '').trim() !== selectedValue)
         ];
 
-        // Close modal and refresh
-        document.getElementById('deleteShipperModal').classList.add('hidden');
+        modal.classList.add('hidden');
         window.viewSheetData('shipper');
         saveToCloud();
         processCloudData();
-
-        const box = document.createElement('div');
-        box.innerHTML = `
-            <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
-                ✓ Successfully deleted all rows for "${selectedShipper}" (${count} rows)
-            </div>`;
-        document.body.appendChild(box);
-        setTimeout(() => box.remove(), 5000);
+        showTopToast(`&#10003; Deleted ${count} row${count > 1 ? 's' : ''} for ${label} &quot;${escapeHtml(selectedValue)}&quot;`, 'bg-rose-600', 5000);
     };
 
-    // Reset confirm button state
-    warningEl.classList.add('hidden');
-    confirmBtn.classList.add('opacity-50', 'cursor-not-allowed');
-    confirmBtn.disabled = true;
-
-    // Show modal
-    document.getElementById('deleteShipperModal').classList.remove('hidden');
+    modal.classList.remove('hidden');
     lucide.createIcons();
+}
+
+document.getElementById('deleteByShipperBtn').addEventListener('click', () => openShipperDeleteModal('shipper'));
+document.getElementById('deleteByShipperBlBtn').addEventListener('click', () => openShipperDeleteModal('bl'));
+
+// === SMTP / WEBSITE FILTER DELETE MODAL ===
+function buildSmtpReferenceLookups() {
+    const smtpSheet = rawSheets.smtp || [];
+    const headers = smtpSheet[0] || [];
+    const contIdx = findHeaderIndex(headers, [/CONT/i], 2);
+    const blIdx = findHeaderIndex(headers, [/BL/i], 9);
+    const smtpNoIdx = findHeaderIndex(headers, [/SMTP/i], 13);
+    const pairToSmtpNos = new Map();
+    const contToSmtpNos = new Map();
+
+    smtpSheet.slice(1).forEach(row => {
+        const contNo = String(row[contIdx] || '').trim();
+        const blNo = String(row[blIdx] || '').trim();
+        const smtpNo = String(row[smtpNoIdx] || '').trim();
+
+        if (!smtpNo) return;
+
+        const contKey = normalizeText(contNo);
+        const pairKey = buildContBlKey(contNo, blNo);
+
+        if (contKey) {
+            if (!contToSmtpNos.has(contKey)) contToSmtpNos.set(contKey, new Set());
+            contToSmtpNos.get(contKey).add(smtpNo);
+        }
+
+        if (pairKey !== '__') {
+            if (!pairToSmtpNos.has(pairKey)) pairToSmtpNos.set(pairKey, new Set());
+            pairToSmtpNos.get(pairKey).add(smtpNo);
+        }
+    });
+
+    return { pairToSmtpNos, contToSmtpNos };
+}
+
+function getSourceDeleteRecords(sheetName) {
+    const sheet = rawSheets[sheetName] || [];
+    if (sheet.length <= 1) return [];
+
+    const headers = sheet[0] || [];
+    const smtpLookups = sheetName === 'website' ? buildSmtpReferenceLookups() : null;
+
+    let contIdx = -1;
+    let blIdx = -1;
+    let smtpNoIdx = -1;
+
+    if (sheetName === 'smtp') {
+        contIdx = findHeaderIndex(headers, [/CONT/i], 2);
+        blIdx = findHeaderIndex(headers, [/BL/i], 9);
+        smtpNoIdx = findHeaderIndex(headers, [/SMTP/i], 13);
+    } else if (sheetName === 'website') {
+        contIdx = findHeaderIndex(headers, [/CONTAINER/i, /CONT/i], 3);
+        blIdx = findHeaderIndex(headers, [/BILL/i, /BL/i], 2);
+        smtpNoIdx = findHeaderIndex(headers, [/SMTP/i], -1);
+    }
+
+    return sheet.slice(1).map((row, idx) => {
+        const rowIndex = idx + 1;
+        const contNo = String(row[contIdx] || '').trim() || '-';
+        const blNo = String(row[blIdx] || '').trim() || '-';
+        let smtpNo = smtpNoIdx !== -1 ? String(row[smtpNoIdx] || '').trim() : '';
+
+        if (!smtpNo && sheetName === 'website' && smtpLookups) {
+            const pairKey = buildContBlKey(contNo, blNo);
+            const contKey = normalizeText(contNo);
+            const smtpValues = smtpLookups.pairToSmtpNos.get(pairKey) || smtpLookups.contToSmtpNos.get(contKey);
+            smtpNo = smtpValues && smtpValues.size ? [...smtpValues].join(', ') : '';
+        }
+
+        smtpNo = smtpNo || '-';
+
+        return {
+            rowIndex,
+            contNo,
+            blNo,
+            smtpNo,
+            fieldMap: {
+                smtp: smtpNo,
+                bl: blNo,
+                cont: contNo
+            }
+        };
+    });
+}
+
+function syncSourceDeleteActionState(totalVisible, totalRecords) {
+    const summaryEl = document.getElementById('sourceDeleteSummaryText');
+    const warningEl = document.getElementById('sourceDeleteWarning');
+    const countEl = document.getElementById('sourceDeleteCount');
+    const confirmBtn = document.getElementById('confirmSourceDeleteBtn');
+    const selectAllBtn = document.getElementById('sourceDeleteSelectAllBtn');
+    const selectedCount = sourceDeleteSelectedRows.size;
+    const allVisibleSelected = sourceDeleteVisibleRows.length > 0 && sourceDeleteVisibleRows.every(rowIndex => sourceDeleteSelectedRows.has(rowIndex));
+
+    summaryEl.textContent = `${totalVisible} of ${totalRecords} rows showing | ${selectedCount} selected`;
+    countEl.textContent = selectedCount;
+
+    if (selectedCount > 0) {
+        warningEl.classList.remove('hidden');
+        confirmBtn.disabled = false;
+        confirmBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        confirmBtn.textContent = `Delete Selected (${selectedCount})`;
+    } else {
+        warningEl.classList.add('hidden');
+        confirmBtn.disabled = true;
+        confirmBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        confirmBtn.textContent = 'Delete Selected';
+    }
+
+    selectAllBtn.textContent = allVisibleSelected ? 'Clear Visible Selection' : 'Select All Visible';
+}
+
+function resetSourceDeleteResultsState(message = 'Type search value and click SHOW RECORDS.') {
+    const resultsEl = document.getElementById('sourceDeleteResults');
+    const summaryEl = document.getElementById('sourceDeleteSummaryText');
+    const warningEl = document.getElementById('sourceDeleteWarning');
+    const countEl = document.getElementById('sourceDeleteCount');
+    const confirmBtn = document.getElementById('confirmSourceDeleteBtn');
+    const selectAllBtn = document.getElementById('sourceDeleteSelectAllBtn');
+
+    sourceDeleteHasSearched = false;
+    sourceDeleteVisibleRows = [];
+    sourceDeleteSelectedRows = new Set();
+
+    resultsEl.innerHTML = `<div class="p-8 text-center bg-white rounded-xl border border-dashed border-slate-300 text-slate-400 font-bold text-[10px] uppercase">${message}</div>`;
+    summaryEl.textContent = 'Waiting for search';
+    warningEl.classList.add('hidden');
+    countEl.textContent = '0';
+    confirmBtn.disabled = true;
+    confirmBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    confirmBtn.textContent = 'Delete Selected';
+    selectAllBtn.textContent = 'Select All Visible';
+}
+
+function renderSourceDeleteResults() {
+    if (!currentSourceDeleteSheet) return;
+
+    const fieldSelect = document.getElementById('sourceDeleteFieldSelect');
+    const searchInput = document.getElementById('sourceDeleteSearchInput');
+    const resultsEl = document.getElementById('sourceDeleteResults');
+    const selectedField = fieldSelect.value || 'smtp';
+    const searchValue = normalizeText(searchInput.value);
+    const fieldLabels = {
+        smtp: 'SMTP No.',
+        bl: 'BL_No.',
+        cont: 'CONT_Nos.'
+    };
+
+    if (!sourceDeleteHasSearched) {
+        resetSourceDeleteResultsState();
+        return;
+    }
+
+    const records = getSourceDeleteRecords(currentSourceDeleteSheet);
+    const visibleRecords = records.filter(record => {
+        const compareValue = normalizeText(record.fieldMap[selectedField]);
+        return !searchValue || compareValue.includes(searchValue);
+    });
+
+    sourceDeleteVisibleRows = visibleRecords.map(record => record.rowIndex);
+
+    if (visibleRecords.length === 0) {
+        resultsEl.innerHTML = `<div class="p-8 text-center bg-white rounded-xl border border-dashed border-slate-300 text-slate-400 font-bold text-[10px] uppercase">No matching records found.</div>`;
+        syncSourceDeleteActionState(0, records.length);
+        return;
+    }
+
+    resultsEl.innerHTML = visibleRecords.map(record => `
+        <label class="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-xl hover:border-rose-300 hover:bg-rose-50/40 transition-all cursor-pointer">
+            <input type="checkbox" class="source-delete-checkbox mt-1 h-4 w-4 accent-rose-600" data-row-index="${record.rowIndex}" ${sourceDeleteSelectedRows.has(record.rowIndex) ? 'checked' : ''}>
+            <div class="min-w-0 flex-1">
+                <div class="flex items-center justify-between gap-3 flex-wrap">
+                    <p class="font-black text-slate-800 text-[11px] uppercase break-all">${escapeHtml(fieldLabels[selectedField])}: ${escapeHtml(record.fieldMap[selectedField])}</p>
+                    <span class="text-[9px] font-bold uppercase text-slate-400">Row ${record.rowIndex}</span>
+                </div>
+                <div class="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[9px] font-bold uppercase text-slate-500">
+                    <span class="break-all">SMTP: ${escapeHtml(record.smtpNo)}</span>
+                    <span class="break-all">BL: ${escapeHtml(record.blNo)}</span>
+                    <span class="break-all">CONT: ${escapeHtml(record.contNo)}</span>
+                </div>
+            </div>
+        </label>
+    `).join('');
+
+    document.querySelectorAll('.source-delete-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', (e) => {
+            const rowIndex = Number(e.target.dataset.rowIndex);
+            if (e.target.checked) {
+                sourceDeleteSelectedRows.add(rowIndex);
+            } else {
+                sourceDeleteSelectedRows.delete(rowIndex);
+            }
+            syncSourceDeleteActionState(visibleRecords.length, records.length);
+        });
+    });
+
+    syncSourceDeleteActionState(visibleRecords.length, records.length);
+}
+
+function closeSourceDeleteModal() {
+    document.getElementById('sourceDeleteModal').classList.add('hidden');
+    currentSourceDeleteSheet = null;
+    sourceDeleteSelectedRows = new Set();
+    sourceDeleteVisibleRows = [];
+    sourceDeleteHasSearched = false;
+    document.getElementById('sourceDeleteSearchInput').value = '';
+}
+
+function openSourceDeleteModal(sheetName) {
+    if (!['smtp', 'website'].includes(sheetName)) return;
+
+    if (currentSheetInView !== sheetName) {
+        alert(`Please switch to the ${sheetName.toUpperCase()} tab first.`);
+        return;
+    }
+
+    if (!rawSheets[sheetName] || rawSheets[sheetName].length <= 1) {
+        alert(`${sheetName.toUpperCase()} sheet has no data to delete.`);
+        return;
+    }
+
+    currentSourceDeleteSheet = sheetName;
+    sourceDeleteSelectedRows = new Set();
+    sourceDeleteVisibleRows = [];
+    sourceDeleteHasSearched = false;
+
+    const titleEl = document.getElementById('sourceDeleteModalTitle');
+    const descEl = document.getElementById('sourceDeleteModalDesc');
+    const fieldSelect = document.getElementById('sourceDeleteFieldSelect');
+    const fieldOptions = [
+        { value: 'smtp', label: 'SMTP No.' },
+        { value: 'bl', label: 'BL_No.' },
+        { value: 'cont', label: 'CONT_Nos.' }
+    ];
+
+    titleEl.innerHTML = `
+        <i data-lucide="trash-2" class="w-4 h-4"></i>
+        Delete ${sheetName.toUpperCase()} Data
+    `;
+    descEl.textContent = `Filter by SMTP No., BL_No. or CONT_Nos., then select the ${sheetName.toUpperCase()} rows you want to delete.`;
+    fieldSelect.innerHTML = fieldOptions.map(option => `<option value="${option.value}">${option.label}</option>`).join('');
+    fieldSelect.value = sheetName === 'website' ? 'bl' : 'smtp';
+    document.getElementById('sourceDeleteSearchInput').value = '';
+    document.getElementById('sourceDeleteModal').classList.remove('hidden');
+
+    resetSourceDeleteResultsState();
+    lucide.createIcons();
+}
+
+document.getElementById('openSmtpDeleteFilterBtn').addEventListener('click', () => openSourceDeleteModal('smtp'));
+document.getElementById('openWebsiteDeleteFilterBtn').addEventListener('click', () => openSourceDeleteModal('website'));
+document.getElementById('closeSourceDeleteModalBtn').addEventListener('click', closeSourceDeleteModal);
+document.getElementById('cancelSourceDeleteBtn').addEventListener('click', closeSourceDeleteModal);
+document.getElementById('sourceDeleteShowBtn').addEventListener('click', () => {
+    const searchValue = document.getElementById('sourceDeleteSearchInput').value.trim();
+    if (!searchValue) {
+        alert('Please type a search value first, then click Show Records.');
+        return;
+    }
+    sourceDeleteHasSearched = true;
+    renderSourceDeleteResults();
+});
+document.getElementById('sourceDeleteFieldSelect').addEventListener('change', () => resetSourceDeleteResultsState());
+document.getElementById('sourceDeleteSearchInput').addEventListener('input', () => resetSourceDeleteResultsState());
+document.getElementById('sourceDeleteClearSearchBtn').addEventListener('click', () => {
+    document.getElementById('sourceDeleteSearchInput').value = '';
+    resetSourceDeleteResultsState();
+});
+document.getElementById('sourceDeleteSelectAllBtn').addEventListener('click', () => {
+    if (!sourceDeleteHasSearched || !sourceDeleteVisibleRows.length) return;
+
+    const allVisibleSelected = sourceDeleteVisibleRows.every(rowIndex => sourceDeleteSelectedRows.has(rowIndex));
+    if (allVisibleSelected) {
+        sourceDeleteVisibleRows.forEach(rowIndex => sourceDeleteSelectedRows.delete(rowIndex));
+    } else {
+        sourceDeleteVisibleRows.forEach(rowIndex => sourceDeleteSelectedRows.add(rowIndex));
+    }
+    renderSourceDeleteResults();
+});
+document.getElementById('confirmSourceDeleteBtn').addEventListener('click', () => {
+    if (!currentSourceDeleteSheet || sourceDeleteSelectedRows.size === 0) return;
+
+    const deleteCount = sourceDeleteSelectedRows.size;
+    const finalConfirm = confirm(`PERMANENTLY delete ${deleteCount} selected row${deleteCount > 1 ? 's' : ''} from ${currentSourceDeleteSheet.toUpperCase()} sheet?\nThis action cannot be undone.`);
+    if (!finalConfirm) return;
+
+    [...sourceDeleteSelectedRows].sort((a, b) => b - a).forEach(rowIndex => {
+        rawSheets[currentSourceDeleteSheet].splice(rowIndex, 1);
+    });
+
+    const deletedSheet = currentSourceDeleteSheet;
+    closeSourceDeleteModal();
+    window.viewSheetData(deletedSheet);
+    saveToCloud();
+    processCloudData();
+    showTopToast(`&#10003; Deleted ${deleteCount} ${deletedSheet.toUpperCase()} row${deleteCount > 1 ? 's' : ''}`, 'bg-rose-600', 4500);
 });
 // === FINAL: Save ONLY Containers whose destination contains ANY of the 3 keywords ===
 const hkrHmrExcelInput = document.getElementById('hkrHmrExcelInput');
