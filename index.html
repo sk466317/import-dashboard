@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -99,6 +100,28 @@ table {
         .font-bold { font-weight: 700; }
         .compact-header { padding-top: 0.4rem; padding-bottom: 0.4rem; }
         .row-compact td { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+        .topbar-action {
+            min-height: 28px;
+            min-width: 0;
+            padding: 0 8px;
+            border-radius: 0.375rem;
+            font-size: 9px;
+            font-weight: 700;
+            line-height: 1;
+            text-transform: uppercase;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.25rem;
+            white-space: nowrap;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+            transition: all 0.2s ease;
+        }
+        .topbar-action i {
+            width: 11px;
+            height: 11px;
+            flex-shrink: 0;
+        }
 
         .filter-select {
             background-color: #eff6ff; 
@@ -412,6 +435,12 @@ table {
         UPDATE SINGLE STACK SUMMARY
         <input type="file" id="websiteExcelInput" class="hidden" accept=".xlsx, .xls">
     </label>
+	<label title="Bulk Website Update - CONT_No., TRAIN No, Railout Date, Arrival Date"
+               class="bg-blue-800 hover:bg-yellow-800 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
+        <i data-lucide="files" class="w-3.5 h-3.5"></i>
+        BULK WEBSITE UPDATE
+        <input type="file" id="bulkWebsiteExcelInput" class="hidden" accept=".xlsx, .xls, .csv">
+    </label>
     <button id="addSmtpBtn" class="bg-blue-800 hover:bg-yellow-800 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] transition-all flex items-center gap-2 uppercase shadow-sm">
         <i data-lucide="list-plus" class="w-3.5 h-3.5"></i>
         Add SMTP
@@ -571,8 +600,8 @@ table {
     </div>
 </div>
     <!-- Header -->
-    <header class="bg-white border-b border-slate-400 px-6 compact-header flex justify-between items-center shadow-sm shrink-0 no-print">
-        <div class="flex items-center gap-3">
+    <header class="bg-white border-b border-slate-400 px-4 compact-header flex justify-between items-center gap-2 shadow-sm shrink-0 no-print">
+        <div class="flex items-center gap-3 shrink-0">
             <div class="bg-blue-700 p-1.5 rounded-lg text-white shadow-md">
                 <i data-lucide="ship" class="w-4 h-4"></i>
             </div>
@@ -582,48 +611,57 @@ table {
             </div>
         </div>
 
-        <div class="flex items-center gap-3">
-            <div id="cloudStatus" class="text-[9px] font-bold text-slate-400 px-2 flex items-center gap-1">
+        <div class="flex items-center justify-end gap-1.5 flex-1 min-w-0">
+            <div id="cloudStatus" class="text-[8px] font-bold text-slate-400 px-1 flex items-center gap-1 shrink-0">
                 <span id="cloudIndicator" class="w-2 h-2 rounded-full bg-slate-300"></span>
                 <span id="cloudLabel">Connecting...</span>
             </div>
 
             <!-- Update Data Button -->
-            <button id="openUpdateModalBtn" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-md font-bold text-[10px] transition-all flex items-center gap-1.5 shadow-sm">
+            <button id="openUpdateModalBtn" class="topbar-action bg-red-600 hover:bg-red-700 text-white">
                 <i data-lucide="database" class="w-3 h-3"></i>
                 UPDATE DATA
             </button>
 <button id="forecastPendencyBtn" 
-        class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-md font-bold text-[10px] transition-all flex items-center gap-1.5 shadow-sm">
+        class="topbar-action bg-purple-600 hover:bg-purple-700 text-white">
     <i data-lucide="eye" class="w-3.5 h-3.5"></i>
     FORECAST & PENDENCY
 </button>
-            <button id="runningTrainsBtn" class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-md font-bold text-[10px] transition-all flex items-center gap-1.5 shadow-sm">
+            <button id="runningTrainsBtn" class="topbar-action bg-amber-500 hover:bg-amber-600 text-white">
     <i data-lucide="train" class="w-3.5 h-3.5"></i>
     RUNNING TRAINS
 </button>
             <!-- Image Save Button -->
-            <button id="saveImageBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-md font-bold text-[10px] transition-all flex items-center gap-1.5 shadow-sm">
+            <button id="saveImageBtn" class="topbar-action bg-indigo-600 hover:bg-indigo-700 text-white">
                 <i data-lucide="image" class="w-3 h-3"></i>
                 SAVE PNG
             </button>
 
-            <button id="refreshBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md font-bold text-[10px] transition-all flex items-center gap-1.5 shadow-sm">
+            <button id="refreshBtn" class="topbar-action bg-blue-600 hover:bg-blue-700 text-white">
                 <i data-lucide="refresh-cw" class="w-3 h-3" id="refreshIcon"></i>
                 REFRESH
             </button>
-            <div id="upload-section">
-                <label class="bg-slate-900 hover:bg-black text-white px-3 py-1.5 rounded-md font-bold text-[10px] cursor-pointer transition-all flex items-center gap-1.5 shadow-sm">
+            <div id="upload-section" class="flex items-center shrink-0">
+                <label class="topbar-action bg-slate-900 hover:bg-black text-white cursor-pointer">
                     <i data-lucide="plus" class="w-3 h-3"></i>
                     UPLOAD
                     <input type="file" id="fileInput" class="hidden" accept=".xlsx, .xls">
                 </label>
             </div>
-            <button id="downloadBtn" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-md font-bold text-[10px] transition-all flex items-center gap-1.5 shadow-sm">
+            <button id="backupDataBtn" class="topbar-action bg-teal-700 hover:bg-teal-800 text-white">
+                <i data-lucide="download" class="w-3 h-3"></i>
+                BACKUP DATA
+            </button>
+            <label class="topbar-action bg-cyan-700 hover:bg-cyan-800 text-white cursor-pointer">
+                <i data-lucide="upload" class="w-3 h-3"></i>
+                RESTORE DATA
+                <input type="file" id="restoreDataInput" class="hidden" accept=".xlsx, .xls">
+            </label>
+            <button id="downloadBtn" class="hidden topbar-action bg-emerald-600 hover:bg-emerald-700 text-white">
                 <i data-lucide="download" class="w-3 h-3"></i>
                 EXPORT
             </button>
-            <button id="resetBtn" class="hidden text-slate-500 hover:text-red-500 font-bold text-[10px] px-2">Reset</button>
+            <button id="resetBtn" class="hidden topbar-action bg-slate-200 hover:bg-slate-300 text-slate-700 border border-slate-300">Reset</button>
         </div>
     </header>
     <main id="mainContent" class="flex-1 flex overflow-hidden">
@@ -2157,6 +2195,8 @@ exportBtn.onclick = async () => {
         const blFilter = document.getElementById('blFilter');
         const shipperSearch = document.getElementById('shipperSearch');
         const fileInput = document.getElementById('fileInput');
+        const backupDataBtn = document.getElementById('backupDataBtn');
+        const restoreDataInput = document.getElementById('restoreDataInput');
 
         // Website Tools
         const rakeSelect = document.getElementById('rakeSelect');
@@ -2207,6 +2247,196 @@ function findHeaderIndex(headers, matchers, fallback = -1) {
     }
     return fallback;
 }
+
+const EMPTY_VIEW_HEADERS = {
+    hkr: ['Vessel Name', 'ETA DTTM', 'Container No', 'Size', 'Destination', 'Line Code', 'Assigned Remark', 'Uploaded At'],
+    shipper: ['CONT_Nos.', 'Size', 'BL_No.', 'Consignee'],
+    smtp: ['Status', 'CONT_Nos.', 'Size', 'Disch_Vsl_Name', 'BL_No.', 'SMTP No.', 'Handover Date', 'Remarks', 'Line', 'Consignee', 'Train / Via'],
+    website: ['UID', 'SR_NO', 'BILL_NO', 'CONTAINER_NO', 'RAKE_NO', 'STACK', 'SOURCE', 'DESTINATION', 'RAILING_DATE', 'REMARKS']
+};
+
+const DEFAULT_SOURCE_HEADERS = {
+    shipper: [...EMPTY_VIEW_HEADERS.shipper],
+    smtp: (() => {
+        const headers = new Array(27).fill('');
+        headers[1] = 'Status';
+        headers[2] = 'CONT_Nos.';
+        headers[3] = 'Size';
+        headers[5] = 'Disch_Vsl_Name';
+        headers[9] = 'BL_No.';
+        headers[11] = 'Destination';
+        headers[13] = 'SMTP No.';
+        headers[17] = 'Discharge Date';
+        headers[18] = 'Handover Date';
+        headers[22] = 'Remarks';
+        headers[23] = 'Line';
+        headers[24] = 'Consignee';
+        headers[26] = 'Train / Via';
+        return headers;
+    })(),
+    website: [...EMPTY_VIEW_HEADERS.website]
+};
+
+const BACKUP_HKR_FIELDS = [
+    'vessel_name',
+    'eta_dttm',
+    'ctr_no',
+    'ctr_size',
+    'destination_name',
+    'line_code',
+    'assigned_remark',
+    'upload_timestamp'
+];
+
+function hasRowValues(row) {
+    return Array.isArray(row) && row.some(cell => String(cell ?? '').trim() !== '');
+}
+
+function cloneRow(row = []) {
+    return Array.isArray(row) ? row.map(cell => cell ?? '') : [];
+}
+
+function cloneAoAData(data = []) {
+    return Array.isArray(data)
+        ? data.map(row => (Array.isArray(row) ? row.map(cell => cell ?? '') : []))
+        : [];
+}
+
+function ensureSheetHeaders(sheetName, uploadedHeaderRow = null) {
+    if (!Array.isArray(rawSheets[sheetName])) rawSheets[sheetName] = [];
+
+    const currentHeader = rawSheets[sheetName][0];
+    if (hasRowValues(currentHeader)) return currentHeader;
+
+    const fallbackHeaders = DEFAULT_SOURCE_HEADERS[sheetName] || [];
+    const nextHeader = hasRowValues(uploadedHeaderRow) ? cloneRow(uploadedHeaderRow) : cloneRow(fallbackHeaders);
+
+    if (!nextHeader.length) return [];
+
+    if (rawSheets[sheetName].length === 0) {
+        rawSheets[sheetName].push(nextHeader);
+    } else {
+        rawSheets[sheetName][0] = nextHeader;
+    }
+
+    return rawSheets[sheetName][0];
+}
+
+function normalizeRawSheets() {
+    if (!rawSheets || typeof rawSheets !== 'object') {
+        rawSheets = {};
+    }
+
+    if (!Array.isArray(rawSheets.shipper)) rawSheets.shipper = [];
+    if (!Array.isArray(rawSheets.smtp)) rawSheets.smtp = [];
+    if (!Array.isArray(rawSheets.website)) rawSheets.website = [];
+    if (!Array.isArray(rawSheets.hkrHmrFiltered)) rawSheets.hkrHmrFiltered = [];
+
+    ensureSheetHeaders('website');
+}
+
+function renderEmptySheetPreview(sheetName, headers, message) {
+    const headerCells = headers.map(header => `
+        <th class="px-2 py-1.5 border-r border-slate-200 bg-slate-800 text-left whitespace-nowrap">
+            ${escapeHtml(header)}
+        </th>
+    `).join('');
+
+    return `
+        <div class="space-y-3">
+            <table class="min-w-full text-[9px] uppercase border-collapse">
+                <thead>
+                    <tr class="bg-slate-800 text-white font-bold sticky top-0 z-10">
+                        <th class="px-2 py-1.5 border-r border-slate-200 w-10 text-center bg-slate-800 sticky left-0">ACTION</th>
+                        ${headerCells}
+                    </tr>
+                </thead>
+            </table>
+            <div class="p-4 text-center font-bold text-slate-400 uppercase text-[10px] border border-dashed border-slate-300 rounded-lg bg-slate-50">
+                ${message}
+            </div>
+        </div>
+    `;
+}
+
+function getSheetDataForBackup(sheetName) {
+    const currentData = rawSheets[sheetName];
+    if (Array.isArray(currentData) && currentData.length > 0) {
+        return cloneAoAData(currentData);
+    }
+
+    const fallbackHeaders = DEFAULT_SOURCE_HEADERS[sheetName];
+    return fallbackHeaders ? [cloneRow(fallbackHeaders)] : [];
+}
+
+function getHkrDataForBackup() {
+    const rows = Array.isArray(rawSheets.hkrHmrFiltered) ? rawSheets.hkrHmrFiltered : [];
+    return rows
+        .filter(row => row && typeof row === 'object')
+        .map(row => {
+            const cleanRow = {};
+            BACKUP_HKR_FIELDS.forEach(field => {
+                cleanRow[field] = row[field] ?? '';
+            });
+            return cleanRow;
+        });
+}
+
+function findWorkbookSheet(workbook, possibleNames) {
+    if (!workbook?.SheetNames?.length) return null;
+
+    const normalizedNames = possibleNames.map(name => normalizeText(name));
+    const matchedName = workbook.SheetNames.find(sheetName => normalizedNames.includes(normalizeText(sheetName)));
+    return matchedName ? workbook.Sheets[matchedName] : null;
+}
+
+function getBackupWorkbookSnapshot(workbook) {
+    const shipperSheet = findWorkbookSheet(workbook, ['SHIPPER']);
+    const smtpSheet = findWorkbookSheet(workbook, ['SMTP']);
+    const websiteSheet = findWorkbookSheet(workbook, ['WEBSITE']);
+    const hkrSheet = findWorkbookSheet(workbook, ['HKR DATA', 'HKR_DATA', 'HKR']);
+
+    if (!shipperSheet || !smtpSheet || !websiteSheet) {
+        return null;
+    }
+
+    const hkrRows = hkrSheet
+        ? XLSX.utils.sheet_to_json(hkrSheet, { defval: '' }).filter(row =>
+            Object.values(row || {}).some(value => String(value ?? '').trim() !== '')
+        )
+        : [];
+
+    return {
+        shipper: XLSX.utils.sheet_to_json(shipperSheet, { header: 1, defval: '' }),
+        smtp: XLSX.utils.sheet_to_json(smtpSheet, { header: 1, defval: '' }),
+        website: XLSX.utils.sheet_to_json(websiteSheet, { header: 1, defval: '' }),
+        hkrHmrFiltered: hkrRows
+    };
+}
+
+function downloadCompleteBackup() {
+    normalizeRawSheets();
+    ensureSheetHeaders('shipper');
+    ensureSheetHeaders('smtp');
+    ensureSheetHeaders('website');
+
+    const workbook = XLSX.utils.book_new();
+
+    const hkrRows = getHkrDataForBackup();
+    const hkrSheet = hkrRows.length
+        ? XLSX.utils.json_to_sheet(hkrRows, { header: BACKUP_HKR_FIELDS })
+        : XLSX.utils.aoa_to_sheet([BACKUP_HKR_FIELDS]);
+
+    XLSX.utils.book_append_sheet(workbook, hkrSheet, 'HKR DATA');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(getSheetDataForBackup('shipper')), 'SHIPPER');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(getSheetDataForBackup('smtp')), 'SMTP');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(getSheetDataForBackup('website')), 'WEBSITE');
+
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    XLSX.writeFile(workbook, `HTPL_COMPLETE_BACKUP_${stamp}.xlsx`, { compression: true });
+}
+
+normalizeRawSheets();
 
 function showTopToast(message, bgClass = 'bg-rose-600', timeout = 3500) {
     const box = document.createElement('div');
@@ -2887,6 +3117,7 @@ window.updateSelectedVessels = () => {
     console.log("Vessel selection changed →", window.selectedVessels);
 };
         function processCloudData() {
+            normalizeRawSheets();
             trainDateRemarksMap = {};
             if (rawSheets.website && rawSheets.website.length > 1) {
                 rawSheets.website.slice(1).forEach(row => {
@@ -2899,20 +3130,26 @@ window.updateSelectedVessels = () => {
                     }
                 });
             }
-            if (rawSheets.shipper && rawSheets.shipper.length) initDashboard();
+            initDashboard();
         }
 
         function initDashboard() {
             const emptyState = document.getElementById('emptyState');
             const reportContainer = document.getElementById('reportContainer');
+            const headers = rawSheets.shipper[0];
+
+            if (!headers || rawSheets.shipper.length <= 1) {
+                emptyState.classList.remove('hidden');
+                reportContainer.classList.add('hidden');
+                return;
+            }
+
             emptyState.classList.add('hidden');
             reportContainer.classList.remove('hidden');
             if(document.getElementById('downloadBtn')) document.getElementById('downloadBtn').classList.remove('hidden');
             if(document.getElementById('resetBtn')) document.getElementById('resetBtn').classList.remove('hidden');
 
-            const headers = rawSheets.shipper[0];
-            if(!headers) return;
-            const consIndex = headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE'));
+            const consIndex = findHeaderIndex(headers, [/CONSIGNEE/i, /SHIPPER/i], 3);
             renderShipperList([...new Set(rawSheets.shipper.slice(1).map(row => row[consIndex]))].filter(Boolean).sort(), consIndex);
             
             if (!selectedShipper) {
@@ -2927,6 +3164,8 @@ async function saveToCloud() {
         alert("Cloud sync is disabled or user not authenticated.");
         return false;
     }
+
+    normalizeRawSheets();
 
     const overlay = document.getElementById('savingOverlay');
     const progressText = document.getElementById('savingProgressText');
@@ -2990,6 +3229,7 @@ async function loadData(force = false) {
                 }
                 if (fullStr) {
                     rawSheets = JSON.parse(fullStr);
+                    normalizeRawSheets();
                     processCloudData();
                 }
                 cloudLabel.innerText = "Online";
@@ -3140,7 +3380,7 @@ async function quickSaveHkrData() {
         // Ensure we match Rake and ensure it was previously Railed Out
         if (String(row[4]).trim() === rake && currentRemark.includes("RAILOUT FROM")) {
             // Append Arrival info or replace remark
-            row[9] = `TRAIN ARRIVED ON ${formattedDate} & UNLOADING DONE ${formattedDate}`;
+            row[9] = buildWebsiteArrivalRemark(formattedDate);
             updateCount++;
         }
     });
@@ -3495,13 +3735,11 @@ window.deleteHkrRow = async (index) => {
         const data = rawSheets.hkrHmrFiltered || [];
 
         if (data.length === 0) {
-            container.innerHTML = `
-                <div class="p-10 text-center font-bold text-slate-400 uppercase text-[10px]">
-                    No HKR/HMR data saved yet.<br>
-                    <span class="text-[9px] normal-case mt-2 block">
-                        Upload HKR/HMR Excel to populate this view.
-                    </span>
-                </div>`;
+            container.innerHTML = renderEmptySheetPreview(
+                'hkr',
+                EMPTY_VIEW_HEADERS.hkr,
+                'Upload HKR/HMR Excel to populate this view.'
+            );
             return;
         }
 
@@ -3559,7 +3797,16 @@ window.deleteHkrRow = async (index) => {
     const data = rawSheets[sheetName] || [];
 
     if (data.length === 0) {
-        container.innerHTML = `<div class="p-10 text-center font-bold text-slate-400 uppercase text-[10px]">Is sheet mein koi data nahi hai (${sheetName.toUpperCase()})</div>`;
+        const previewHeaders = EMPTY_VIEW_HEADERS[sheetName];
+        if (previewHeaders?.length) {
+            container.innerHTML = renderEmptySheetPreview(
+                sheetName,
+                previewHeaders,
+                `Upload Excel to populate ${sheetName.toUpperCase()} data.`
+            );
+        } else {
+            container.innerHTML = `<div class="p-10 text-center font-bold text-slate-400 uppercase text-[10px]">Is sheet mein koi data nahi hai (${sheetName.toUpperCase()})</div>`;
+        }
         return;
     }
 
@@ -3746,6 +3993,60 @@ window.deleteHkrRow = async (index) => {
         let pendingExcelData = null;
         let pendingRakeNo = null;
 
+        function buildWebsiteRailoutRemark(railoutDateValue) {
+            const railoutFormatted = formatToDDMMYYYY_HHMM(railoutDateValue);
+            if (!railoutFormatted) return '';
+
+            let etaString = '';
+            const dateParts = railoutFormatted.split(' ')[0].split('-');
+            if (dateParts.length === 3) {
+                const day = parseInt(dateParts[0], 10);
+                const month = parseInt(dateParts[1], 10) - 1;
+                const year = parseInt(dateParts[2], 10);
+                const dateObj = new Date(year, month, day);
+
+                if (!isNaN(dateObj.getTime())) {
+                    dateObj.setDate(dateObj.getDate() + 4);
+                    const etaDay = String(dateObj.getDate()).padStart(2, '0');
+                    const etaMonth = String(dateObj.getMonth() + 1).padStart(2, '0');
+                    const etaYear = dateObj.getFullYear();
+                    etaString = ` ETA ${etaDay}-${etaMonth}-${etaYear} 00:00`;
+                }
+            }
+
+            return `RAILOUT FROM MUNDRA ON ${railoutFormatted}${etaString}`;
+        }
+
+        function buildWebsiteArrivalRemark(arrivalDateValue) {
+            const arrivalFormatted = formatToDDMMYYYY_HHMM(arrivalDateValue);
+            if (!arrivalFormatted) return '';
+            return `TRAIN ARRIVED ON ${arrivalFormatted} & UNLOADING DONE ${arrivalFormatted}`;
+        }
+
+        function isFormattedDateTimeValue(value) {
+            return /^\d{2}-\d{2}-\d{4}( \d{2}:\d{2})?$/.test(String(value || '').trim());
+        }
+
+        function isBulkRowMarkedArrived(arrivalDateValue) {
+            if (arrivalDateValue === null || arrivalDateValue === undefined) return false;
+            if (typeof arrivalDateValue === 'number') return arrivalDateValue > 0;
+
+            const rawText = String(arrivalDateValue).trim();
+            if (!rawText) return false;
+
+            const normalized = normalizeText(rawText).replace(/\s+/g, ' ');
+            return !['NOT ARRIVED', 'NOT-ARRIVED', 'PENDING', 'NA', 'N/A', '-', 'NO', 'NOT UPDATED'].includes(normalized);
+        }
+
+        function getBulkWebsiteHeaderIndexes(headers) {
+            return {
+                contIdx: findHeaderIndex(headers, [/^CONT/i, /CONT/i], -1),
+                trainIdx: findHeaderIndex(headers, [/TRAIN/i, /RAKE/i], -1),
+                railoutIdx: findHeaderIndex(headers, [/RAILOUT/i, /RAILING/i, /RAIL DATE/i], -1),
+                arrivalIdx: findHeaderIndex(headers, [/ARRIVAL/i, /ARRIVED/i], -1)
+            };
+        }
+
         const executeExcelUpdate = (rakeNo, railDateVal, jsonData) => {
             let matchCount = 0;
             jsonData.slice(10).forEach(exRow => {
@@ -3776,19 +4077,9 @@ window.deleteHkrRow = async (index) => {
                             }
                         }
 
-                        let etaString = '';
-                        if (dateObj && !isNaN(dateObj.getTime())) {
-                            const newDate = new Date(dateObj.getTime());
-                            newDate.setDate(newDate.getDate() + 4);
-                            const d = String(newDate.getDate()).padStart(2, '0');
-                            const m = String(newDate.getMonth() + 1).padStart(2, '0');
-                            const y = newDate.getFullYear();
-                            etaString = ` ETA ${d}-${m}-${y} 00:00`;
-                        }
-
                         rawSheets.website[webMatchIndex][4] = rakeNo;
                         rawSheets.website[webMatchIndex][8] = railDateFormatted;
-                        rawSheets.website[webMatchIndex][9] = `RAILOUT FROM MUNDRA ON ${railDateFormatted}${etaString}`;
+                        rawSheets.website[webMatchIndex][9] = buildWebsiteRailoutRemark(railDateFormatted);
                         matchCount++;
                     }
                 }
@@ -3873,21 +4164,7 @@ window.deleteHkrRow = async (index) => {
 
             const railingDate = manualDateTime.trim();
 
-            // Calculate ETA +4 days
-            const parts = railingDate.split(' ');
-            const datePart = parts[0].split('-');
-            const d = parseInt(datePart[0], 10);
-            const m = parseInt(datePart[1], 10) - 1;
-            const y = parseInt(datePart[2], 10);
-            const railDate = new Date(y, m, d);
-            const etaDate = new Date(railDate);
-            etaDate.setDate(etaDate.getDate() + 4);
-            const ed = String(etaDate.getDate()).padStart(2, '0');
-            const em = String(etaDate.getMonth() + 1).padStart(2, '0');
-            const ey = etaDate.getFullYear();
-            const etaStr = `${ed}-${em}-${ey} 00:00`;
-
-            const remarkFinal = `RAILOUT FROM MUNDRA ON ${railingDate} ETA ${etaStr}`;
+            const remarkFinal = buildWebsiteRailoutRemark(railingDate);
 
             if (!rawSheets.website || rawSheets.website.length === 0) {
                 rawSheets.website = [["UID","SR_NO","BILL_NO","CONTAINER_NO","RAKE_NO","STACK","SOURCE","DESTINATION","RAILING_DATE","REMARKS"]];
@@ -3895,7 +4172,7 @@ window.deleteHkrRow = async (index) => {
 
             let updateCount = 0;
             containers.forEach(item => {
-                const rakeNoFinal = `${trainNo}-${item.stackVal}`;
+                const rakeNoFinal = `${trainNo}${item.stackVal}`;
                 const rowIndex = rawSheets.website.findIndex(row => 
                     String(row[3] || '').trim().toUpperCase() === item.containerNo
                 );
@@ -3945,7 +4222,129 @@ window.deleteHkrRow = async (index) => {
             pendingExcelData = null;
             document.getElementById('manualRailDateInput').value = '';
         });
-        
+
+// ==========================================
+// BULK WEBSITE UPDATE (MULTIPLE TRAINS)
+// ==========================================
+const bulkWebsiteExcelInput = document.getElementById('bulkWebsiteExcelInput');
+if (bulkWebsiteExcelInput) {
+    bulkWebsiteExcelInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const bstr = evt.target.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+                if (jsonData.length < 2 || !hasRowValues(jsonData[0])) {
+                    alert("Bulk Website Excel mein header aur data rows dono hone chahiye.");
+                    return;
+                }
+
+                const headers = jsonData[0];
+                const { contIdx, trainIdx, railoutIdx, arrivalIdx } = getBulkWebsiteHeaderIndexes(headers);
+
+                if ([contIdx, trainIdx, railoutIdx, arrivalIdx].includes(-1)) {
+                    alert("Required headers missing.\nExpected: CONT_No., TRAIN No, Railout Date, Arrival Date");
+                    return;
+                }
+
+                ensureSheetHeaders('website');
+
+                let updatedCount = 0;
+                let arrivedCount = 0;
+                let railoutCount = 0;
+                let notFoundCount = 0;
+                let invalidCount = 0;
+                let skippedBlankCount = 0;
+
+                jsonData.slice(1).forEach(exRow => {
+                    const contNo = String(exRow[contIdx] || '').trim().toUpperCase();
+                    const trainNo = String(exRow[trainIdx] || '').trim().toUpperCase();
+                    const railoutRaw = exRow[railoutIdx];
+                    const arrivalRaw = exRow[arrivalIdx];
+
+                    if (!contNo) {
+                        skippedBlankCount++;
+                        return;
+                    }
+
+                    const rowIndex = rawSheets.website.findIndex(row =>
+                        String(row[3] || '').trim().toUpperCase() === contNo
+                    );
+
+                    if (rowIndex === -1) {
+                        notFoundCount++;
+                        return;
+                    }
+
+                    const railoutFormatted = formatToDDMMYYYY_HHMM(railoutRaw);
+                    if (!trainNo || !isFormattedDateTimeValue(railoutFormatted)) {
+                        invalidCount++;
+                        return;
+                    }
+
+                    let finalRemark = '';
+
+                    if (isBulkRowMarkedArrived(arrivalRaw)) {
+                        const arrivalFormatted = formatToDDMMYYYY_HHMM(arrivalRaw);
+                        if (!isFormattedDateTimeValue(arrivalFormatted)) {
+                            invalidCount++;
+                            return;
+                        }
+                        finalRemark = buildWebsiteArrivalRemark(arrivalFormatted);
+                        arrivedCount++;
+                    } else {
+                        finalRemark = buildWebsiteRailoutRemark(railoutFormatted);
+                        railoutCount++;
+                    }
+
+                    rawSheets.website[rowIndex][4] = trainNo;
+                    rawSheets.website[rowIndex][8] = railoutFormatted;
+                    rawSheets.website[rowIndex][9] = finalRemark;
+                    updatedCount++;
+                });
+
+                if (updatedCount === 0) {
+                    alert(
+                        `Bulk update mein koi row apply nahi hui.\n\n` +
+                        `Not Found: ${notFoundCount}\n` +
+                        `Invalid Rows: ${invalidCount}\n` +
+                        `Blank Containers: ${skippedBlankCount}`
+                    );
+                    return;
+                }
+
+                window.viewSheetData('website');
+                saveToCloud();
+                processCloudData();
+
+                const box = document.createElement('div');
+                box.innerHTML = `
+                    <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce text-center">
+                        BULK WEBSITE UPDATE SUCCESS<br>
+                        ${updatedCount} rows updated<br>
+                        Arrived: ${arrivedCount} | Not Arrived: ${railoutCount}<br>
+                        Not Found: ${notFoundCount} | Invalid: ${invalidCount}
+                    </div>`;
+                document.body.appendChild(box);
+                setTimeout(() => box.remove(), 6500);
+
+            } catch (err) {
+                console.error("Bulk website update error:", err);
+                alert("Bulk Website file processing error: " + err.message);
+            }
+        };
+
+        reader.readAsBinaryString(file);
+        e.target.value = '';
+    });
+}
+
 // ==========================================
 // UPDATE SINGLE STACK SUMMARY (WITH PRE-SAVE SUMMARY & ROBUST SCAN)
 // ==========================================
@@ -4057,17 +4456,7 @@ if (websiteExcelInput) {
                 const updatedContainers = [];
                 const notUpdatedContainers = [];
 
-                // ETA Calculation
-                let etaStr = '';
-                try {
-                    const datePart = formattedDate.split(' ')[0];
-                    const [d, m, y] = datePart.split('-').map(Number);
-                    const railDate = new Date(y, m - 1, d);
-                    const etaDate = new Date(railDate); 
-                    etaDate.setDate(etaDate.getDate() + 4);
-                    etaStr = ` ETA ${String(etaDate.getDate()).padStart(2,'0')}-${String(etaDate.getMonth()+1).padStart(2,'0')}-${etaDate.getFullYear()} 00:00`;
-                } catch (_) {}
-                const remarkFinal = `RAILOUT FROM MUNDRA ON ${formattedDate}${etaStr}`;
+                const remarkFinal = buildWebsiteRailoutRemark(formattedDate);
 
                 // --- MAIN LOOP ---
                 jsonData.slice(10).forEach(row => {
@@ -4271,10 +4660,10 @@ shipperExcelInput.addEventListener('change', async (e) => {
         const bstr = evt.target.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
-        if (jsonData.length < 2) {
-            alert("Excel में कोई डेटा रो नहीं मिली।");
+        if (!jsonData.length || !hasRowValues(jsonData[0])) {
+            alert("SHIPPER Excel mein header row nahi mili.");
             return;
         }
 
@@ -4283,16 +4672,17 @@ shipperExcelInput.addEventListener('change', async (e) => {
         const blIdx = 2;
         const consIdx = 3;
 
-        const internalHeaders = rawSheets.shipper[0];
+        normalizeRawSheets();
+        const internalHeaders = ensureSheetHeaders('shipper', jsonData[0]);
         if (!internalHeaders) {
             alert("SHIPPER sheet structure is missing headers.");
             return;
         }
 
-        const internalContIdx = 0;
-        const internalSizeIdx = internalHeaders.findIndex(h => /SIZE/i.test(String(h)));
-        const internalBlIdx = internalHeaders.findIndex(h => /BL/i.test(String(h)));
-        const internalConsIdx = internalHeaders.findIndex(h => /CONSIGNEE/i.test(String(h)));
+        const internalContIdx = findHeaderIndex(internalHeaders, [/CONT/i], 0);
+        const internalSizeIdx = findHeaderIndex(internalHeaders, [/SIZE/i], 1);
+        const internalBlIdx = findHeaderIndex(internalHeaders, [/^BL/i, /BL/i], 2);
+        const internalConsIdx = findHeaderIndex(internalHeaders, [/CONSIGNEE/i, /SHIPPER/i], 3);
 
         let addedCount = 0;
         let updatedCount = 0;
@@ -4566,9 +4956,16 @@ if (smtpExcelInput) {
             const bstr = evt.target.result;
             const wb = XLSX.read(bstr, { type: 'binary' });
             const ws = wb.Sheets[wb.SheetNames[0]];
-            const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
+            const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
             
-            if (jsonData.length < 2) return;
+            if (!jsonData.length || !hasRowValues(jsonData[0])) {
+                alert("SMTP Excel mein header row nahi mili.");
+                return;
+            }
+
+            normalizeRawSheets();
+            ensureSheetHeaders('smtp', jsonData[0]);
+            ensureSheetHeaders('website');
 
             let addedCount = 0;
             let transferCount = 0;
@@ -4576,10 +4973,6 @@ if (smtpExcelInput) {
             
             // CRITICAL FIX: Added 13 to this array
             const activeIndices = [1, 2, 3, 5, 9, 11, 13, 17, 18, 22, 23, 24, 26]; 
-
-            if (!rawSheets.website || rawSheets.website.length === 0) {
-                rawSheets.website = [["UID", "SR_NO", "BILL_NO", "CONTAINER_NO", "RAKE_NO", "STACK", "SOURCE", "DESTINATION", "RAILING_DATE", "REMARKS"]];
-            }
 
             jsonData.slice(1).forEach(exRow => {
                 const contNo = String(exRow[2] || '').trim().toUpperCase();
@@ -4708,9 +5101,79 @@ if (smtpExcelInput) {
         shipperSearch.addEventListener('input', () => {
             const headers = rawSheets.shipper[0];
             if(!headers) return;
-            const consIndex = headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE'));
+            const consIndex = findHeaderIndex(headers, [/CONSIGNEE/i, /SHIPPER/i], 3);
             renderShipperList([...new Set(rawSheets.shipper.slice(1).map(row => row[consIndex]))].filter(Boolean).sort(), consIndex);
         });
+
+        if (backupDataBtn) {
+            backupDataBtn.addEventListener('click', () => {
+                try {
+                    downloadCompleteBackup();
+                    showTopToast('&#10003; Complete backup downloaded', 'bg-teal-700', 4500);
+                } catch (err) {
+                    console.error("Backup download error:", err);
+                    alert("Backup download failed: " + err.message);
+                }
+            });
+        }
+
+        if (restoreDataInput) {
+            restoreDataInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const confirmed = confirm(
+                    "Restore this backup and overwrite current data?\n\n" +
+                    "This will replace HKR DATA, SHIPPER, SMTP and WEBSITE in the app and then sync to Firebase."
+                );
+
+                if (!confirmed) {
+                    e.target.value = '';
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = async (evt) => {
+                    try {
+                        const bstr = evt.target.result;
+                        const wb = XLSX.read(bstr, { type: 'binary' });
+                        const snapshot = getBackupWorkbookSnapshot(wb);
+
+                        if (!snapshot) {
+                            alert("Restore file invalid hai.\nRequired sheets: SHIPPER, SMTP, WEBSITE\nOptional: HKR DATA");
+                            return;
+                        }
+
+                        rawSheets = snapshot;
+                        normalizeRawSheets();
+                        ensureSheetHeaders('shipper');
+                        ensureSheetHeaders('smtp');
+                        ensureSheetHeaders('website');
+                        processCloudData();
+
+                        if (currentSheetInView) {
+                            window.viewSheetData(currentSheetInView);
+                        }
+
+                        const saveSuccess = await saveToCloud();
+                        showTopToast(
+                            saveSuccess
+                                ? '&#10003; Backup restored and synced'
+                                : '&#10003; Backup restored locally (cloud sync failed)',
+                            saveSuccess ? 'bg-cyan-700' : 'bg-amber-600',
+                            5000
+                        );
+                    } catch (err) {
+                        console.error("Restore data error:", err);
+                        alert("Restore failed: " + err.message);
+                    } finally {
+                        e.target.value = '';
+                    }
+                };
+
+                reader.readAsBinaryString(file);
+            });
+        }
 
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
@@ -4720,11 +5183,14 @@ if (smtpExcelInput) {
                 const bstr = evt.target.result;
                 const wb = XLSX.read(bstr, { type: 'binary' });
                 const findSheet = (name) => wb.SheetNames.find(s => s.toUpperCase() === name.toUpperCase());
+                const hkrSheet = findWorkbookSheet(wb, ['HKR DATA', 'HKR_DATA', 'HKR']);
                 rawSheets = {
                     shipper: XLSX.utils.sheet_to_json(wb.Sheets[findSheet('SHIPPER')], {header: 1}),
                     smtp: XLSX.utils.sheet_to_json(wb.Sheets[findSheet('SMTP')], {header: 1}),
-                    website: XLSX.utils.sheet_to_json(wb.Sheets[findSheet('WEBSITE')], {header: 1})
+                    website: XLSX.utils.sheet_to_json(wb.Sheets[findSheet('WEBSITE')], {header: 1}),
+                    hkrHmrFiltered: hkrSheet ? XLSX.utils.sheet_to_json(hkrSheet, { defval: '' }) : []
                 };
+                normalizeRawSheets();
                 saveToCloud(); processCloudData();
             };
             reader.readAsBinaryString(file);
@@ -6010,7 +6476,7 @@ function openShipperDeleteModal(deleteMode) {
     const isBlMode = deleteMode === 'bl';
     const targetIndex = isBlMode
         ? findHeaderIndex(headers, [/^BL/i, /BL/i], 2)
-        : findHeaderIndex(headers, [/CONSIGNEE/i], -1);
+        : findHeaderIndex(headers, [/CONSIGNEE/i, /SHIPPER/i], -1);
 
     if (targetIndex === -1) {
         alert(isBlMode ? "BL column not found in Shipper sheet." : "Consignee column not found in Shipper sheet.");
