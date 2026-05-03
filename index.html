@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -745,9 +746,10 @@ table {
         <thead>
             <tr class="bg-slate-900 text-white font-bold uppercase tracking-wider">
                 
-                <th class="sticky left-0 z-20 px-1.5 py-2 text-left bg-slate-900 border-r border-slate-600 w-[180px] min-w-[180px] shadow-lg text-[9px] leading-tight">
+                <th class="sticky left-0 z-20 px-1.5 py-2 text-left bg-slate-900 border-r border-slate-600 w-[210px] min-w-[210px] shadow-lg text-[9px] leading-tight">
                     BL NO (LINE) <br> 
                     <span class="text-[9px] text-slate-400 font-normal normal-case">(Total Containers)</span>
+                    <br><span class="text-[8px] text-emerald-300 font-bold uppercase">Selection [ ]</span>
                 </th>
 
                 <th class="px-1.5 py-2 border-r border-slate-700 w-[110px] min-w-[110px] text-[9px] leading-tight break-words whitespace-normal">
@@ -1367,6 +1369,9 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
         return; 
     }
 
+    const selectedBLs = getSelectedReportBLSet();
+    if (selectedBLs.size === 0) return;
+
     const websiteData = rawSheets.website || [];
     const smtpData = rawSheets.smtp || [];
     const wsHeaders = websiteData[0].map(h => String(h).trim().toUpperCase());
@@ -1418,6 +1423,7 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
         }
         
         const blNo = String(row[idxBL] || '').trim().toUpperCase();
+        if (!selectedBLs.has(blNo)) return;
         const railDate = String(row[idxDate] || '').trim().toUpperCase();
         const isRailed = !(railDate === 'PENDING' || railDate === '' || railDate === '-');
         
@@ -1576,17 +1582,8 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
 // STEP 2: FIXED DUPLICATE-FREE EMAIL & PDF LOGIC
 // ────────────────────────────────────────────────
 document.getElementById('copyEmailBtn').addEventListener('click', async () => {
-    // --- DUPLICATE REMOVAL LOGIC ---
-    const rawList = [...(globalRailedGroups || []), ...(globalPendingGroups || [])];
-    const uniqueMap = new Map();
-    rawList.forEach(item => {
-        if (!uniqueMap.has(item.blNo)) {
-            uniqueMap.set(item.blNo, item);
-        }
-    });
-    const blList = Array.from(uniqueMap.values());
+    const blList = getSelectedReportGroups();
     if (blList.length === 0) {
-        alert("Pehle report generate karein.");
         return;
     }
     // Force copy mode (no confirmation, no letterhead for copy)
@@ -1622,16 +1619,11 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
         const railedRows = allBlRows.filter(row => !['PENDING', ''].includes(String(row[idxDate] || '').trim().toUpperCase()));
         const pendingRows = allBlRows.filter(row => String(row[idxDate] || '').trim().toUpperCase() === 'PENDING' || String(row[idxDate] || '').trim() === '');
         const processedRows = railedRows.map(row => {
-            const remarkText = String(row[idxRemarks] || '').toUpperCase();
-            let statusText = '-', statusType = 2, statusColor = "#1e40af", bgColor = "transparent";
-            if (remarkText.includes("TRAIN ARRIVED ON")) {
-                const arrivedMatch = remarkText.match(/ARRIVED ON\s+\d{2}-\d{2}-\d{4}(\s+\d{2}:\d{2})?/);
-                statusText = arrivedMatch ? arrivedMatch[0] : 'TRAIN ARRIVED';
+            const remarkText = String(row[idxRemarks] || '').trim();
+            const remarkUpper = remarkText.toUpperCase();
+            let statusText = remarkText || '-', statusType = 2, statusColor = "#1e40af", bgColor = "transparent";
+            if (remarkUpper.includes("TRAIN ARRIVED ON")) {
                 statusType = 1; statusColor = "#15803d"; bgColor = "#dcfce7";
-            } else if (remarkText.includes("ETA")) {
-                const afterEta = remarkText.split("ETA")[1];
-                const dateMatch = afterEta.match(/(\d{2}-\d{2}-\d{4})/);
-                statusText = dateMatch ? `Expected Arrival on: ${dateMatch[1]}` : 'IN TRANSIT';
             }
             return { ...row, statusText, statusType, statusColor, bgColor };
         });
@@ -1648,16 +1640,16 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
                     </td>
                 </tr>
             </table><br>`;
-        htmlContent += `<table border="1" cellspacing="0" cellpadding="4" style="border-collapse: collapse; font-size: 8pt; width: 610px; table-layout: fixed; margin-bottom: 20px; overflow: hidden;">
+        htmlContent += `<table border="1" cellspacing="0" cellpadding="2" style="border-collapse: collapse; font-size: 5.5pt; width: 760px; table-layout: fixed; margin-bottom: 16px; overflow: hidden;">
             <thead>
                 <tr style="background-color: #ffd966; font-weight: bold; text-align: center;">
-                    <th style="width: 30px; overflow: hidden; white-space: nowrap;">Sr</th>
-                    <th style="width: 100px; overflow: hidden; white-space: nowrap;">BL Number</th>
-                    <th style="width: 90px; overflow: hidden; white-space: nowrap;">Container</th>
-                    <th style="width: 50px; overflow: hidden; white-space: nowrap;">Size</th>
-                    <th style="width: 90px; overflow: hidden; white-space: nowrap;">Train</th>
-                    <th style="width: 100px; overflow: hidden; white-space: nowrap;">Railout Date</th>
-                    <th style="width: 300px; overflow: hidden; white-space: nowrap;">ETA & Current Status</th>
+                    <th style="width: 24px; overflow: hidden; white-space: nowrap;">Sr</th>
+                    <th style="width: 84px; overflow: hidden; white-space: nowrap;">BL Number</th>
+                    <th style="width: 82px; overflow: hidden; white-space: nowrap;">Container</th>
+                    <th style="width: 32px; overflow: hidden; white-space: nowrap;">Size</th>
+                    <th style="width: 46px; overflow: hidden; white-space: nowrap;">Train</th>
+                    <th style="width: 88px; overflow: hidden; white-space: nowrap;">Railout Date</th>
+                    <th style="width: 404px; overflow: hidden; white-space: nowrap;">ETA & Current Status : Remarks</th>
                 </tr>
             </thead>
             <tbody>`;
@@ -1673,8 +1665,8 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
                 <td>${String(row[idxCont]).trim()}</td>
                 <td>${getContSize(String(row[idxCont]).trim())}"</td>
                 <td>${String(row[idxRake]).trim().split('(')[0]}</td>
-                <td>${typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(row[idxDate]) : row[idxDate]}</td>
-                <td bgcolor="${row.bgColor}" style="font-weight: bold; color: ${row.statusColor}; font-size: 7pt;">${row.statusText}</td>
+                <td style="white-space: nowrap;">${escapeHtml(typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(row[idxDate]) : row[idxDate]).replace(/-/g, '&#8209;')}</td>
+                <td bgcolor="${row.bgColor}" style="font-weight: bold; color: ${row.statusColor}; font-size: 5.5pt; line-height: 1.1; word-break: normal; overflow-wrap: normal;">${escapeHtml(row.statusText)}</td>
             </tr>`;
         });
         pendingRows.forEach(pRow => {
@@ -1683,7 +1675,7 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
                 String(sRow[2] || '').trim().toUpperCase() === contNo &&
                 String(sRow[1] || '').trim().toUpperCase() === "UNDER SCANNING"
             );
-            let sText = isScanning ? "UNDER SCANNING" : "Pending Railout";
+            let sText = isScanning ? "UNDER SCANNING" : "Container Expected to move in very next available train.";
             let sCol = isScanning ? "#990000" : "red";
             htmlContent += `<tr style="text-align: center; color: red;">
                 <td>${globalSerial++}</td>
@@ -1691,8 +1683,8 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
                 <td>${contNo}</td>
                 <td>${getContSize(contNo)}"</td>
                 <td>Pending</td>
-                <td>-</td>
-                <td style="font-weight: bold; color: ${sCol}; font-size: 7pt;">${sText}</td>
+                <td style="white-space: nowrap;">-</td>
+                <td style="font-weight: bold; color: ${sCol}; font-size: 5.5pt; line-height: 1.1; word-break: normal; overflow-wrap: normal;">${escapeHtml(sText)}</td>
             </tr>`;
         });
         htmlContent += `</tbody></table></div>`;
@@ -1725,17 +1717,8 @@ document.getElementById('copyEmailBtn').addEventListener('click', async () => {
     }
 });
 document.getElementById('downloadAndCopyBtn').addEventListener('click', async () => {
-    // --- DUPLICATE REMOVAL LOGIC ---
-    const rawList = [...(globalRailedGroups || []), ...(globalPendingGroups || [])];
-    const uniqueMap = new Map();
-    rawList.forEach(item => {
-        if (!uniqueMap.has(item.blNo)) {
-            uniqueMap.set(item.blNo, item);
-        }
-    });
-    const blList = Array.from(uniqueMap.values());
+    const blList = getSelectedReportGroups();
     if (blList.length === 0) {
-        alert("Pehle report generate karein.");
         return;
     }
     // Force download mode for PDF (with letterhead)
@@ -2724,6 +2707,8 @@ function applyFilters() {
         const tagDisplay = tags ? `<span class="text-[9px] font-black text-indigo-700 ml-1">(${tags})</span>` : '';
         const sizeLabel = `(${bl.stats.total}X${bl.stats.s40 > 0 ? '40' : '20'})${tagDisplay}`;
         const blDisplay = `${bl.blNo} (${bl.line})`;
+        const blKey = normalizeBLKey(bl.blNo);
+        const checkedAttr = selectedReportBLs.has(blKey) ? 'checked' : '';
 
         // --- NEW DISPLAY LOGIC (UPDATED) ---
        let vesselDisplay = "";
@@ -2746,15 +2731,16 @@ if (bl.isAnySmtp) {
 }
         return `
             <tr class="border-b border-slate-200 hover:bg-slate-50 transition-colors">
-                <td class="px-2 py-1 border-r border-slate-300 min-w-[160px] relative overflow-hidden group">
+                <td class="px-2 py-1 border-r border-slate-300 min-w-[190px] relative overflow-hidden group">
                     <div class="absolute top-0 left-0 h-full bg-blue-50 transition-all duration-1000 ease-out z-0 pointer-events-none" style="width: ${progressPercent}%"></div>
                     <div class="relative z-10 flex flex-col">
                         <div class="flex justify-between items-center mb-0.5">
-                            <span class="font-bold text-slate-900 truncate pr-1">
-                                <span class="text-blue-800 text-[8.5px] font-black mr-1">${progressPercent}%</span>
-                                ${blDisplay}
-                                <span class="text-black-600 text-[9px] uppercase font-bold ml-1">${sizeLabel}</span>
-                            </span>
+                            <label class="font-bold text-slate-900 pr-1 flex items-center gap-1.5 min-w-0 cursor-pointer">
+                                <input type="checkbox" class="report-bl-checkbox w-3.5 h-3.5 accent-emerald-600 shrink-0" data-bl="${escapeHtmlAttr(blKey)}" ${checkedAttr}>
+                                <span class="text-blue-800 text-[8.5px] font-black shrink-0">${progressPercent}%</span>
+                                <span class="truncate">${blDisplay}</span>
+                                <span class="text-black-600 text-[9px] uppercase font-bold ml-1 shrink-0">${sizeLabel}</span>
+                            </label>
                         </div>
                         <div class="w-full h-0 bg-slate-200/50 rounded-full overflow-hidden">
                             <div class="h-full bg-green-400" style="width: ${progressPercent}%"></div>
@@ -2781,6 +2767,15 @@ if (bl.isAnySmtp) {
             <td class="px-1.5 py-1.5 text-center text-xs font-bold text-orange-700 border-r border-slate-300">${gT}</td>
             <td class="px-1.5 py-1.5 text-center text-xs font-bold text-rose-700">${gP}</td>
         </tr>`;
+
+    document.querySelectorAll('.report-bl-checkbox').forEach(cb => {
+        cb.addEventListener('change', (event) => {
+            const blKey = normalizeBLKey(event.currentTarget.dataset.bl);
+            if (!blKey) return;
+            if (event.currentTarget.checked) selectedReportBLs.add(blKey);
+            else selectedReportBLs.delete(blKey);
+        });
+    });
 }
 
 // ==========================================
@@ -2789,6 +2784,40 @@ if (bl.isAnySmtp) {
 // Function ke bahar declare karein taaki ye global ban jayein
 var globalRailedGroups = []; 
 var globalPendingGroups = [];
+var selectedReportBLs = new Set();
+
+function normalizeBLKey(value) {
+    return String(value || '').trim().toUpperCase();
+}
+
+function escapeHtmlAttr(value) {
+    return String(value || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function getUniqueCurrentReportGroups() {
+    const rawList = [...(globalRailedGroups || []), ...(globalPendingGroups || [])];
+    const uniqueMap = new Map();
+    rawList.forEach(item => {
+        const key = normalizeBLKey(item.blNo);
+        if (key && !uniqueMap.has(key)) {
+            uniqueMap.set(key, item);
+        }
+    });
+    return Array.from(uniqueMap.values());
+}
+
+function getSelectedReportGroups() {
+    const blList = getUniqueCurrentReportGroups().filter(item => selectedReportBLs.has(normalizeBLKey(item.blNo)));
+    if (blList.length === 0) {
+        alert("Please select at least one BL first.");
+    }
+    return blList;
+}
+
+function getSelectedReportBLSet() {
+    const selected = new Set(getSelectedReportGroups().map(item => normalizeBLKey(item.blNo)));
+    return selected;
+}
 
 function renderDetailedBreakdown(groups) {
     // global variables ko update karein (const hata diya gaya hai)
@@ -3073,6 +3102,7 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
    
     window.selectedVessels = [];
     document.getElementById('vesselDropdownLabel').innerText = "Select Vessels";
+    selectedReportBLs.clear();
    
     // नया: पुराना डेटा तुरंत हटाने के लिए
     document.getElementById('reportRows').innerHTML = '';
