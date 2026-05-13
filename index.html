@@ -1,5 +1,3 @@
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -868,6 +866,30 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
     const searchVal = e.target.value.trim().toUpperCase();
     const resultBox = document.getElementById('smtpConsigneeBox');
     const nameDisplay = document.getElementById('smtpConsigneeName');
+    const missingImporterName = 'Importer Name Not Updated';
+
+    const pickFirst = (row, indexes) => {
+        for (const idx of indexes) {
+            if (idx >= 0 && row[idx] !== undefined && row[idx] !== null && String(row[idx]).trim() !== '') {
+                return String(row[idx]).trim();
+            }
+        }
+        return '';
+    };
+
+    const findShipperConsignee = (contNo, blNo) => {
+        if (!rawSheets.shipper || rawSheets.shipper.length <= 1) return '';
+        const shipHeaders = rawSheets.shipper[0] || [];
+        const shipContIdx = findHeaderIndex(shipHeaders, [/CONT/i], 0);
+        const shipBlIdx = findHeaderIndex(shipHeaders, [/BL/i], 2);
+        const shipConsIdx = findHeaderIndex(shipHeaders, [/CONSIGNEE/i, /SHIPPER/i], 3);
+        const match = rawSheets.shipper.slice(1).find(row => {
+            const rowCont = String(row[shipContIdx] || '').trim().toUpperCase();
+            const rowBl = String(row[shipBlIdx] || '').trim().toUpperCase();
+            return (contNo && rowCont === contNo) || (blNo && rowBl === blNo);
+        });
+        return match ? String(match[shipConsIdx] || '').trim() : '';
+    };
 
     // Clear previous content
     nameDisplay.innerHTML = '';
@@ -876,27 +898,91 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
     resultBox.className = 'p-2 bg-white rounded-lg border-2 hidden';
     
     // 3 characters minimum
-    if (searchVal.length >= 3 && rawSheets.smtp && rawSheets.smtp.length > 1) {
+    if (searchVal.length >= 3) {
         
-        // Collect ALL matching rows
-        const matches = rawSheets.smtp.slice(1).filter(row => {
-            const bl = String(row[9] || '').toUpperCase();
-            const cont = String(row[2] || '').toUpperCase();
-            const consignee = String(row[24] || '').toUpperCase();
-            return bl.includes(searchVal) || cont.includes(searchVal) || consignee.includes(searchVal);
-        });
+        // Collect matching rows from SMTP first, then SHIPPER fallback.
+        const matches = [];
+        const seenKeys = new Set();
+
+        if (rawSheets.smtp && rawSheets.smtp.length > 1) {
+            const smtpHeaders = rawSheets.smtp[0] || [];
+            const smtpContIdx = findHeaderIndex(smtpHeaders, [/^CONT/i, /CONT.*NO/i], -1);
+            const smtpBlIdx = findHeaderIndex(smtpHeaders, [/^BL/i, /BL.*NO/i, /BILL/i], -1);
+            const smtpConsIdx = findHeaderIndex(smtpHeaders, [/CONSIGNEE/i, /SHIPPER/i], -1);
+            const smtpSizeIdx = findHeaderIndex(smtpHeaders, [/^SIZE$/i, /SIZE/i], -1);
+            const smtpVesselIdx = findHeaderIndex(smtpHeaders, [/DISCH.*VSL/i, /VESSEL/i], -1);
+            const smtpHandoverIdx = findHeaderIndex(smtpHeaders, [/HANDOVER/i, /TP.*SUB/i, /TP.*NOTING/i, /DISCH.*DT/i], -1);
+
+            rawSheets.smtp.slice(1).forEach(row => {
+                const bl = pickFirst(row, [smtpBlIdx, 9, 7]).toUpperCase();
+                const cont = pickFirst(row, [smtpContIdx, 2, 0]).toUpperCase();
+                const sizeRaw = pickFirst(row, [smtpSizeIdx, 3, 1]);
+                const vesselRaw = pickFirst(row, [smtpVesselIdx, 5, 3]);
+                const handoverRaw = pickFirst(row, [smtpHandoverIdx, 18, 17, 15, 5]);
+                const smtpConsigneeRaw = pickFirst(row, [smtpConsIdx, 24]);
+                const shipperConsigneeRaw = findShipperConsignee(cont, bl);
+                const consigneeRaw = smtpConsigneeRaw || shipperConsigneeRaw || missingImporterName;
+                const consignee = String(consigneeRaw || '').trim().toUpperCase();
+                if (bl.includes(searchVal) || cont.includes(searchVal) || consignee.includes(searchVal)) {
+                    if (cont && (smtpContIdx !== 2 || !String(row[2] || '').trim())) row[2] = cont;
+                    if (sizeRaw && (smtpSizeIdx !== 3 || !String(row[3] || '').trim())) row[3] = sizeRaw;
+                    if (vesselRaw && (smtpVesselIdx !== 5 || !String(row[5] || '').trim())) row[5] = vesselRaw;
+                    if (bl && (smtpBlIdx !== 9 || !String(row[9] || '').trim())) row[9] = bl;
+                    if (handoverRaw && (smtpHandoverIdx !== 18 || !String(row[18] || '').trim())) row[18] = handoverRaw;
+                    if (!String(row[24] || '').trim()) row[24] = consigneeRaw;
+                    const key = `${cont}||${bl}`;
+                    seenKeys.add(key);
+                    matches.push({
+                        row,
+                        source: 'smtp',
+                        consIndex: 24,
+                        contNo: cont,
+                        blNo: bl,
+                        consignee: consigneeRaw,
+                        vesselName: vesselRaw,
+                        handoverDate: handoverRaw
+                    });
+                }
+            });
+        }
+
+        if (rawSheets.shipper && rawSheets.shipper.length > 1) {
+            rawSheets.shipper.slice(1).forEach(row => {
+                const bl = String(row[2] || '').trim().toUpperCase();
+                const cont = String(row[0] || '').trim().toUpperCase();
+                const consigneeRaw = String(row[3] || '').trim() || missingImporterName;
+                const consignee = consigneeRaw.toUpperCase();
+                const key = `${cont}||${bl}`;
+                if (!seenKeys.has(key) && (bl.includes(searchVal) || cont.includes(searchVal) || consignee.includes(searchVal))) {
+                    if (!String(row[3] || '').trim()) row[3] = consigneeRaw;
+                    seenKeys.add(key);
+                    matches.push({ row, source: 'shipper', consIndex: 3, contNo: cont, blNo: bl, consignee: consigneeRaw });
+                }
+            });
+        }
 
         // Get unique consignees with vessel and handover info
         const consigneeStats = new Map();
         
-        matches.forEach(row => {
-            const consignee = String(row[24] || '').trim();
-            const contNo = String(row[2] || '').trim().toUpperCase();
-            const vesselName = String(row[5] || '').trim();
-            const handoverDate = formatToDDMMYYYY(row[18] || row[17] || '');
-            const blNo = String(row[9] || '').trim();
+        matches.forEach(match => {
+            const row = match.row;
+            const consignee = match.consignee || missingImporterName;
+            const contNo = match.contNo;
+            const blNo = match.blNo;
+            const smtpRow = match.source === 'smtp'
+                ? row
+                : (rawSheets.smtp || []).find(s => String(s[2] || '').trim().toUpperCase() === contNo);
+            const hkrRow = (!smtpRow && rawSheets.hkrHmrFiltered)
+                ? rawSheets.hkrHmrFiltered.find(h => String(h.ctr_no || '').trim().toUpperCase() === contNo)
+                : null;
+            const vesselName = smtpRow
+                ? (match.vesselName || String(smtpRow[5] || smtpRow[3] || '').trim())
+                : (hkrRow ? `NOT HANDOVER (${String(hkrRow.vessel_name || '').trim() || 'HKR'})` : 'NOT HANDOVER');
+            const handoverDate = smtpRow
+                ? formatToDDMMYYYY(match.handoverDate || smtpRow[18] || smtpRow[17] || '')
+                : (hkrRow ? formatToDDMMYYYY(hkrRow.eta_dttm || '') : 'N/A');
             
-            if (!consignee) return;
+            if (!consignee) match.consignee = missingImporterName;
             
             // Check if this container is pending in website data
             let isPending = true;
@@ -919,6 +1005,7 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
                     vessel: vesselName || 'UNKNOWN VESSEL',
                     handover: handoverDate || 'N/A',
                     sampleBL: blNo,
+                    consIndex: match.consIndex,
                     total: 0,
                     pending: 0,
                     railed: 0,
@@ -983,7 +1070,8 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
                     <div class="suggestion-item p-2 mb-1.5 ${bgColor} border border-slate-200 rounded hover:bg-yellow-400 hover:text-black cursor-pointer text-[9px]" 
                          data-consignee="${data.name.replace(/'/g, "\\'")}"
                          data-vessel="${data.vessel}"
-                         data-handover="${data.handover}">
+                         data-handover="${data.handover}"
+                         data-cons-index="${data.consIndex}">
                         
                         <!-- Consignee Name (Bold) -->
                         <div class="font-bold text-[10px] uppercase">${data.name}</div>
@@ -1013,6 +1101,7 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
                     const consignee = this.getAttribute('data-consignee');
                     const vessel = this.getAttribute('data-vessel');
                     const handover = this.getAttribute('data-handover');
+                    const consIndex = Number(this.getAttribute('data-cons-index') || 24);
                     
                     selectedShipper = consignee;
                     document.getElementById('activeShipperName').innerText = consignee;
@@ -1020,7 +1109,7 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
                     document.getElementById('reportContainer').classList.remove('hidden');
 
                     // First generate the report
-                    processAndRenderReport(24, true);
+                    processAndRenderReport(consIndex, true);
                     
                     // THEN filter to show ONLY the selected vessel
                     setTimeout(() => {
