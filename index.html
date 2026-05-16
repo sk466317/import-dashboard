@@ -621,6 +621,11 @@ table {
                 <i data-lucide="database" class="w-3 h-3"></i>
                 UPDATE DATA
             </button>
+<button id="smtpReportBtn"
+        class="topbar-action bg-cyan-700 hover:bg-cyan-800 text-white">
+    <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+    SMTP REPORT
+</button>
 <button id="forecastPendencyBtn" 
         class="topbar-action bg-purple-600 hover:bg-purple-700 text-white">
     <i data-lucide="eye" class="w-3.5 h-3.5"></i>
@@ -5836,6 +5841,484 @@ document.getElementById('runningTrainsBtn').addEventListener('click', () => {
     lucide.createIcons();
 });
 // ────────────────────────────────────────────────────────────────
+// SMTP PENDING REPORT BUTTON LOGIC
+// -----------------------------------------------------------------------------
+function cleanSmtpReportText(value, fallback = '-') {
+    const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+    return text || fallback;
+}
+
+function cleanSmtpConsigneeName(value) {
+    let text = cleanSmtpReportText(value, 'TO ORDER').toUpperCase();
+    text = text
+        .replace(/^M[\/.\s-]*S[.\s-]*/i, 'M/S ')
+        .replace(/\s*&\s*/g, ' & ')
+        .replace(/\s*,\s*/g, ', ')
+        .replace(/\s+PVT\.?\s+LTD\.?$/i, ' PRIVATE LIMITED')
+        .replace(/\s+LTD\.?$/i, ' LIMITED')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return text || 'TO ORDER';
+}
+
+function getSmtpReportDateTime(value) {
+    if (!value) return 0;
+    if (value instanceof Date && !isNaN(value.getTime())) return value.getTime();
+
+    const numVal = parseFloat(value);
+    if (!isNaN(numVal) && isFinite(numVal) && numVal > 40000) {
+        const utcDays = numVal - 25569;
+        const utcValue = utcDays * 86400 * 1000;
+        const tzOffset = new Date().getTimezoneOffset() * 60 * 1000;
+        return new Date(utcValue + tzOffset).getTime();
+    }
+
+    const raw = String(value).trim();
+    const parts = raw.split(/[-.\/\s:]+/).filter(Boolean);
+    if (parts.length >= 3) {
+        let day = parseInt(parts[0], 10);
+        let month = parseInt(parts[1], 10) - 1;
+        let year = parseInt(parts[2], 10);
+        const hour = parts.length > 3 ? parseInt(parts[3], 10) || 0 : 0;
+        const minute = parts.length > 4 ? parseInt(parts[4], 10) || 0 : 0;
+        if (year < 100) year += 2000;
+
+        const parsed = new Date(year, month, day, hour, minute);
+        if (!isNaN(parsed.getTime())) return parsed.getTime();
+    }
+
+    const nativeTime = Date.parse(raw);
+    return isNaN(nativeTime) ? 0 : nativeTime;
+}
+
+function formatSmtpReportDate(value) {
+    const formatted = typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(value) : cleanSmtpReportText(value, '');
+    return cleanSmtpReportText(formatted, '-');
+}
+
+function pickSmtpReportCell(row, indices, fallback = '') {
+    if (!Array.isArray(row)) return fallback;
+    for (const idx of indices) {
+        if (idx === -1 || idx === undefined || idx === null) continue;
+        const value = row[idx];
+        if (String(value ?? '').trim() !== '') return value;
+    }
+    return fallback;
+}
+
+function buildSmtpPendingReportRows() {
+    const smtpRows = Array.isArray(rawSheets.smtp) ? rawSheets.smtp : [];
+    const websiteRows = Array.isArray(rawSheets.website) ? rawSheets.website : [];
+    const shipperRows = Array.isArray(rawSheets.shipper) ? rawSheets.shipper : [];
+    const hkrRows = Array.isArray(rawSheets.hkrHmrFiltered) ? rawSheets.hkrHmrFiltered : [];
+
+    if (websiteRows.length <= 1) return [];
+
+    const smtpHeaders = smtpRows[0] || [];
+    const webHeaders = websiteRows[0] || [];
+    const shipHeaders = shipperRows[0] || [];
+
+    const sContIdx = findHeaderIndex(smtpHeaders, [/^CONT/i, /CONT.*NO/i], 2);
+    const sBlIdx = findHeaderIndex(smtpHeaders, [/^BL/i, /BL.*NO/i, /BILL/i], 9);
+    const sSizeIdx = findHeaderIndex(smtpHeaders, [/^SIZE$/i, /SIZE/i], 3);
+    const sVesselIdx = findHeaderIndex(smtpHeaders, [/DISCH.*VSL/i, /DISCH.*VESSEL/i, /VESSEL/i, /VSL/i], 5);
+    const sSmtpNoIdx = findHeaderIndex(smtpHeaders, [/SMTP/i], 13);
+    const sTpIdx = findHeaderIndex(smtpHeaders, [/TP.*SUBMITTING/i, /TP.*SUB/i, /TP.*NOTING/i, /HANDOVER/i], 18);
+    const sIcdIdx = findHeaderIndex(smtpHeaders, [/ICD/i, /DESTINATION/i, /^DEST/i], 11);
+    const sRemarksIdx = findHeaderIndex(smtpHeaders, [/REMARK/i], 22);
+    const sLineIdx = findHeaderIndex(smtpHeaders, [/^LINE$/i, /LINE/i], 23);
+    const sConsIdx = findHeaderIndex(smtpHeaders, [/CONSIGNEE/i, /SHIPPER/i], 24);
+
+    const wContIdx = findHeaderIndex(webHeaders, [/CONTAINER/i, /^CONT/i], 3);
+    const wBlIdx = findHeaderIndex(webHeaders, [/BILL/i, /^BL/i], 2);
+    const wRailIdx = findHeaderIndex(webHeaders, [/RAILING/i, /RAIL.*DATE/i, /RAILOUT/i], 8);
+    const wDestIdx = findHeaderIndex(webHeaders, [/DESTINATION/i, /^DEST/i, /ICD/i], 7);
+    const wRemarksIdx = findHeaderIndex(webHeaders, [/REMARK/i], 9);
+
+    const shContIdx = findHeaderIndex(shipHeaders, [/^CONT/i, /CONT.*NO/i], 0);
+    const shSizeIdx = findHeaderIndex(shipHeaders, [/^SIZE$/i, /SIZE/i], 1);
+    const shBlIdx = findHeaderIndex(shipHeaders, [/^BL/i, /BL.*NO/i, /BILL/i], 2);
+    const shConsIdx = findHeaderIndex(shipHeaders, [/CONSIGNEE/i, /SHIPPER/i], 3);
+
+    const smtpByCont = new Map();
+    const smtpByContBl = new Map();
+    smtpRows.slice(1).forEach(row => {
+        const cont = normalizeText(pickSmtpReportCell(row, [sContIdx, 2]));
+        const bl = normalizeText(pickSmtpReportCell(row, [sBlIdx, 9]));
+        if (!cont) return;
+        if (!smtpByCont.has(cont)) smtpByCont.set(cont, row);
+        if (bl) smtpByContBl.set(buildContBlKey(cont, bl), row);
+    });
+
+    const shipperByCont = new Map();
+    const shipperByContBl = new Map();
+    shipperRows.slice(1).forEach(row => {
+        const cont = normalizeText(pickSmtpReportCell(row, [shContIdx, 0]));
+        const bl = normalizeText(pickSmtpReportCell(row, [shBlIdx, 2]));
+        if (!cont) return;
+        if (!shipperByCont.has(cont)) shipperByCont.set(cont, row);
+        if (bl) shipperByContBl.set(buildContBlKey(cont, bl), row);
+    });
+
+    const hkrRemarkByCont = new Map();
+    hkrRows.forEach(row => {
+        const cont = normalizeText(row?.ctr_no ?? row?.container_no ?? row?.containerNo ?? row?.[2]);
+        const remark = cleanSmtpReportText(row?.assigned_remark ?? row?.assignedRemark ?? row?.remark ?? row?.[6], '');
+        if (cont && remark) hkrRemarkByCont.set(cont, remark.toUpperCase());
+    });
+
+    const seen = new Set();
+    const reportRows = [];
+
+    websiteRows.slice(1).forEach(row => {
+        const railStatus = normalizeText(pickSmtpReportCell(row, [wRailIdx, 8]));
+        const isPending = !railStatus || ['PENDING', '-', 'N/A', 'NOT RAILOUT'].includes(railStatus);
+        if (!isPending) return;
+
+        const contNo = normalizeText(pickSmtpReportCell(row, [wContIdx, 3]));
+        const websiteBl = normalizeText(pickSmtpReportCell(row, [wBlIdx, 2]));
+        if (!contNo) return;
+
+        const reportKey = buildContBlKey(contNo, websiteBl || contNo);
+        if (seen.has(reportKey)) return;
+        seen.add(reportKey);
+
+        const smtpRow = smtpByContBl.get(buildContBlKey(contNo, websiteBl)) || smtpByCont.get(contNo) || null;
+        const shipperRow = shipperByContBl.get(buildContBlKey(contNo, websiteBl)) || shipperByCont.get(contNo) || null;
+        const tpRaw = pickSmtpReportCell(smtpRow, [sTpIdx, 18, 17], '');
+
+        reportRows.push({
+            consignee: cleanSmtpConsigneeName(
+                pickSmtpReportCell(smtpRow, [sConsIdx, 24], '') ||
+                pickSmtpReportCell(shipperRow, [shConsIdx, 3], '')
+            ),
+            blNo: cleanSmtpReportText(pickSmtpReportCell(smtpRow, [sBlIdx, 9], '') || websiteBl, '-'),
+            contNo: contNo,
+            size: cleanSmtpReportText(pickSmtpReportCell(smtpRow, [sSizeIdx, 3], '') || pickSmtpReportCell(shipperRow, [shSizeIdx, 1], ''), '-'),
+            line: cleanSmtpReportText(pickSmtpReportCell(smtpRow, [sLineIdx, 23], ''), '-'),
+            vessel: cleanSmtpReportText(pickSmtpReportCell(smtpRow, [sVesselIdx, 5], ''), '-'),
+            smtpNo: cleanSmtpReportText(pickSmtpReportCell(smtpRow, [sSmtpNoIdx, 13], ''), '-'),
+            tpDate: formatSmtpReportDate(tpRaw),
+            icdDestination: cleanSmtpReportText(pickSmtpReportCell(row, [wDestIdx, 7], '') || pickSmtpReportCell(smtpRow, [sIcdIdx, 11], ''), '-'),
+            remarks: cleanSmtpReportText(pickSmtpReportCell(row, [wRemarksIdx, 9], '') || pickSmtpReportCell(smtpRow, [sRemarksIdx, 22], ''), '-'),
+            assignedRemark: cleanSmtpReportText(hkrRemarkByCont.get(contNo), '-'),
+            sortTime: getSmtpReportDateTime(tpRaw)
+        });
+    });
+
+    reportRows.sort((a, b) => {
+        const aTime = a.sortTime || 0;
+        const bTime = b.sortTime || 0;
+        if (aTime !== bTime) return bTime - aTime;
+        const nameSort = a.consignee.localeCompare(b.consignee);
+        if (nameSort !== 0) return nameSort;
+        const blSort = a.blNo.localeCompare(b.blNo);
+        return blSort !== 0 ? blSort : a.contNo.localeCompare(b.contNo);
+    });
+
+    return reportRows;
+}
+
+function openSmtpPendingReportWindow() {
+    const reportRows = buildSmtpPendingReportRows();
+    if (reportRows.length === 0) {
+        alert("SMTP Report ke liye website me pending containers nahi mile.");
+        return;
+    }
+
+    const columns = [
+        { key: 'consignee', label: 'Consignee' },
+        { key: 'blNo', label: 'BL_No.' },
+        { key: 'contNo', label: 'CONT_Nos.' },
+        { key: 'size', label: 'Size' },
+        { key: 'line', label: 'LINE' },
+        { key: 'vessel', label: 'Disch_Vsl_Name' },
+        { key: 'smtpNo', label: 'smtp no' },
+        { key: 'tpDate', label: 'TP_Submitting_Dt.' },
+        { key: 'icdDestination', label: 'ICD Destination' },
+        { key: 'remarks', label: 'REMARKS' },
+        { key: 'assignedRemark', label: 'HKR/HMR' }
+    ];
+
+    const generatedAt = formatSmtpReportDate(new Date());
+    const existingModal = document.getElementById('smtpPendingReportModal');
+    if (existingModal) existingModal.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'smtpPendingReportModal';
+    modal.className = 'fixed inset-0 z-[100000] bg-slate-950/80 backdrop-blur-sm flex flex-col';
+    modal.innerHTML = `
+    <style>
+        #smtpPendingReportModal * { box-sizing: border-box; }
+        #smtpPendingReportModal .smtp-report-shell {
+            width: 100%;
+            height: 100%;
+            background: #f8fafc;
+            color: #0f172a;
+            font-family: Arial, Helvetica, sans-serif;
+            display: flex;
+            flex-direction: column;
+        }
+        #smtpPendingReportModal .smtp-report-header {
+            background: #0f172a;
+            color: white;
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        #smtpPendingReportModal .smtp-report-title { margin: 0; font-size: 15px; letter-spacing: 0; text-transform: uppercase; font-weight: 900; }
+        #smtpPendingReportModal .smtp-report-subline { margin-top: 2px; color: #cbd5e1; font-size: 8px; font-weight: 800; text-transform: uppercase; }
+        #smtpPendingReportModal .smtp-report-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+        #smtpPendingReportModal .smtp-report-search { width: min(300px, 68vw); border: 1px solid #94a3b8; border-radius: 6px; padding: 6px 8px; font-size: 10px; font-weight: 700; outline: none; color: #0f172a; }
+        #smtpPendingReportModal .smtp-report-btn { border: 0; border-radius: 6px; padding: 6px 10px; font-size: 9px; font-weight: 900; text-transform: uppercase; cursor: pointer; }
+        #smtpPendingReportModal .smtp-report-btn-light { background: #e2e8f0; color: #0f172a; }
+        #smtpPendingReportModal .smtp-report-btn-green { background: #059669; color: white; }
+        #smtpPendingReportModal .smtp-report-btn-close { background: #dc2626; color: white; }
+        #smtpPendingReportModal .smtp-report-content { flex: 1; padding: 10px; overflow: hidden; display: flex; flex-direction: column; gap: 7px; }
+        #smtpPendingReportModal .smtp-report-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #475569; font-size: 9px; font-weight: 900; text-transform: uppercase; flex-wrap: wrap; }
+        #smtpPendingReportModal .smtp-report-table-wrap { flex: 1; overflow: auto; background: white; border: 1px solid #cbd5e1; }
+        #smtpPendingReportModal table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9px; }
+        #smtpPendingReportModal th, #smtpPendingReportModal td { border: 1px solid #cbd5e1; padding: 4px 5px; vertical-align: top; word-break: break-word; overflow-wrap: anywhere; line-height: 1.25; }
+        #smtpPendingReportModal thead th { position: sticky; top: 0; z-index: 3; background: #1e3a8a; color: white; text-align: left; }
+        #smtpPendingReportModal th .smtp-report-label { display: block; font-size: 8px; font-weight: 900; text-transform: uppercase; margin-bottom: 4px; }
+        #smtpPendingReportModal .smtp-report-filter-wrap { position: relative; }
+        #smtpPendingReportModal th input.smtp-report-column-filter { width: 100%; min-width: 58px; border: 1px solid #bfdbfe; border-radius: 4px; padding: 2px 4px; font-size: 8px; font-weight: 700; color: #0f172a; background: white; outline: none; }
+        #smtpPendingReportModal .smtp-report-suggestions {
+            position: absolute;
+            top: calc(100% + 3px);
+            left: 0;
+            z-index: 20;
+            width: max(100%, 180px);
+            max-height: 180px;
+            overflow: auto;
+            background: #ffffff;
+            color: #0f172a;
+            border: 1px solid #93c5fd;
+            border-radius: 5px;
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.24);
+            padding: 3px;
+        }
+        #smtpPendingReportModal .smtp-report-suggestions.hidden { display: none; }
+        #smtpPendingReportModal .smtp-report-suggestion {
+            display: block;
+            width: 100%;
+            border: 0;
+            background: transparent;
+            color: #0f172a;
+            text-align: left;
+            padding: 4px 5px;
+            border-radius: 4px;
+            font-size: 8px;
+            font-weight: 800;
+            line-height: 1.2;
+            cursor: pointer;
+            text-transform: none;
+        }
+        #smtpPendingReportModal .smtp-report-suggestion:hover { background: #dbeafe; }
+        #smtpPendingReportModal .smtp-report-no-suggestion { padding: 5px; font-size: 8px; font-weight: 800; color: #64748b; text-align: center; }
+        #smtpPendingReportModal tbody tr:nth-child(even) { background: #f8fafc; }
+        #smtpPendingReportModal tbody tr:hover { background: #e0f2fe; }
+        #smtpPendingReportModal td.smtp-report-consignee { font-weight: 900; color: #0f172a; }
+        #smtpPendingReportModal td.smtp-report-date { white-space: nowrap; font-weight: 800; color: #1d4ed8; }
+        #smtpPendingReportModal .smtp-report-empty { padding: 30px; text-align: center; font-weight: 900; color: #64748b; text-transform: uppercase; }
+        @media print {
+            body > *:not(#smtpPendingReportModal) { display: none !important; }
+            #smtpPendingReportModal { position: static !important; inset: auto !important; background: white !important; backdrop-filter: none !important; }
+            #smtpPendingReportModal .smtp-report-header, #smtpPendingReportModal .smtp-report-meta { display: none !important; }
+            #smtpPendingReportModal .smtp-report-content { padding: 0 !important; overflow: visible !important; }
+            #smtpPendingReportModal .smtp-report-table-wrap { border: 0 !important; overflow: visible !important; }
+            #smtpPendingReportModal thead th { position: static !important; background: #1e3a8a !important; color: white !important; }
+        }
+    </style>
+    <div class="smtp-report-shell">
+        <header class="smtp-report-header">
+            <div>
+                <h1 class="smtp-report-title">SMTP Pending Containers Report</h1>
+                <div class="smtp-report-subline">Sorted by TP_Submitting_Dt. Z to A, newest first | Generated: ${escapeHtml(generatedAt)}</div>
+            </div>
+            <div class="smtp-report-actions">
+                <input id="smtpReportGlobalSearch" class="smtp-report-search" type="search" placeholder="Search any column">
+                <button id="smtpReportResetFilters" class="smtp-report-btn smtp-report-btn-light" type="button">Reset Filters</button>
+                <button id="smtpReportDownloadCsv" class="smtp-report-btn smtp-report-btn-green" type="button">Download CSV</button>
+                <button id="smtpReportPrint" class="smtp-report-btn smtp-report-btn-light" type="button">Print</button>
+                <button id="smtpReportClose" class="smtp-report-btn smtp-report-btn-close" type="button">Close</button>
+            </div>
+        </header>
+        <main class="smtp-report-content">
+            <div class="smtp-report-meta">
+                <span id="smtpReportRowCount"></span>
+                <span>All headers have searchable filters</span>
+            </div>
+            <div class="smtp-report-table-wrap">
+                <table>
+                    <thead><tr id="smtpReportHeaderRow"></tr></thead>
+                    <tbody id="smtpReportBody"></tbody>
+                </table>
+            </div>
+        </main>
+    </div>`;
+
+    document.body.appendChild(modal);
+
+    let visibleRows = reportRows.slice();
+
+    const renderHeaderFilters = () => {
+        const headerRow = document.getElementById('smtpReportHeaderRow');
+        headerRow.innerHTML = columns.map(col => `
+            <th>
+                <span class="smtp-report-label">${escapeHtml(col.label)}</span>
+                <div class="smtp-report-filter-wrap">
+                    <input class="smtp-report-column-filter" data-key="${escapeHtml(col.key)}" type="search" placeholder="Search" autocomplete="off">
+                    <div class="smtp-report-suggestions hidden"></div>
+                </div>
+            </th>
+        `).join('');
+
+        modal.querySelectorAll('.smtp-report-column-filter').forEach(input => {
+            input.addEventListener('focus', () => showColumnSuggestions(input));
+            input.addEventListener('input', () => {
+                applyReportFilters();
+                showColumnSuggestions(input);
+            });
+            input.addEventListener('blur', () => {
+                setTimeout(() => hideColumnSuggestions(input), 150);
+            });
+        });
+    };
+
+    const getColumnSuggestionValues = (key) => {
+        return [...new Set(reportRows.map(row => cleanSmtpReportText(row[key], '-')))]
+            .filter(value => value && value !== '-')
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    };
+
+    const hideColumnSuggestions = (input = null) => {
+        const scope = input
+            ? [input.parentElement.querySelector('.smtp-report-suggestions')]
+            : Array.from(modal.querySelectorAll('.smtp-report-suggestions'));
+        scope.forEach(box => {
+            if (!box) return;
+            box.classList.add('hidden');
+            box.innerHTML = '';
+        });
+    };
+
+    const showColumnSuggestions = (input) => {
+        hideColumnSuggestions();
+        const box = input.parentElement.querySelector('.smtp-report-suggestions');
+        const query = input.value.trim().toUpperCase();
+        const values = getColumnSuggestionValues(input.dataset.key)
+            .filter(value => !query || value.toUpperCase().includes(query))
+            .slice(0, 80);
+
+        if (!values.length) {
+            box.innerHTML = '<div class="smtp-report-no-suggestion">No suggestions</div>';
+            box.classList.remove('hidden');
+            return;
+        }
+
+        box.innerHTML = values.map(value => `
+            <button type="button" class="smtp-report-suggestion" data-value="${escapeHtml(value)}">${escapeHtml(value)}</button>
+        `).join('');
+
+        box.querySelectorAll('.smtp-report-suggestion').forEach(btn => {
+            btn.addEventListener('mousedown', (event) => {
+                event.preventDefault();
+                input.value = btn.dataset.value || '';
+                hideColumnSuggestions(input);
+                applyReportFilters();
+                input.focus();
+            });
+        });
+        box.classList.remove('hidden');
+    };
+
+    const renderRows = (rows) => {
+        const body = document.getElementById('smtpReportBody');
+        document.getElementById('smtpReportRowCount').textContent = `${rows.length} of ${reportRows.length} pending containers showing`;
+        if (!rows.length) {
+            body.innerHTML = `<tr><td colspan="${columns.length}" class="smtp-report-empty">No rows match the selected filters</td></tr>`;
+            return;
+        }
+
+        body.innerHTML = rows.map(row => {
+            return `<tr>${columns.map(col => {
+                const className = col.key === 'consignee' ? ' class="smtp-report-consignee"' : (col.key === 'tpDate' ? ' class="smtp-report-date"' : '');
+                return `<td${className}>${escapeHtml(row[col.key] || '-')}</td>`;
+            }).join('')}</tr>`;
+        }).join('');
+    };
+
+    function applyReportFilters() {
+        const searchText = document.getElementById('smtpReportGlobalSearch').value.trim().toUpperCase();
+        const activeFilters = {};
+        modal.querySelectorAll('.smtp-report-column-filter').forEach(input => {
+            const value = input.value.trim().toUpperCase();
+            if (value) activeFilters[input.dataset.key] = value;
+        });
+
+        visibleRows = reportRows.filter(row => {
+            const columnMatch = columns.every(col => {
+                return !activeFilters[col.key] || String(row[col.key] || '-').toUpperCase().includes(activeFilters[col.key]);
+            });
+            if (!columnMatch) return false;
+            if (!searchText) return true;
+            return columns.some(col => String(row[col.key] || '').toUpperCase().includes(searchText));
+        });
+        renderRows(visibleRows);
+    }
+
+    const resetReportFilters = () => {
+        document.getElementById('smtpReportGlobalSearch').value = '';
+        modal.querySelectorAll('.smtp-report-column-filter').forEach(input => { input.value = ''; });
+        hideColumnSuggestions();
+        applyReportFilters();
+    };
+
+    const downloadReportCsv = () => {
+        const lines = [
+            columns.map(col => `"${col.label.replace(/"/g, '""')}"`).join(',')
+        ];
+        visibleRows.forEach(row => {
+            lines.push(columns.map(col => `"${String(row[col.key] || '-').replace(/"/g, '""')}"`).join(','));
+        });
+        const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `SMTP_Pending_Report_${new Date().toISOString().slice(0, 10)}.csv`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+    };
+
+    const closeReport = () => {
+        document.removeEventListener('keydown', handleEscape);
+        modal.remove();
+    };
+
+    function handleEscape(event) {
+        if (event.key === 'Escape') closeReport();
+    }
+
+    document.getElementById('smtpReportGlobalSearch').addEventListener('input', applyReportFilters);
+    document.getElementById('smtpReportResetFilters').addEventListener('click', resetReportFilters);
+    document.getElementById('smtpReportDownloadCsv').addEventListener('click', downloadReportCsv);
+    document.getElementById('smtpReportPrint').addEventListener('click', () => window.print());
+    document.getElementById('smtpReportClose').addEventListener('click', closeReport);
+    document.addEventListener('keydown', handleEscape);
+
+    renderHeaderFilters();
+    renderRows(visibleRows);
+    document.getElementById('smtpReportGlobalSearch').focus();
+}
+
+const smtpReportBtn = document.getElementById('smtpReportBtn');
+if (smtpReportBtn) {
+    smtpReportBtn.addEventListener('click', openSmtpPendingReportWindow);
+}
+
 // NEW: FORECAST & PENDENCY REPORT BUTTON LOGIC
 // ────────────────────────────────────────────────────────────────
 
