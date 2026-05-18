@@ -366,10 +366,15 @@ table {
         <input type="file" id="gateOutExcelInput" class="hidden" accept=".xlsx, .xls">
     </label>
 
-<label id="scanningBtnLabel" class="bg-pink-600 hover:bg-pink-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase shrink-0">
+<label id="scanningBtnLabel" class="bg-yellow-600 hover:bg-Red-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase shrink-0">
         <i data-lucide="scan" class="w-3.5 h-3.5"></i>
-        Update Scanning
+        Scanning Mark by MSC
         <input type="file" id="scanningExcelInput" class="hidden" accept=".xlsx, .xls">
+    </label>
+<label id="scanningPortBtnLabel" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase shrink-0">
+        <i data-lucide="scan-line" class="w-3.5 h-3.5"></i>
+        Scanning Mark by Port
+        <input type="file" id="scanningPortExcelInput" class="hidden" accept=".xlsx, .xls">
     </label>
 <button id="openSmtpDeleteFilterBtn" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-sm shrink-0">
         <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
@@ -2289,6 +2294,7 @@ exportBtn.onclick = async () => {
         let currentSheetInView = null;
         let trainDateRemarksMap = {}; 
         let currentShipperAllGroups = []; 
+        let publicCloudPollTimer = null;
         let isInTransitFilterActive = false; // New global filter state
         let currentSourceDeleteSheet = null;
         let sourceDeleteSelectedRows = new Set();
@@ -2513,6 +2519,15 @@ function downloadCompleteBackup() {
     XLSX.writeFile(workbook, `HTPL_COMPLETE_BACKUP_${stamp}.xlsx`, { compression: true });
 }
 
+function hasBackupDataReady() {
+    return (
+        (Array.isArray(rawSheets.shipper) && rawSheets.shipper.length > 1) ||
+        (Array.isArray(rawSheets.smtp) && rawSheets.smtp.length > 1) ||
+        (Array.isArray(rawSheets.website) && rawSheets.website.length > 1) ||
+        (Array.isArray(rawSheets.hkrHmrFiltered) && rawSheets.hkrHmrFiltered.length > 0)
+    );
+}
+
 normalizeRawSheets();
 
 function showTopToast(message, bgClass = 'bg-rose-600', timeout = 3500) {
@@ -2520,6 +2535,20 @@ function showTopToast(message, bgClass = 'bg-rose-600', timeout = 3500) {
     box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 ${bgClass} text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce text-center">${message}</div>`;
     document.body.appendChild(box);
     setTimeout(() => box.remove(), timeout);
+}
+
+function downloadBackupAfterCloudSave() {
+    if (!hasBackupDataReady()) return;
+
+    showTopToast('Download backup with changes', 'bg-teal-700', 4500);
+    setTimeout(() => {
+        try {
+            downloadCompleteBackup();
+        } catch (err) {
+            console.error("Backup after cloud save failed:", err);
+            showTopToast('Backup download failed. Please click BACKUP DATA.', 'bg-rose-600', 6000);
+        }
+    }, 250);
 }
 
 	// --- GLOBAL HELPER: Get Vessel Name (Standardized) ---
@@ -3166,7 +3195,9 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
         
         applyFilters();
     }
-}        function renderShipperList(shippers, consIndex) {
+}
+
+        function renderShipperList(shippers, consIndex) {
             const listEl = document.getElementById('shipperList');
             const filter = shipperSearch.value.toLowerCase();
             listEl.innerHTML = shippers
@@ -3283,6 +3314,88 @@ window.updateSelectedVessels = () => {
                  processAndRenderReport(consIndex, true);
             }
         }
+
+function buildFirestoreRestUrl(...segments) {
+    const encodedPath = segments.map(segment => encodeURIComponent(String(segment))).join('/');
+    return `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/${encodedPath}`;
+}
+
+async function fetchFirestoreRestDoc(...segments) {
+    const response = await fetch(buildFirestoreRestUrl(...segments), { cache: 'no-store' });
+    if (response.status === 404) return null;
+    if (!response.ok) {
+        throw new Error(`Firestore REST ${response.status}`);
+    }
+    return response.json();
+}
+
+function getFirestoreRestString(docData, fieldName) {
+    return docData?.fields?.[fieldName]?.stringValue || '';
+}
+
+function getFirestoreRestInteger(docData, fieldName) {
+    const field = docData?.fields?.[fieldName];
+    return Number(field?.integerValue ?? field?.doubleValue ?? 0) || 0;
+}
+
+async function loadDataFromPublicRest(force = false) {
+    refreshIcon.classList.add('animate-spin');
+    cloudLabel.innerText = "Loading public data...";
+
+    try {
+        const metaData = await fetchFirestoreRestDoc('artifacts', appId, 'public', 'data', 'report_meta', 'latest');
+        if (!metaData) {
+            cloudLabel.innerText = "No Cloud Data";
+            return false;
+        }
+
+        const newUpdated = getFirestoreRestString(metaData, 'updatedAt');
+        if (!force && lastUpdated && newUpdated && newUpdated <= lastUpdated) {
+            cloudLabel.innerText = "Online (Public Read)";
+            return true;
+        }
+
+        const chunkCount = getFirestoreRestInteger(metaData, 'chunkCount');
+        if (chunkCount === 0) {
+            lastUpdated = newUpdated || lastUpdated;
+            cloudLabel.innerText = "Online (No Data)";
+            return true;
+        }
+
+        let fullStr = "";
+        for (let i = 0; i < chunkCount; i++) {
+            const chunkData = await fetchFirestoreRestDoc('artifacts', appId, 'public', 'data', 'report_chunks', `chunk_${i}`);
+            const chunk = getFirestoreRestString(chunkData, 'data');
+            if (!chunk) throw new Error(`Missing cloud chunk ${i + 1}/${chunkCount}`);
+            fullStr += chunk;
+        }
+
+        rawSheets = JSON.parse(fullStr);
+        lastUpdated = newUpdated || lastUpdated;
+        normalizeRawSheets();
+        processCloudData();
+        cloudIndicator.className = "w-2 h-2 rounded-full bg-amber-500";
+        cloudLabel.innerText = "Online (Public Read)";
+        return true;
+    } catch (e) {
+        console.error("Public Cloud Load Error:", e);
+        cloudLabel.innerText = "Public Load Failed";
+        return false;
+    } finally {
+        refreshIcon.classList.remove('animate-spin');
+        if (currentSheetInView === 'website') {
+            window.viewSheetData('website');
+        }
+    }
+}
+
+function setupPublicCloudPolling() {
+    if (publicCloudPollTimer) return;
+    publicCloudPollTimer = setInterval(() => {
+        loadDataFromPublicRest(false);
+    }, 60000);
+}
+
 async function saveToCloud() {
     if (!isCloudEnabled || !auth.currentUser) {
         alert("Cloud sync is disabled or user not authenticated.");
@@ -3315,6 +3428,7 @@ async function saveToCloud() {
         });
 
         cloudLabel.innerText = "Connected";
+        downloadBackupAfterCloudSave();
         return true; // Success
     } catch (e) {
         console.error("Cloud Save Error:", e);
@@ -3328,6 +3442,10 @@ async function saveToCloud() {
     }
 }
 async function loadData(force = false) {
+    if (!auth.currentUser) {
+        return loadDataFromPublicRest(force);
+    }
+
     refreshIcon.classList.add('animate-spin');
     cloudLabel.innerText = "Loading data...";
     try {
@@ -3337,9 +3455,9 @@ async function loadData(force = false) {
             const metaData = metaSnap.data();
             const newUpdated = metaData.updatedAt;
             if (force || !lastUpdated || newUpdated > lastUpdated) {
-                lastUpdated = newUpdated;
                 const { chunkCount } = metaData;
                 if (chunkCount === 0) {
+                    lastUpdated = newUpdated;
                     cloudLabel.innerText = "Online (No Data)";
                     return;
                 }
@@ -3349,10 +3467,13 @@ async function loadData(force = false) {
                     const chunkSnap = await getDoc(chunkRef);
                     if (chunkSnap.exists()) {
                         fullStr += chunkSnap.data().data;
+                    } else {
+                        throw new Error(`Missing cloud chunk ${i + 1}/${chunkCount}`);
                     }
                 }
                 if (fullStr) {
                     rawSheets = JSON.parse(fullStr);
+                    lastUpdated = newUpdated;
                     normalizeRawSheets();
                     processCloudData();
                 }
@@ -3363,7 +3484,8 @@ async function loadData(force = false) {
         }
     } catch (e) {
         console.error("Cloud Load Error:", e);
-        cloudLabel.innerText = "Load Failed";
+        const fallbackLoaded = await loadDataFromPublicRest(force);
+        if (!fallbackLoaded) cloudLabel.innerText = "Load Failed";
     } finally {
 
         refreshIcon.classList.remove('animate-spin');
@@ -4029,8 +4151,12 @@ window.deleteHkrRow = async (index) => {
                     try { await signInWithCustomToken(auth, __initial_auth_token); } catch (e) { await signInAnonymously(auth); }
                 } else { await signInAnonymously(auth); }
             } catch (error) {
-                cloudLabel.innerText = "Auth Error";
-                cloudIndicator.className = "w-2 h-2 rounded-full bg-red-500";
+                console.error("Firebase Auth Error:", error);
+                isCloudEnabled = false;
+                cloudLabel.innerText = "Auth Error - Public Read";
+                cloudIndicator.className = "w-2 h-2 rounded-full bg-amber-500";
+                await loadDataFromPublicRest(true);
+                setupPublicCloudPolling();
             }
         };
 
@@ -4926,6 +5052,125 @@ shipperExcelInput.addEventListener('change', async (e) => {
             });
         }
 // --- SCANNING UPDATE LOGIC ---
+function getScanningDoneText() {
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    return `SCANNING DONE ${day}-${month}-${year}`;
+}
+
+function closeExistingScanningMarks() {
+    if (!rawSheets.smtp || !rawSheets.website) {
+        return { containers: new Set(), smtpUpdated: 0, websiteUpdated: 0 };
+    }
+
+    const doneText = getScanningDoneText();
+    const markedContainers = new Set();
+
+    rawSheets.smtp.slice(1).forEach(row => {
+        const contNo = String(row[2] || '').trim().toUpperCase();
+        const status = String(row[1] || '').trim().toUpperCase();
+        if (contNo && status === "UNDER SCANNING") markedContainers.add(contNo);
+    });
+
+    rawSheets.website.slice(1).forEach(row => {
+        const contNo = String(row[3] || '').trim().toUpperCase();
+        const remarks = String(row[9] || '').trim().toUpperCase();
+        if (contNo && remarks.includes("CONTAINER IS UNDER SCANNING")) markedContainers.add(contNo);
+    });
+
+    let smtpUpdated = 0;
+    let websiteUpdated = 0;
+
+    if (markedContainers.size === 0) {
+        return { containers: markedContainers, smtpUpdated, websiteUpdated };
+    }
+
+    rawSheets.smtp.slice(1).forEach(row => {
+        const contNo = String(row[2] || '').trim().toUpperCase();
+        if (!markedContainers.has(contNo)) return;
+        if (String(row[1] || '').trim().toUpperCase() === doneText.toUpperCase()) return;
+        row[1] = doneText;
+        smtpUpdated++;
+    });
+
+    rawSheets.website.slice(1).forEach(row => {
+        const contNo = String(row[3] || '').trim().toUpperCase();
+        if (!markedContainers.has(contNo)) return;
+
+        const currentRemark = String(row[9] || '').trim();
+        if (!currentRemark.toUpperCase().includes("CONTAINER IS UNDER SCANNING")) return;
+
+        row[9] = currentRemark
+            .replace(/\(\s*CONTAINER IS UNDER SCANNING\s*\)/gi, `(${doneText})`)
+            .replace(/CONTAINER IS UNDER SCANNING/gi, doneText)
+            .replace(/\s+/g, ' ')
+            .trim();
+        websiteUpdated++;
+    });
+
+    return { containers: markedContainers, smtpUpdated, websiteUpdated };
+}
+
+function markScanningContainersInSmtp(containerNumbers) {
+    const smtpData = rawSheets.smtp || [];
+    const sContIdx = 2;
+    const terminalColIdx = 1;
+    const uniqueContainers = [...new Set(containerNumbers.map(cont => String(cont || '').trim().toUpperCase()).filter(Boolean))];
+    let updateCount = 0;
+    const matchedContainers = new Set();
+
+    uniqueContainers.forEach(exContNo => {
+        for (let i = 1; i < smtpData.length; i++) {
+            const smtpCont = String(smtpData[i][sContIdx] || '').trim().toUpperCase();
+            if (smtpCont === exContNo) {
+                smtpData[i][terminalColIdx] = "Under Scanning";
+                updateCount++;
+                matchedContainers.add(exContNo);
+            }
+        }
+    });
+
+    rawSheets.smtp = smtpData;
+    return {
+        requestedCount: uniqueContainers.length,
+        updateCount,
+        matchedCount: matchedContainers.size,
+        missingCount: uniqueContainers.length - matchedContainers.size
+    };
+}
+
+function showScanningUpdateToast(message, bgClass = 'bg-pink-600', timeout = 5000) {
+    const box = document.createElement('div');
+    box.innerHTML = `
+        <div class="fixed top-10 left-1/2 -translate-x-1/2 ${bgClass} text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[100000] animate-bounce text-center">
+            ${message}
+        </div>`;
+    document.body.appendChild(box);
+    setTimeout(() => box.remove(), timeout);
+}
+
+function parsePortScanningContainers(jsonData) {
+    if (!jsonData.length || !hasRowValues(jsonData[0])) {
+        throw new Error("Port Excel mein header row nahi mili.");
+    }
+
+    const headers = jsonData[0];
+    const contIdx = findHeaderIndex(headers, [/^CTRNUMBER$/i, /CTR.*NUMBER/i, /CONTAINER/i], -1);
+    const destIdx = findHeaderIndex(headers, [/^DEPOTDESTCD$/i, /DEPOT.*DEST/i, /DEST/i], -1);
+
+    if (contIdx === -1 || destIdx === -1) {
+        throw new Error("Required headers missing: ctrNumber aur depotDestCd.");
+    }
+
+    const allowedDestinations = new Set(['INHKR', 'INHMR', 'INHDL']);
+    return jsonData.slice(1)
+        .filter(row => allowedDestinations.has(String(row[destIdx] || '').trim().toUpperCase()))
+        .map(row => String(row[contIdx] || '').trim().toUpperCase())
+        .filter(Boolean);
+}
+
 const scanningExcelInput = document.getElementById('scanningExcelInput');
 if (scanningExcelInput) {
     scanningExcelInput.addEventListener('change', (e) => {
@@ -4944,6 +5189,34 @@ if (scanningExcelInput) {
                 const wb = XLSX.read(bstr, { type: 'binary' });
                 const ws = wb.Sheets[wb.SheetNames[0]];
                 const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+                const previousScan = closeExistingScanningMarks();
+                const mscContainers = jsonData
+                    .map(exRow => String(exRow[1] || '').trim().toUpperCase())
+                    .filter(Boolean);
+                const scanResult = markScanningContainersInSmtp(mscContainers);
+
+                if (scanResult.updateCount > 0 || previousScan.containers.size > 0) {
+                    window.viewSheetData('smtp');
+                    showScanningUpdateToast(
+                        `✓ ${scanResult.updateCount} containers under scanning marked<br>` +
+                        `${previousScan.smtpUpdated + previousScan.websiteUpdated} previous scanning entries closed`,
+                        'bg-pink-600',
+                        5000
+                    );
+
+                    const remarksUpdated = autoUpdateScanningRemarksInWebsite(false);
+                    saveToCloud();
+                    processCloudData();
+
+                    if (remarksUpdated > 0) {
+                        showScanningUpdateToast(`UPDATED ${remarksUpdated} scanning handover remarks in WEBSITE`, 'bg-purple-600', 5000);
+                        if (currentSheetInView === 'website') window.viewSheetData('website');
+                    }
+                } else {
+                    alert("No matching MSC containers found in SMTP.");
+                }
+                return;
 
                 const smtpData = rawSheets.smtp;
                 const sContIdx = 2;       // Column C
@@ -5008,8 +5281,69 @@ if (scanningExcelInput) {
         reader.readAsBinaryString(file);
         e.target.value = '';
     });
-}// Scanning wale containers ke remarks ko WEBSITE mein update karne ka function
-function autoUpdateScanningRemarksInWebsite() {
+}
+
+const scanningPortExcelInput = document.getElementById('scanningPortExcelInput');
+if (scanningPortExcelInput) {
+    scanningPortExcelInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (!rawSheets || !rawSheets.smtp || rawSheets.smtp.length <= 1) {
+            alert("ERROR: SMTP Data nahi mila. Pehle SMTP Excel upload karein.");
+            e.target.value = '';
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const bstr = evt.target.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+                const portContainers = parsePortScanningContainers(jsonData);
+                if (portContainers.length === 0) {
+                    alert("Port Excel me depotDestCd INHKR/INHMR/INHDL ke containers nahi mile.");
+                    return;
+                }
+
+                const previousScan = closeExistingScanningMarks();
+                const scanResult = markScanningContainersInSmtp(portContainers);
+                const remarksUpdated = autoUpdateScanningRemarksInWebsite(false);
+
+                if (scanResult.updateCount > 0 || previousScan.containers.size > 0 || remarksUpdated > 0) {
+                    if (currentSheetInView === 'smtp') window.viewSheetData('smtp');
+                    if (currentSheetInView === 'website') window.viewSheetData('website');
+
+                    saveToCloud();
+                    processCloudData();
+
+                    showScanningUpdateToast(
+                        `PORT SCANNING UPDATE COMPLETE<br>` +
+                        `${scanResult.updateCount} containers marked Under Scanning<br>` +
+                        `${previousScan.smtpUpdated + previousScan.websiteUpdated} previous scanning entries changed to ${getScanningDoneText()}<br>` +
+                        `${remarksUpdated} website remarks updated`,
+                        'bg-purple-600',
+                        7000
+                    );
+                } else {
+                    alert("Port Excel containers SMTP/WEBSITE se match nahi hue.");
+                }
+            } catch (err) {
+                console.error("Port scanning Excel processing error:", err);
+                alert("Port scanning update error: " + err.message);
+            }
+        };
+
+        reader.readAsBinaryString(file);
+        e.target.value = '';
+    });
+}
+
+// Scanning wale containers ke remarks ko WEBSITE mein update karne ka function
+function autoUpdateScanningRemarksInWebsite(saveChanges = true) {
     if (!rawSheets.smtp || !rawSheets.website) return 0;
 
     let updatedCount = 0;
@@ -5051,8 +5385,10 @@ function autoUpdateScanningRemarksInWebsite() {
             window.viewSheetData('website');
         }
 
-        saveToCloud();
-        processCloudData();
+        if (saveChanges) {
+            saveToCloud();
+            processCloudData();
+        }
 
         // Notification
         const box = document.createElement('div');
