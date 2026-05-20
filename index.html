@@ -366,16 +366,6 @@ table {
         <input type="file" id="gateOutExcelInput" class="hidden" accept=".xlsx, .xls">
     </label>
 
-<label id="scanningBtnLabel" class="bg-yellow-600 hover:bg-Red-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase shrink-0">
-        <i data-lucide="scan" class="w-3.5 h-3.5"></i>
-        Scanning Mark by MSC
-        <input type="file" id="scanningExcelInput" class="hidden" accept=".xlsx, .xls">
-    </label>
-<label id="scanningPortBtnLabel" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase shrink-0">
-        <i data-lucide="scan-line" class="w-3.5 h-3.5"></i>
-        Scanning Mark by Port
-        <input type="file" id="scanningPortExcelInput" class="hidden" accept=".xlsx, .xls">
-    </label>
 <button id="openSmtpDeleteFilterBtn" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-sm shrink-0">
         <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
         DELETE DATA BY
@@ -626,6 +616,11 @@ table {
                 <i data-lucide="database" class="w-3 h-3"></i>
                 UPDATE DATA
             </button>
+<button id="scanningHoldBtn"
+        class="topbar-action bg-fuchsia-700 hover:bg-fuchsia-800 text-white">
+    <i data-lucide="scan-search" class="w-3.5 h-3.5"></i>
+    SCANNING HOLD
+</button>
 <button id="smtpReportBtn"
         class="topbar-action bg-cyan-700 hover:bg-cyan-800 text-white">
     <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
@@ -3025,11 +3020,26 @@ function renderDetailedBreakdown(groups) {
             // --- NEW CONDITION LOGIC END ---
 
             // Duplicate Remarks removal
-            let uniqueRemarks = [...new Set(bl.pendingRemarks)];
-            const hasScanningRemark = uniqueRemarks.some(r => r.toUpperCase().includes("UNDER SCANNING"));
-            
-            if (hasScanningRemark) {
-                uniqueRemarks = uniqueRemarks.filter(r => !(!r.toUpperCase().includes("UNDER SCANNING") && r.toUpperCase().includes("HANDOVER")));
+            let uniqueRemarks = [...new Set(bl.pendingRemarks.map(r => String(r || '').trim()).filter(Boolean))];
+            const getHandoverBaseRemark = (remark) => String(remark || '')
+                .toUpperCase()
+                .replace(/\(\s*(CONTAINER IS UNDER SCANNING|SCANNING DONE(?:\s+\d{2}-\d{2}-\d{4})?)\s*\)/gi, '')
+                .replace(/\b(CONTAINER IS UNDER SCANNING|SCANNING DONE(?:\s+\d{2}-\d{2}-\d{4})?)\b/gi, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+            const hasScanningMarker = (remark) => /(UNDER SCANNING|SCANNING DONE)/i.test(String(remark || ''));
+            const markedHandoverBases = new Set(
+                uniqueRemarks
+                    .filter(r => /HANDOVER/i.test(r) && hasScanningMarker(r))
+                    .map(getHandoverBaseRemark)
+                    .filter(Boolean)
+            );
+
+            if (markedHandoverBases.size > 0) {
+                uniqueRemarks = uniqueRemarks.filter(r => {
+                    if (!/HANDOVER/i.test(r) || hasScanningMarker(r)) return true;
+                    return !markedHandoverBases.has(getHandoverBaseRemark(r));
+                });
             }
             
             let mainRemark = uniqueRemarks.join(' | ') || 'Awaiting dispatch';
@@ -5053,92 +5063,7 @@ shipperExcelInput.addEventListener('change', async (e) => {
         }
 // --- SCANNING UPDATE LOGIC ---
 function getScanningDoneText() {
-    const now = new Date();
-    const day = String(now.getDate()).padStart(2, '0');
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const year = now.getFullYear();
-    return `SCANNING DONE ${day}-${month}-${year}`;
-}
-
-function closeExistingScanningMarks() {
-    if (!rawSheets.smtp || !rawSheets.website) {
-        return { containers: new Set(), smtpUpdated: 0, websiteUpdated: 0 };
-    }
-
-    const doneText = getScanningDoneText();
-    const markedContainers = new Set();
-
-    rawSheets.smtp.slice(1).forEach(row => {
-        const contNo = String(row[2] || '').trim().toUpperCase();
-        const status = String(row[1] || '').trim().toUpperCase();
-        if (contNo && status === "UNDER SCANNING") markedContainers.add(contNo);
-    });
-
-    rawSheets.website.slice(1).forEach(row => {
-        const contNo = String(row[3] || '').trim().toUpperCase();
-        const remarks = String(row[9] || '').trim().toUpperCase();
-        if (contNo && remarks.includes("CONTAINER IS UNDER SCANNING")) markedContainers.add(contNo);
-    });
-
-    let smtpUpdated = 0;
-    let websiteUpdated = 0;
-
-    if (markedContainers.size === 0) {
-        return { containers: markedContainers, smtpUpdated, websiteUpdated };
-    }
-
-    rawSheets.smtp.slice(1).forEach(row => {
-        const contNo = String(row[2] || '').trim().toUpperCase();
-        if (!markedContainers.has(contNo)) return;
-        if (String(row[1] || '').trim().toUpperCase() === doneText.toUpperCase()) return;
-        row[1] = doneText;
-        smtpUpdated++;
-    });
-
-    rawSheets.website.slice(1).forEach(row => {
-        const contNo = String(row[3] || '').trim().toUpperCase();
-        if (!markedContainers.has(contNo)) return;
-
-        const currentRemark = String(row[9] || '').trim();
-        if (!currentRemark.toUpperCase().includes("CONTAINER IS UNDER SCANNING")) return;
-
-        row[9] = currentRemark
-            .replace(/\(\s*CONTAINER IS UNDER SCANNING\s*\)/gi, `(${doneText})`)
-            .replace(/CONTAINER IS UNDER SCANNING/gi, doneText)
-            .replace(/\s+/g, ' ')
-            .trim();
-        websiteUpdated++;
-    });
-
-    return { containers: markedContainers, smtpUpdated, websiteUpdated };
-}
-
-function markScanningContainersInSmtp(containerNumbers) {
-    const smtpData = rawSheets.smtp || [];
-    const sContIdx = 2;
-    const terminalColIdx = 1;
-    const uniqueContainers = [...new Set(containerNumbers.map(cont => String(cont || '').trim().toUpperCase()).filter(Boolean))];
-    let updateCount = 0;
-    const matchedContainers = new Set();
-
-    uniqueContainers.forEach(exContNo => {
-        for (let i = 1; i < smtpData.length; i++) {
-            const smtpCont = String(smtpData[i][sContIdx] || '').trim().toUpperCase();
-            if (smtpCont === exContNo) {
-                smtpData[i][terminalColIdx] = "Under Scanning";
-                updateCount++;
-                matchedContainers.add(exContNo);
-            }
-        }
-    });
-
-    rawSheets.smtp = smtpData;
-    return {
-        requestedCount: uniqueContainers.length,
-        updateCount,
-        matchedCount: matchedContainers.size,
-        missingCount: uniqueContainers.length - matchedContainers.size
-    };
+    return "SCANNING DONE";
 }
 
 function showScanningUpdateToast(message, bgClass = 'bg-pink-600', timeout = 5000) {
@@ -5151,27 +5076,7 @@ function showScanningUpdateToast(message, bgClass = 'bg-pink-600', timeout = 500
     setTimeout(() => box.remove(), timeout);
 }
 
-function parsePortScanningContainers(jsonData) {
-    if (!jsonData.length || !hasRowValues(jsonData[0])) {
-        throw new Error("Port Excel mein header row nahi mili.");
-    }
-
-    const headers = jsonData[0];
-    const contIdx = findHeaderIndex(headers, [/^CTRNUMBER$/i, /CTR.*NUMBER/i, /CONTAINER/i], -1);
-    const destIdx = findHeaderIndex(headers, [/^DEPOTDESTCD$/i, /DEPOT.*DEST/i, /DEST/i], -1);
-
-    if (contIdx === -1 || destIdx === -1) {
-        throw new Error("Required headers missing: ctrNumber aur depotDestCd.");
-    }
-
-    const allowedDestinations = new Set(['INHKR', 'INHMR', 'INHDL']);
-    return jsonData.slice(1)
-        .filter(row => allowedDestinations.has(String(row[destIdx] || '').trim().toUpperCase()))
-        .map(row => String(row[contIdx] || '').trim().toUpperCase())
-        .filter(Boolean);
-}
-
-const scanningExcelInput = document.getElementById('scanningExcelInput');
+const scanningExcelInput = null;
 if (scanningExcelInput) {
     scanningExcelInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
@@ -5283,7 +5188,7 @@ if (scanningExcelInput) {
     });
 }
 
-const scanningPortExcelInput = document.getElementById('scanningPortExcelInput');
+const scanningPortExcelInput = null;
 if (scanningPortExcelInput) {
     scanningPortExcelInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
@@ -6355,6 +6260,576 @@ function buildSmtpPendingReportRows() {
     return reportRows;
 }
 
+function parseFirstColumnContainers(jsonData) {
+    if (!jsonData.length || !hasRowValues(jsonData[0])) {
+        throw new Error("Excel mein header row nahi mili.");
+    }
+
+    return [...new Set(jsonData.slice(1)
+        .map(row => String(row[0] || '').trim().toUpperCase())
+        .filter(Boolean))];
+}
+
+function extractScanningDoneText(value) {
+    const match = String(value || '').match(/SCANNING\s+DONE(?:\s+\d{2}-\d{2}-\d{4})?/i);
+    return match ? 'SCANNING DONE' : '';
+}
+
+function cleanScanningRemarkText(value) {
+    return String(value || '')
+        .replace(/\s+/g, ' ')
+        .replace(/\(\s+/g, '(')
+        .replace(/\s+\)/g, ')')
+        .trim();
+}
+
+function cleanScanningDoneDateForDisplay(value) {
+    return String(value || '').replace(/SCANNING\s+DONE\s+\d{2}-\d{2}-\d{4}/gi, 'SCANNING DONE');
+}
+
+function getScanningHoldStatus(smtpRow, websiteRow) {
+    const smtpStatus = String(smtpRow?.[1] || '').trim();
+    const websiteRemark = String(websiteRow?.[9] || '').trim();
+    const smtpUpper = smtpStatus.toUpperCase();
+    const remarkUpper = websiteRemark.toUpperCase();
+
+    if (smtpUpper === "UNDER SCANNING" || smtpUpper.includes("CONTAINER IS UNDER SCANNING") || remarkUpper.includes("CONTAINER IS UNDER SCANNING")) {
+        return { status: "CONTAINER IS UNDER SCANNING", type: "under" };
+    }
+
+    const doneText = extractScanningDoneText(smtpStatus) || extractScanningDoneText(websiteRemark);
+    if (doneText) {
+        return { status: doneText, type: "done" };
+    }
+
+    return { status: "-", type: "none" };
+}
+
+function setWebsiteScanningMarker(row, markerText) {
+    const markerUpper = String(markerText || '').toUpperCase();
+    const isUnderScanning = markerUpper.includes("CONTAINER IS UNDER SCANNING");
+    const current = String(row[9] || '').trim();
+    let next = current;
+
+    if (isUnderScanning) {
+        next = next
+            .replace(/\(\s*SCANNING DONE(?:\s+\d{2}-\d{2}-\d{4})?\s*\)/gi, "(CONTAINER IS UNDER SCANNING)")
+            .replace(/SCANNING DONE(?:\s+\d{2}-\d{2}-\d{4})?/gi, "CONTAINER IS UNDER SCANNING");
+
+        if (!next.toUpperCase().includes("CONTAINER IS UNDER SCANNING")) {
+            next = `${next}${next ? ' ' : ''}(CONTAINER IS UNDER SCANNING)`;
+        }
+    } else {
+        next = next
+            .replace(/\(\s*CONTAINER IS UNDER SCANNING\s*\)/gi, `(${markerText})`)
+            .replace(/CONTAINER IS UNDER SCANNING/gi, markerText)
+            .replace(/\(\s*SCANNING DONE(?:\s+\d{2}-\d{2}-\d{4})?\s*\)/gi, `(${markerText})`)
+            .replace(/SCANNING DONE(?:\s+\d{2}-\d{2}-\d{4})?/gi, markerText);
+
+        if (!next.toUpperCase().includes(markerUpper)) {
+            next = `${next}${next ? ' ' : ''}(${markerText})`;
+        }
+    }
+
+    next = cleanScanningRemarkText(next);
+    if (next === current) return false;
+    row[9] = next;
+    return true;
+}
+
+function updateSmtpScanningStatusForContainers(containerNumbers, statusText) {
+    const smtpData = rawSheets.smtp || [];
+    const uniqueContainers = [...new Set(containerNumbers.map(cont => String(cont || '').trim().toUpperCase()).filter(Boolean))];
+    const matchedContainers = new Set();
+    let updateCount = 0;
+
+    for (let i = 1; i < smtpData.length; i++) {
+        const smtpCont = String(smtpData[i][2] || '').trim().toUpperCase();
+        if (!uniqueContainers.includes(smtpCont)) continue;
+        matchedContainers.add(smtpCont);
+        if (String(smtpData[i][1] || '').trim().toUpperCase() !== String(statusText).toUpperCase()) {
+            smtpData[i][1] = statusText;
+            updateCount++;
+        }
+    }
+
+    rawSheets.smtp = smtpData;
+    return {
+        requestedCount: uniqueContainers.length,
+        matchedCount: matchedContainers.size,
+        updateCount,
+        missingCount: uniqueContainers.length - matchedContainers.size,
+        matchedContainers
+    };
+}
+
+function updateWebsiteScanningRemarksForContainers(containerNumbers, markerText) {
+    const websiteData = rawSheets.website || [];
+    const uniqueContainers = [...new Set(containerNumbers.map(cont => String(cont || '').trim().toUpperCase()).filter(Boolean))];
+    const matchedContainers = new Set();
+    let updateCount = 0;
+
+    for (let i = 1; i < websiteData.length; i++) {
+        const webCont = String(websiteData[i][3] || '').trim().toUpperCase();
+        if (!uniqueContainers.includes(webCont)) continue;
+        matchedContainers.add(webCont);
+        if (setWebsiteScanningMarker(websiteData[i], markerText)) updateCount++;
+    }
+
+    rawSheets.website = websiteData;
+    return {
+        requestedCount: uniqueContainers.length,
+        matchedCount: matchedContainers.size,
+        updateCount,
+        missingCount: uniqueContainers.length - matchedContainers.size,
+        matchedContainers
+    };
+}
+
+function markSpecificContainersScanningDone(containerNumbers) {
+    const doneText = getScanningDoneText();
+    return {
+        statusText: doneText,
+        smtp: updateSmtpScanningStatusForContainers(containerNumbers, doneText),
+        website: updateWebsiteScanningRemarksForContainers(containerNumbers, doneText)
+    };
+}
+
+function markSpecificContainersUnderScanning(containerNumbers) {
+    return {
+        statusText: "CONTAINER IS UNDER SCANNING",
+        smtp: updateSmtpScanningStatusForContainers(containerNumbers, "Under Scanning"),
+        website: updateWebsiteScanningRemarksForContainers(containerNumbers, "CONTAINER IS UNDER SCANNING")
+    };
+}
+
+function buildScanningHoldReportRows() {
+    const smtpRows = Array.isArray(rawSheets.smtp) ? rawSheets.smtp : [];
+    const websiteRows = Array.isArray(rawSheets.website) ? rawSheets.website : [];
+    const shipperRows = Array.isArray(rawSheets.shipper) ? rawSheets.shipper : [];
+    const hkrRows = Array.isArray(rawSheets.hkrHmrFiltered) ? rawSheets.hkrHmrFiltered : [];
+
+    const smtpHeaders = smtpRows[0] || [];
+    const webHeaders = websiteRows[0] || [];
+    const shipHeaders = shipperRows[0] || [];
+
+    const sContIdx = findHeaderIndex(smtpHeaders, [/^CONT/i, /CONT.*NO/i], 2);
+    const sSmtpNoIdx = findHeaderIndex(smtpHeaders, [/SMTP/i], 13);
+    const sTpIdx = findHeaderIndex(smtpHeaders, [/TP.*SUBMITTING/i, /TP.*SUB/i, /TP.*NOTING/i, /HANDOVER/i], 18);
+    const sConsIdx = findHeaderIndex(smtpHeaders, [/CONSIGNEE/i, /SHIPPER/i], 24);
+
+    const wContIdx = findHeaderIndex(webHeaders, [/CONTAINER/i, /^CONT/i], 3);
+    const wRailIdx = findHeaderIndex(webHeaders, [/RAILING/i, /RAIL.*DATE/i, /RAILOUT/i], 8);
+    const wRemarksIdx = findHeaderIndex(webHeaders, [/REMARK/i], 9);
+
+    const shContIdx = findHeaderIndex(shipHeaders, [/^CONT/i, /CONT.*NO/i], 0);
+    const shConsIdx = findHeaderIndex(shipHeaders, [/CONSIGNEE/i, /SHIPPER/i], 3);
+
+    const smtpByCont = new Map();
+    smtpRows.slice(1).forEach(row => {
+        const cont = normalizeText(pickSmtpReportCell(row, [sContIdx, 2]));
+        if (!cont) return;
+        const existing = smtpByCont.get(cont);
+        const rowStatus = getScanningHoldStatus(row, null).type;
+        const existingStatus = existing ? getScanningHoldStatus(existing, null).type : 'none';
+        if (!existing || (rowStatus !== 'none' && existingStatus === 'none')) smtpByCont.set(cont, row);
+    });
+
+    const websiteByCont = new Map();
+    websiteRows.slice(1).forEach(row => {
+        const railStatus = normalizeText(pickSmtpReportCell(row, [wRailIdx, 8]));
+        if (railStatus !== "PENDING") return;
+        const cont = normalizeText(pickSmtpReportCell(row, [wContIdx, 3]));
+        if (!cont) return;
+        const existing = websiteByCont.get(cont);
+        const rowStatus = getScanningHoldStatus(null, row).type;
+        const existingStatus = existing ? getScanningHoldStatus(null, existing).type : 'none';
+        if (!existing || (rowStatus !== 'none' && existingStatus === 'none')) websiteByCont.set(cont, row);
+    });
+
+    const shipperByCont = new Map();
+    shipperRows.slice(1).forEach(row => {
+        const cont = normalizeText(pickSmtpReportCell(row, [shContIdx, 0]));
+        if (cont && !shipperByCont.has(cont)) shipperByCont.set(cont, row);
+    });
+
+    const hkrRemarkByCont = new Map();
+    hkrRows.forEach(row => {
+        const cont = normalizeText(row?.ctr_no ?? row?.container_no ?? row?.containerNo ?? row?.[2]);
+        const remark = cleanSmtpReportText(row?.assigned_remark ?? row?.assignedRemark ?? row?.remark ?? row?.[6], '');
+        if (cont && remark) hkrRemarkByCont.set(cont, remark.toUpperCase());
+    });
+
+    const containers = new Set();
+    websiteByCont.forEach((websiteRow, cont) => {
+        const smtpRow = smtpByCont.get(cont) || null;
+        if (getScanningHoldStatus(smtpRow, websiteRow).type !== 'none') containers.add(cont);
+    });
+
+    const reportRows = [];
+    containers.forEach(contNo => {
+        const smtpRow = smtpByCont.get(contNo) || null;
+        const websiteRow = websiteByCont.get(contNo) || null;
+        const shipperRow = shipperByCont.get(contNo) || null;
+        const statusInfo = getScanningHoldStatus(smtpRow, websiteRow);
+        if (statusInfo.type === 'none') return;
+
+        const tpRaw = pickSmtpReportCell(smtpRow, [sTpIdx, 18, 17], '');
+        reportRows.push({
+            status: statusInfo.status,
+            statusType: statusInfo.type,
+            consignee: cleanSmtpConsigneeName(
+                pickSmtpReportCell(smtpRow, [sConsIdx, 24], '') ||
+                pickSmtpReportCell(shipperRow, [shConsIdx, 3], '')
+            ),
+            contNo,
+            smtpNo: cleanSmtpReportText(pickSmtpReportCell(smtpRow, [sSmtpNoIdx, 13], ''), '-'),
+            tpDate: formatSmtpReportDate(tpRaw),
+            remarks: cleanSmtpReportText(cleanScanningDoneDateForDisplay(pickSmtpReportCell(websiteRow, [wRemarksIdx, 9], '')), '-'),
+            assignedRemark: cleanSmtpReportText(hkrRemarkByCont.get(contNo), '-'),
+            sortTime: getSmtpReportDateTime(tpRaw)
+        });
+    });
+
+    reportRows.sort((a, b) => {
+        const rank = { under: 0, done: 1, none: 2 };
+        if (rank[a.statusType] !== rank[b.statusType]) return rank[a.statusType] - rank[b.statusType];
+        if ((a.sortTime || 0) !== (b.sortTime || 0)) return (b.sortTime || 0) - (a.sortTime || 0);
+        const nameSort = a.consignee.localeCompare(b.consignee);
+        return nameSort !== 0 ? nameSort : a.contNo.localeCompare(b.contNo);
+    });
+
+    return reportRows;
+}
+
+function openScanningHoldWindow() {
+    let reportRows = buildScanningHoldReportRows();
+    const columns = [
+        { key: 'status', label: 'Scanning Yes / Completed' },
+        { key: 'consignee', label: 'Consignee' },
+        { key: 'contNo', label: 'CONT_Nos.' },
+        { key: 'smtpNo', label: 'smtp no' },
+        { key: 'tpDate', label: 'TP_Submitting_Dt.' },
+        { key: 'remarks', label: 'REMARKS (Website File Se)' },
+        { key: 'assignedRemark', label: 'HKR/HMR' }
+    ];
+
+    const existingModal = document.getElementById('scanningHoldModal');
+    if (existingModal) existingModal.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'scanningHoldModal';
+    modal.className = 'fixed inset-0 z-[100000] bg-slate-950/80 backdrop-blur-sm flex flex-col';
+    modal.innerHTML = `
+    <style>
+        #scanningHoldModal * { box-sizing: border-box; }
+        #scanningHoldModal .scan-hold-shell { width: 100%; height: 100%; background: #f8fafc; color: #0f172a; font-family: Arial, Helvetica, sans-serif; display: flex; flex-direction: column; }
+        #scanningHoldModal .scan-hold-header { background: #3b0764; color: white; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+        #scanningHoldModal .scan-hold-title { margin: 0; font-size: 15px; letter-spacing: 0; text-transform: uppercase; font-weight: 900; }
+        #scanningHoldModal .scan-hold-subline { margin-top: 2px; color: #e9d5ff; font-size: 8px; font-weight: 800; text-transform: uppercase; }
+        #scanningHoldModal .scan-hold-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
+        #scanningHoldModal .scan-hold-btn, #scanningHoldModal .scan-hold-upload { border: 0; border-radius: 6px; padding: 6px 10px; font-size: 9px; font-weight: 900; text-transform: uppercase; cursor: pointer; line-height: 1.1; }
+        #scanningHoldModal .scan-hold-upload input { display: none; }
+        #scanningHoldModal .scan-hold-btn-light { background: #e2e8f0; color: #0f172a; }
+        #scanningHoldModal .scan-hold-btn-green { background: #059669; color: white; }
+        #scanningHoldModal .scan-hold-btn-red { background: #dc2626; color: white; }
+        #scanningHoldModal .scan-hold-btn-purple { background: #7e22ce; color: white; }
+        #scanningHoldModal .scan-hold-search, #scanningHoldModal .scan-hold-select { border: 1px solid #c4b5fd; border-radius: 6px; padding: 6px 8px; font-size: 10px; font-weight: 700; outline: none; color: #0f172a; background: white; }
+        #scanningHoldModal .scan-hold-search { width: min(300px, 68vw); }
+        #scanningHoldModal .scan-hold-content { flex: 1; padding: 10px; overflow: hidden; display: flex; flex-direction: column; gap: 7px; }
+        #scanningHoldModal .scan-hold-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #475569; font-size: 9px; font-weight: 900; text-transform: uppercase; flex-wrap: wrap; }
+        #scanningHoldModal .scan-hold-table-wrap { flex: 1; overflow: auto; background: white; border: 1px solid #cbd5e1; }
+        #scanningHoldModal table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9px; }
+        #scanningHoldModal th, #scanningHoldModal td { border: 1px solid #cbd5e1; padding: 4px 5px; vertical-align: top; word-break: break-word; overflow-wrap: anywhere; line-height: 1.25; }
+        #scanningHoldModal thead th { position: sticky; top: 0; z-index: 3; background: #581c87; color: white; text-align: left; }
+        #scanningHoldModal th .scan-hold-label { display: block; font-size: 8px; font-weight: 900; text-transform: uppercase; margin-bottom: 4px; }
+        #scanningHoldModal .scan-hold-filter-wrap { position: relative; }
+        #scanningHoldModal th input.scan-hold-column-filter { width: 100%; min-width: 58px; border: 1px solid #ddd6fe; border-radius: 4px; padding: 2px 4px; font-size: 8px; font-weight: 700; color: #0f172a; background: white; outline: none; }
+        #scanningHoldModal .scan-hold-suggestions { position: absolute; top: calc(100% + 3px); left: 0; z-index: 20; width: max(100%, 190px); max-height: 180px; overflow: auto; background: white; color: #0f172a; border: 1px solid #c4b5fd; border-radius: 5px; box-shadow: 0 12px 24px rgba(15, 23, 42, 0.24); padding: 3px; }
+        #scanningHoldModal .scan-hold-suggestions.hidden { display: none; }
+        #scanningHoldModal .scan-hold-suggestion { display: block; width: 100%; border: 0; background: transparent; color: #0f172a; text-align: left; padding: 4px 5px; border-radius: 4px; font-size: 8px; font-weight: 800; line-height: 1.2; cursor: pointer; text-transform: none; }
+        #scanningHoldModal .scan-hold-suggestion:hover { background: #f3e8ff; }
+        #scanningHoldModal .scan-hold-no-suggestion { padding: 5px; font-size: 8px; font-weight: 800; color: #64748b; text-align: center; }
+        #scanningHoldModal tbody tr:nth-child(even) { background: #f8fafc; }
+        #scanningHoldModal tbody tr:hover { background: #f3e8ff; }
+        #scanningHoldModal .scan-hold-status-under { color: #dc2626; font-weight: 900; }
+        #scanningHoldModal .scan-hold-status-done { color: #059669; font-weight: 900; }
+        #scanningHoldModal td.scan-hold-consignee { font-weight: 900; color: #0f172a; }
+        #scanningHoldModal td.scan-hold-date { white-space: nowrap; font-weight: 800; color: #6d28d9; }
+        #scanningHoldModal .scan-hold-empty { padding: 30px; text-align: center; font-weight: 900; color: #64748b; text-transform: uppercase; }
+    </style>
+    <div class="scan-hold-shell">
+        <header class="scan-hold-header">
+            <div>
+                <h1 class="scan-hold-title">Scanning HOLD</h1>
+                <div class="scan-hold-subline">Upload column A container lists to update SMTP and website remarks</div>
+            </div>
+            <div class="scan-hold-actions">
+                <label class="scan-hold-upload scan-hold-btn-green">
+                    Upload Scanning Clear Containers
+                    <input id="scanningHoldClearInput" type="file" accept=".xlsx,.xls,.csv">
+                </label>
+                <label class="scan-hold-upload scan-hold-btn-red">
+                    Upload Scanning Containers
+                    <input id="scanningHoldScanInput" type="file" accept=".xlsx,.xls,.csv">
+                </label>
+                <select id="scanningHoldStatusFilter" class="scan-hold-select">
+                    <option value="">All Status</option>
+                    <option value="under">Under Scanning</option>
+                    <option value="done">Scanning Done</option>
+                </select>
+                <input id="scanningHoldGlobalSearch" class="scan-hold-search" type="search" placeholder="Search any column">
+                <button id="scanningHoldResetFilters" class="scan-hold-btn scan-hold-btn-light" type="button">Reset Filters</button>
+                <button id="scanningHoldDownloadExcel" class="scan-hold-btn scan-hold-btn-purple" type="button">Excel Download</button>
+                <button id="scanningHoldClose" class="scan-hold-btn scan-hold-btn-red" type="button">Close</button>
+            </div>
+        </header>
+        <main class="scan-hold-content">
+            <div class="scan-hold-meta">
+                <span id="scanningHoldRowCount"></span>
+                <span>Header filters are searchable with suggestions</span>
+            </div>
+            <div class="scan-hold-table-wrap">
+                <table>
+                    <thead><tr id="scanningHoldHeaderRow"></tr></thead>
+                    <tbody id="scanningHoldBody"></tbody>
+                </table>
+            </div>
+        </main>
+    </div>`;
+
+    document.body.appendChild(modal);
+
+    let visibleRows = reportRows.slice();
+
+    const getInput = id => modal.querySelector(`#${id}`);
+
+    const renderHeaderFilters = () => {
+        const headerRow = getInput('scanningHoldHeaderRow');
+        headerRow.innerHTML = columns.map(col => `
+            <th>
+                <span class="scan-hold-label">${escapeHtml(col.label)}</span>
+                <div class="scan-hold-filter-wrap">
+                    <input class="scan-hold-column-filter" data-key="${escapeHtml(col.key)}" type="search" placeholder="Search" autocomplete="off">
+                    <div class="scan-hold-suggestions hidden"></div>
+                </div>
+            </th>
+        `).join('');
+
+        modal.querySelectorAll('.scan-hold-column-filter').forEach(input => {
+            input.addEventListener('focus', () => showColumnSuggestions(input));
+            input.addEventListener('input', () => {
+                applyReportFilters();
+                showColumnSuggestions(input);
+            });
+            input.addEventListener('blur', () => {
+                setTimeout(() => hideColumnSuggestions(input), 150);
+            });
+        });
+    };
+
+    const getColumnSuggestionValues = (key) => {
+        return [...new Set(reportRows.map(row => cleanSmtpReportText(row[key], '-')))]
+            .filter(value => value && value !== '-')
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    };
+
+    const hideColumnSuggestions = (input = null) => {
+        const scope = input
+            ? [input.parentElement.querySelector('.scan-hold-suggestions')]
+            : Array.from(modal.querySelectorAll('.scan-hold-suggestions'));
+        scope.forEach(box => {
+            if (!box) return;
+            box.classList.add('hidden');
+            box.innerHTML = '';
+        });
+    };
+
+    const showColumnSuggestions = (input) => {
+        hideColumnSuggestions();
+        const box = input.parentElement.querySelector('.scan-hold-suggestions');
+        const query = input.value.trim().toUpperCase();
+        const values = getColumnSuggestionValues(input.dataset.key)
+            .filter(value => !query || value.toUpperCase().includes(query))
+            .slice(0, 80);
+
+        if (!values.length) {
+            box.innerHTML = '<div class="scan-hold-no-suggestion">No suggestions</div>';
+            box.classList.remove('hidden');
+            return;
+        }
+
+        box.innerHTML = values.map(value => `
+            <button type="button" class="scan-hold-suggestion" data-value="${escapeHtml(value)}">${escapeHtml(value)}</button>
+        `).join('');
+
+        box.querySelectorAll('.scan-hold-suggestion').forEach(btn => {
+            btn.addEventListener('mousedown', (event) => {
+                event.preventDefault();
+                input.value = btn.dataset.value || '';
+                hideColumnSuggestions(input);
+                applyReportFilters();
+                input.focus();
+            });
+        });
+        box.classList.remove('hidden');
+    };
+
+    const renderRows = (rows) => {
+        const body = getInput('scanningHoldBody');
+        getInput('scanningHoldRowCount').textContent = `${rows.length} of ${reportRows.length} scanning records showing`;
+        if (!rows.length) {
+            body.innerHTML = `<tr><td colspan="${columns.length}" class="scan-hold-empty">No rows match the selected filters</td></tr>`;
+            return;
+        }
+
+        body.innerHTML = rows.map(row => {
+            return `<tr>${columns.map(col => {
+                if (col.key === 'status') {
+                    const statusClass = row.statusType === 'under' ? 'scan-hold-status-under' : 'scan-hold-status-done';
+                    return `<td><span class="${statusClass}">${escapeHtml(row.status || '-')}</span></td>`;
+                }
+                const className = col.key === 'consignee' ? ' class="scan-hold-consignee"' : (col.key === 'tpDate' ? ' class="scan-hold-date"' : '');
+                return `<td${className}>${escapeHtml(row[col.key] || '-')}</td>`;
+            }).join('')}</tr>`;
+        }).join('');
+    };
+
+    function applyReportFilters() {
+        const statusFilter = getInput('scanningHoldStatusFilter').value;
+        const searchText = getInput('scanningHoldGlobalSearch').value.trim().toUpperCase();
+        const activeFilters = {};
+        modal.querySelectorAll('.scan-hold-column-filter').forEach(input => {
+            const value = input.value.trim().toUpperCase();
+            if (value) activeFilters[input.dataset.key] = value;
+        });
+
+        visibleRows = reportRows.filter(row => {
+            if (statusFilter && row.statusType !== statusFilter) return false;
+            const columnMatch = columns.every(col => {
+                return !activeFilters[col.key] || String(row[col.key] || '-').toUpperCase().includes(activeFilters[col.key]);
+            });
+            if (!columnMatch) return false;
+            if (!searchText) return true;
+            return columns.some(col => String(row[col.key] || '').toUpperCase().includes(searchText));
+        });
+        renderRows(visibleRows);
+    }
+
+    const refreshReportRows = () => {
+        reportRows = buildScanningHoldReportRows();
+        applyReportFilters();
+    };
+
+    const resetReportFilters = () => {
+        getInput('scanningHoldStatusFilter').value = '';
+        getInput('scanningHoldGlobalSearch').value = '';
+        modal.querySelectorAll('.scan-hold-column-filter').forEach(input => { input.value = ''; });
+        hideColumnSuggestions();
+        applyReportFilters();
+    };
+
+    const downloadReportExcel = () => {
+        if (typeof XLSX === 'undefined') {
+            alert("Excel library load nahi hui.");
+            return;
+        }
+
+        const rows = visibleRows.map(row => {
+            const out = {};
+            columns.forEach(col => { out[col.label] = row[col.key] || '-'; });
+            return out;
+        });
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(rows);
+        XLSX.utils.book_append_sheet(wb, ws, 'Scanning HOLD');
+        XLSX.writeFile(wb, `Scanning_HOLD_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    };
+
+    const handleUpload = (inputId, mode) => {
+        getInput(inputId).addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (!rawSheets.smtp || rawSheets.smtp.length <= 1 || !rawSheets.website || rawSheets.website.length <= 1) {
+                alert("SMTP/WEBSITE data nahi mila. Pehle data load/upload karein.");
+                event.target.value = '';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const wb = XLSX.read(evt.target.result, { type: 'binary' });
+                    const ws = wb.Sheets[wb.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+                    const containers = parseFirstColumnContainers(jsonData);
+                    if (!containers.length) {
+                        alert("Excel column A me container numbers nahi mile.");
+                        return;
+                    }
+
+                    const result = mode === 'done'
+                        ? markSpecificContainersScanningDone(containers)
+                        : markSpecificContainersUnderScanning(containers);
+                    const changedCount = result.smtp.updateCount + result.website.updateCount;
+                    const matchedCount = new Set([...result.smtp.matchedContainers, ...result.website.matchedContainers]).size;
+
+                    if (matchedCount === 0) {
+                        alert("Uploaded containers SMTP/WEBSITE data se match nahi hue.");
+                        return;
+                    }
+
+                    if (currentSheetInView === 'smtp') window.viewSheetData('smtp');
+                    if (currentSheetInView === 'website') window.viewSheetData('website');
+                    refreshReportRows();
+
+                    if (changedCount > 0) {
+                        saveToCloud();
+                        processCloudData();
+                    }
+
+                    showScanningUpdateToast(
+                        `${mode === 'done' ? 'SCANNING CLEAR' : 'SCANNING HOLD'} UPDATE COMPLETE<br>` +
+                        `${matchedCount} containers matched<br>` +
+                        `${result.smtp.updateCount} SMTP updates | ${result.website.updateCount} WEBSITE remark updates`,
+                        mode === 'done' ? 'bg-emerald-600' : 'bg-pink-600',
+                        7000
+                    );
+                } catch (err) {
+                    console.error("Scanning HOLD upload error:", err);
+                    alert("Scanning HOLD upload error: " + err.message);
+                }
+            };
+
+            reader.readAsBinaryString(file);
+            event.target.value = '';
+        });
+    };
+
+    const closeReport = () => {
+        document.removeEventListener('keydown', handleEscape);
+        modal.remove();
+    };
+
+    function handleEscape(event) {
+        if (event.key === 'Escape') closeReport();
+    }
+
+    getInput('scanningHoldStatusFilter').addEventListener('change', applyReportFilters);
+    getInput('scanningHoldGlobalSearch').addEventListener('input', applyReportFilters);
+    getInput('scanningHoldResetFilters').addEventListener('click', resetReportFilters);
+    getInput('scanningHoldDownloadExcel').addEventListener('click', downloadReportExcel);
+    getInput('scanningHoldClose').addEventListener('click', closeReport);
+    document.addEventListener('keydown', handleEscape);
+    handleUpload('scanningHoldClearInput', 'done');
+    handleUpload('scanningHoldScanInput', 'under');
+
+    renderHeaderFilters();
+    renderRows(visibleRows);
+    getInput('scanningHoldGlobalSearch').focus();
+}
+
 function openSmtpPendingReportWindow() {
     const reportRows = buildSmtpPendingReportRows();
     if (reportRows.length === 0) {
@@ -6648,6 +7123,11 @@ function openSmtpPendingReportWindow() {
     renderHeaderFilters();
     renderRows(visibleRows);
     document.getElementById('smtpReportGlobalSearch').focus();
+}
+
+const scanningHoldBtn = document.getElementById('scanningHoldBtn');
+if (scanningHoldBtn) {
+    scanningHoldBtn.addEventListener('click', openScanningHoldWindow);
 }
 
 const smtpReportBtn = document.getElementById('smtpReportBtn');
