@@ -803,6 +803,11 @@ table {
     <i data-lucide="download" class="w-4 h-4"></i>
     Download PDF & Copy
 </button>
+<button id="downloadExcelReportBtn"
+        class="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-md active:scale-95">
+    <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+    Download Excel
+</button>
 <button id="lotBreakReportBtn" 
         class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-md active:scale-95 ml-2">
     <i data-lucide="split" class="w-4 h-4"></i>
@@ -1911,14 +1916,15 @@ document.getElementById('downloadAndCopyBtn').addEventListener('click', async ()
             );
             let sText = isScanning ? "UNDER SCANNING" : "Pending Railout";
             let sCol = isScanning ? "#990000" : "red";
-            htmlContent += `<tr style="text-align: center; color: red;">
+            const scanBg = isScanning ? "#fce7f3" : "transparent";
+            htmlContent += `<tr style="text-align: center; color: red; background-color: ${scanBg};">
                 <td>${globalSerial++}</td>
                 <td>${blInfo.blNo}</td>
                 <td>${contNo}</td>
                 <td>${getContSize(contNo)}"</td>
                 <td>Pending</td>
                 <td>-</td>
-                <td style="font-weight: bold; color: ${sCol}; font-size: 7pt;">${sText}</td>
+                <td bgcolor="${scanBg}" style="font-weight: bold; color: ${sCol}; font-size: 7pt;">${sText}</td>
             </tr>`;
         });
         htmlContent += `</tbody></table></div>`;
@@ -1935,6 +1941,168 @@ document.getElementById('downloadAndCopyBtn').addEventListener('click', async ()
     await html2pdf().set(opt).from(htmlContent).save();
     alert("✅ PDF Downloaded!");
 });
+
+document.getElementById('downloadExcelReportBtn').addEventListener('click', async () => {
+    const blList = getSelectedReportGroups();
+    if (blList.length === 0) return;
+    if (typeof ExcelJS === 'undefined') {
+        alert("Excel library load nahi hui.");
+        return;
+    }
+
+    const websiteData = rawSheets.website || [];
+    const smtpData = rawSheets.smtp || [];
+    if (!websiteData.length || !smtpData.length) {
+        alert("WEBSITE/SMTP data nahi mila.");
+        return;
+    }
+
+    const wsHeaders = websiteData[0].map(h => String(h).trim().toUpperCase());
+    const idxBL = wsHeaders.indexOf('BILL_NO'),
+          idxCont = wsHeaders.indexOf('CONTAINER_NO'),
+          idxRake = wsHeaders.indexOf('RAKE_NO'),
+          idxDate = wsHeaders.indexOf('RAILING_DATE'),
+          idxRemarks = wsHeaders.indexOf('REMARKS');
+
+    if ([idxBL, idxCont, idxRake, idxDate, idxRemarks].some(idx => idx === -1)) {
+        alert("WEBSITE headers missing: BILL_NO, CONTAINER_NO, RAKE_NO, RAILING_DATE, REMARKS.");
+        return;
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Import Status');
+    const customerName = (selectedShipper || "Selected Customer").toUpperCase();
+    const borderThin = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+    };
+    const yellowFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFD966' } };
+    const pinkFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE7F3' } };
+    const greenFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
+    const blueFont = { argb: 'FF055094' };
+    const redFont = { argb: 'FFB00020' };
+
+    const titleRow = worksheet.addRow([customerName]);
+    worksheet.mergeCells(`A${titleRow.number}:G${titleRow.number}`);
+    titleRow.getCell(1).font = { name: 'Calibri', size: 12, bold: true, color: blueFont };
+    worksheet.addRow([]);
+
+    const getContSize = (cNo) => {
+        const row = smtpData.find(r => String(r[2] || '').trim().toUpperCase() === cNo.toUpperCase());
+        return row ? (String(row[3]).includes('40') ? '40' : '20') : '-';
+    };
+
+    blList.forEach((blInfo, index) => {
+        if (index > 0) worksheet.addRow([]);
+
+        const allBlRows = websiteData.slice(1).filter(row => String(row[idxBL] || '').trim().toUpperCase() === blInfo.blNo.toUpperCase());
+        const railedRows = allBlRows.filter(row => !['PENDING', ''].includes(String(row[idxDate] || '').trim().toUpperCase()));
+        const pendingRows = allBlRows.filter(row => String(row[idxDate] || '').trim().toUpperCase() === 'PENDING' || String(row[idxDate] || '').trim() === '');
+        const processedRows = railedRows.map(row => {
+            const remarkText = String(row[idxRemarks] || '').toUpperCase();
+            let statusText = '-', statusType = 2, statusColor = 'FF1E40AF', fill = null;
+            if (remarkText.includes("TRAIN ARRIVED ON")) {
+                const arrivedMatch = remarkText.match(/ARRIVED ON\s+\d{2}-\d{2}-\d{4}(\s+\d{2}:\d{2})?/);
+                statusText = arrivedMatch ? arrivedMatch[0] : 'TRAIN ARRIVED';
+                statusType = 1;
+                statusColor = 'FF15803D';
+                fill = greenFill;
+            } else if (remarkText.includes("ETA")) {
+                const afterEta = remarkText.split("ETA")[1];
+                const dateMatch = afterEta.match(/(\d{2}-\d{2}-\d{4})/);
+                statusText = dateMatch ? `Expected Arrival on: ${dateMatch[1]}` : 'IN TRANSIT';
+            }
+            return { row, statusText, statusType, statusColor, fill };
+        }).sort((a, b) => a.statusType - b.statusType);
+
+        const arrivedCount = processedRows.filter(r => r.statusType === 1).length;
+        const inTransitCount = processedRows.length - arrivedCount;
+        const summaryRow = worksheet.addRow([`B/L No : ${blInfo.blNo} | S/Line : ${blInfo.line} | Total : ${blInfo.stats.total} | Railout : ${railedRows.length} | Arrived : ${arrivedCount} | IN-Transit : ${inTransitCount}`]);
+        worksheet.mergeCells(`A${summaryRow.number}:G${summaryRow.number}`);
+        summaryRow.getCell(1).font = { name: 'Calibri', size: 11, bold: true, color: blueFont };
+
+        const headerRow = worksheet.addRow(['Sr', 'BL Number', 'Container', 'Size', 'Train', 'Railout Date', 'ETA & Current Status']);
+        headerRow.eachCell(cell => {
+            cell.fill = yellowFill;
+            cell.font = { name: 'Calibri', size: 10, bold: true };
+            cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+            cell.border = borderThin;
+        });
+
+        let serial = 1;
+        processedRows.forEach(item => {
+            const row = item.row;
+            const dataRow = worksheet.addRow([
+                serial++,
+                blInfo.blNo,
+                String(row[idxCont] || '').trim(),
+                `${getContSize(String(row[idxCont] || '').trim())}"`,
+                String(row[idxRake] || '').trim().split('(')[0],
+                typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(row[idxDate]) : row[idxDate],
+                item.statusText
+            ]);
+            dataRow.eachCell(cell => {
+                cell.border = borderThin;
+                cell.font = { name: 'Calibri', size: 9 };
+                cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+            });
+            dataRow.getCell(7).font = { name: 'Calibri', size: 9, bold: true, color: { argb: item.statusColor } };
+            if (item.fill) dataRow.getCell(7).fill = item.fill;
+        });
+
+        pendingRows.forEach(pRow => {
+            const contNo = String(pRow[idxCont] || '').trim().toUpperCase();
+            const isScanning = smtpData.some(sRow =>
+                String(sRow[2] || '').trim().toUpperCase() === contNo &&
+                String(sRow[1] || '').trim().toUpperCase() === "UNDER SCANNING"
+            );
+            const dataRow = worksheet.addRow([
+                serial++,
+                blInfo.blNo,
+                contNo,
+                `${getContSize(contNo)}"`,
+                'Pending',
+                '-',
+                isScanning ? 'UNDER SCANNING' : 'Pending Railout'
+            ]);
+            dataRow.eachCell(cell => {
+                cell.border = borderThin;
+                cell.font = { name: 'Calibri', size: 9, color: redFont, bold: true };
+                cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+                if (isScanning) cell.fill = pinkFill;
+            });
+        });
+    });
+
+    const closingStart = worksheet.rowCount + 2;
+    worksheet.getCell(`A${closingStart}`).value = 'Tracking Link: https://tinyurl.com/import-tracking';
+    worksheet.getCell(`A${closingStart + 2}`).value = 'Regards,';
+    worksheet.getCell(`A${closingStart + 3}`).value = 'Hind Terminals Pvt Ltd';
+    worksheet.getCell(`A${closingStart + 3}`).font = { bold: true };
+    worksheet.columns = [
+        { width: 6 },
+        { width: 18 },
+        { width: 16 },
+        { width: 8 },
+        { width: 16 },
+        { width: 16 },
+        { width: 42 }
+    ];
+    worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `Import_Status_Report_${customerName.replace(/\s+/g, '_')}.xlsx`;
+    anchor.click();
+    window.URL.revokeObjectURL(url);
+    alert("Excel Downloaded!");
+});
+
 // Hidden file input for CSV selection
 const csvUploadInput = document.createElement('input');
 csvUploadInput.type = 'file';
