@@ -2542,6 +2542,32 @@ function cloneRow(row = []) {
     return Array.isArray(row) ? row.map(cell => cell ?? '') : [];
 }
 
+function deduplicateSmtpSheet() {
+    if (!Array.isArray(rawSheets.smtp) || rawSheets.smtp.length <= 1) return;
+    const header = rawSheets.smtp[0];
+    const sContIdx = 2; // CONT_Nos. (Column C)
+    const seen = new Map();
+    const uniqueRows = [header];
+
+    rawSheets.smtp.slice(1).forEach(row => {
+        const cont = String(row[sContIdx] || '').trim().toUpperCase();
+        if (!cont) return;
+        if (!seen.has(cont)) {
+            seen.set(cont, uniqueRows.length);
+            uniqueRows.push(row);
+        } else {
+            const existingRowIdx = seen.get(cont);
+            const existingRow = uniqueRows[existingRowIdx];
+            for (let i = 0; i < Math.max(existingRow.length, row.length); i++) {
+                if ((existingRow[i] === undefined || existingRow[i] === '' || existingRow[i] === '-') && (row[i] !== undefined && row[i] !== '' && row[i] !== '-')) {
+                    existingRow[i] = row[i];
+                }
+            }
+        }
+    });
+    rawSheets.smtp = uniqueRows;
+}
+
 function cloneAoAData(data = []) {
     return Array.isArray(data)
         ? data.map(row => (Array.isArray(row) ? row.map(cell => cell ?? '') : []))
@@ -5624,8 +5650,9 @@ function autoUpdateScanningRemarksInWebsite(saveChanges = true) {
 
     return updatedCount;
 }
-  // ==========================================
-// SMTP EXCEL IMPORT LOGIC (FIXED: Added Index 13)
+
+// ==========================================
+// SMTP EXCEL IMPORT LOGIC (FIXED: Container Update & Deduplication)
 // ==========================================
 const smtpExcelInput = document.getElementById('smtpExcelInput');
 if (smtpExcelInput) {
@@ -5650,10 +5677,10 @@ if (smtpExcelInput) {
             ensureSheetHeaders('website');
 
             let addedCount = 0;
+            let updatedCount = 0;
             let transferCount = 0;
             let hkrMatchCount = 0;
             
-            // CRITICAL FIX: Added 13 to this array
             const activeIndices = [1, 2, 3, 5, 9, 11, 13, 17, 18, 22, 23, 24, 26]; 
 
             jsonData.slice(1).forEach(exRow => {
@@ -5679,12 +5706,21 @@ if (smtpExcelInput) {
 
                     exRow[22] = finalRemark;
 
-                    const currentContBlKey = buildContBlKey(contNo, blNo);
-                    const alreadyInSmtp = rawSheets.smtp.some((s, idx) =>
-                        idx > 0 && buildContBlKey(s[2], s[9]) === currentContBlKey
+                    // Match container by Container Number in rawSheets.smtp (Column C / index 2)
+                    const existingSmtpIdx = rawSheets.smtp.findIndex((s, idx) =>
+                        idx > 0 && String(s[2] || '').trim().toUpperCase() === contNo
                     );
                     
-                    if (!alreadyInSmtp) {
+                    if (existingSmtpIdx !== -1) {
+                        // Update existing container record in SMTP instead of adding duplicate
+                        activeIndices.forEach(i => {
+                            if (exRow[i] !== undefined && exRow[i] !== '') {
+                                rawSheets.smtp[existingSmtpIdx][i] = exRow[i];
+                            }
+                        });
+                        updatedCount++;
+                    } else {
+                        // Add new container record to SMTP
                         let optimizedRow = new Array(27).fill(""); 
                         activeIndices.forEach(i => { 
                             optimizedRow[i] = exRow[i] !== undefined ? exRow[i] : ""; 
@@ -5692,9 +5728,10 @@ if (smtpExcelInput) {
                         rawSheets.smtp.push(optimizedRow);
                         addedCount++;
                     }
-                    // Baaki ka transfer logic waisa hi rahega...
+
+                    // Baaki ka transfer logic (Website check by container number)
                     const alreadyInWebsite = rawSheets.website.some((w, idx) =>
-                        idx > 0 && buildContBlKey(w[3], w[2]) === currentContBlKey
+                        idx > 0 && String(w[3] || '').trim().toUpperCase() === contNo
                     );
                     if (!alreadyInWebsite) {
                         const rawTpDate = exRow[18] || exRow[17];
@@ -5717,19 +5754,20 @@ if (smtpExcelInput) {
                 }
             });
 
+            normalizeRawSheets();
             window.viewSheetData('smtp');
             saveToCloud(); 
             processCloudData();
             
             // Notification
-            alert(`✓ SMTP Processing Complete!\nAdded: ${addedCount}\nSynced: ${transferCount}\nSMTP NO (Col 13) included.`);
+            alert(`✓ SMTP Processing Complete!\nAdded: ${addedCount}\nUpdated: ${updatedCount}\nSynced to Website: ${transferCount}`);
         };
         reader.readAsBinaryString(file);
         e.target.value = ''; 
     });
 }
 
-        // Manual Date Modal Events
+// Manual Date Modal Events
         document.getElementById('submitManualDateBtn').addEventListener('click', () => {
             const dateVal = document.getElementById('manualRailDateInput').value.trim();
             if (!dateVal) {
@@ -6749,13 +6787,26 @@ function buildSmtpPendingReportRows() {
 }
 
 function parseFirstColumnContainers(jsonData) {
-    if (!jsonData.length || !hasRowValues(jsonData[0])) {
-        throw new Error("Excel mein header row nahi mili.");
-    }
-
-    return [...new Set(jsonData.slice(1)
-        .map(row => String(row[0] || '').trim().toUpperCase())
-        .filter(Boolean))];
+    if (!jsonData || !jsonData.length) return [];
+    
+    const list = [];
+    jsonData.forEach((row, idx) => {
+        const val = String(row[0] || '').trim().toUpperCase();
+        if (!val) return;
+        
+        // Skip common header words
+        const isHeaderWord = /^(CONTAINER|CONT|CONT_NO|CONTAINER_NO|CONT_NOS|EQUIPMENT|PREFIX|SERIAL|UNIT|NUMBER|NO|SR_NO|SR|CONTS)$/i.test(val)
+            || val.includes("CONTAINER NUMBER") || val.includes("CONTAINER NO");
+            
+        if (isHeaderWord && idx === 0) {
+            return;
+        }
+        
+        if (val.length >= 4) {
+            list.push(val);
+        }
+    });
+    return [...new Set(list)];
 }
 
 function extractScanningDoneText(value) {
@@ -6872,6 +6923,39 @@ function updateWebsiteScanningRemarksForContainers(containerNumbers, markerText)
         missingCount: uniqueContainers.length - matchedContainers.size,
         matchedContainers
     };
+}
+
+function getScanningUploadMatchedContainers(containerNumbers) {
+    const uniqueContainers = new Set(containerNumbers.map(cont => String(cont || '').trim().toUpperCase()).filter(Boolean));
+    const matchedContainers = new Set();
+
+    (rawSheets.smtp || []).slice(1).forEach(row => {
+        const contNo = String(row[2] || '').trim().toUpperCase();
+        if (uniqueContainers.has(contNo)) matchedContainers.add(contNo);
+    });
+
+    (rawSheets.website || []).slice(1).forEach(row => {
+        const contNo = String(row[3] || '').trim().toUpperCase();
+        if (uniqueContainers.has(contNo)) matchedContainers.add(contNo);
+    });
+
+    return matchedContainers;
+}
+
+function getCurrentUnderScanningContainers() {
+    const containers = new Set();
+
+    (rawSheets.smtp || []).slice(1).forEach(row => {
+        const contNo = String(row[2] || '').trim().toUpperCase();
+        if (contNo && getScanningHoldStatus(row, null).type === 'under') containers.add(contNo);
+    });
+
+    (rawSheets.website || []).slice(1).forEach(row => {
+        const contNo = String(row[3] || '').trim().toUpperCase();
+        if (contNo && getScanningHoldStatus(null, row).type === 'under') containers.add(contNo);
+    });
+
+    return [...containers];
 }
 
 function markSpecificContainersScanningDone(containerNumbers) {
@@ -7241,7 +7325,7 @@ function openScanningHoldWindow() {
     };
 
     const handleUpload = (inputId, mode) => {
-        getInput(inputId).addEventListener('change', (event) => {
+        getInput(inputId).addEventListener('change', async (event) => {
             const file = event.target.files[0];
             if (!file) return;
 
@@ -7252,7 +7336,7 @@ function openScanningHoldWindow() {
             }
 
             const reader = new FileReader();
-            reader.onload = (evt) => {
+            reader.onload = async (evt) => {
                 try {
                     const wb = XLSX.read(evt.target.result, { type: 'binary' });
                     const ws = wb.Sheets[wb.SheetNames[0]];
@@ -7263,10 +7347,30 @@ function openScanningHoldWindow() {
                         return;
                     }
 
+                    const uploadedMatchedContainers = getScanningUploadMatchedContainers(containers);
+                    if (uploadedMatchedContainers.size === 0) {
+                        alert("Uploaded containers SMTP/WEBSITE data se match nahi hue.");
+                        return;
+                    }
+
+                    let previousUnderResult = null;
+                    if (mode === 'under') {
+                        const previousUnderContainers = getCurrentUnderScanningContainers();
+                        if (previousUnderContainers.length) {
+                            previousUnderResult = markSpecificContainersScanningDone(previousUnderContainers);
+                        }
+                    }
+
                     const result = mode === 'done'
                         ? markSpecificContainersScanningDone(containers)
                         : markSpecificContainersUnderScanning(containers);
-                    const changedCount = result.smtp.updateCount + result.website.updateCount;
+                    const previousChangedCount = previousUnderResult
+                        ? previousUnderResult.smtp.updateCount + previousUnderResult.website.updateCount
+                        : 0;
+                    const previousMatchedCount = previousUnderResult
+                        ? new Set([...previousUnderResult.smtp.matchedContainers, ...previousUnderResult.website.matchedContainers]).size
+                        : 0;
+                    const changedCount = result.smtp.updateCount + result.website.updateCount + previousChangedCount;
                     const matchedCount = new Set([...result.smtp.matchedContainers, ...result.website.matchedContainers]).size;
 
                     if (matchedCount === 0) {
@@ -7279,14 +7383,18 @@ function openScanningHoldWindow() {
                     refreshReportRows();
 
                     if (changedCount > 0) {
-                        saveToCloud();
-                        processCloudData();
+                        const saveSuccess = await saveToCloud();
+                        if (saveSuccess) {
+                            processCloudData();
+                        }
                     }
 
                     showScanningUpdateToast(
                         `${mode === 'done' ? 'SCANNING CLEAR' : 'SCANNING HOLD'} UPDATE COMPLETE<br>` +
+                        `${mode === 'under' && previousMatchedCount > 0 ? `${previousMatchedCount} old under-scanning changed to SCANNING DONE<br>` : ''}` +
                         `${matchedCount} containers matched<br>` +
-                        `${result.smtp.updateCount} SMTP updates | ${result.website.updateCount} WEBSITE remark updates`,
+                        `${result.smtp.updateCount + (previousUnderResult?.smtp.updateCount || 0)} SMTP updates | ` +
+                        `${result.website.updateCount + (previousUnderResult?.website.updateCount || 0)} WEBSITE remark updates`,
                         mode === 'done' ? 'bg-emerald-600' : 'bg-pink-600',
                         7000
                     );
