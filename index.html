@@ -328,6 +328,9 @@ table {
 <button id="openAddShipperBtn" class="bg-slate-900 hover:bg-black text-white px-4 py-2 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-lg">
     <i data-lucide="user-plus" class="w-3.5 h-3.5"></i> Add Shipper
 </button>
+<button id="openAddSsrBtn" class="bg-indigo-700 hover:bg-indigo-800 text-white px-4 py-2 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-lg hidden">
+    <i data-lucide="user-plus" class="w-3.5 h-3.5"></i> Add SSR Request
+</button>
                     <!-- Shipper Tab Context Tools -->
                     <div id="shipperUpdateSection" class="hidden items-center gap-3 bg-white p-2 rounded-xl border border-slate-300 shadow-sm flex-wrap">
                         <label class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] cursor-pointer transition-all flex items-center gap-2 shadow-sm uppercase">
@@ -670,7 +673,7 @@ table {
     </header>
     <main id="mainContent" class="flex-1 flex overflow-hidden">
         <aside class="w-60 bg-blue-200 border-r border-slate-400 flex flex-col shrink-0 no-print" id="sidebarContainer">
-            <div class="p-3 border-b border-slate-200">
+            <div class="p-3 border-b border-slate-200 hidden">
                 <div class="relative">
                     <i data-lucide="search" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400"></i>
                     <input type="text" id="shipperSearch" placeholder="Search HKR Shippers" class="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-[10px] font-bold outline-none focus:ring-2 focus:ring-green-800 shadow-sm">
@@ -701,6 +704,17 @@ table {
 
 </div>
             <div id="shipperList" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1"></div>
+            <!-- SSR Request Header -->
+            <div class="p-2 border-t border-b border-slate-400 bg-blue-300/50 flex justify-between items-center shrink-0">
+                <span class="text-[10px] font-black text-blue-900 tracking-wider uppercase">SSR Request</span>
+                <div class="flex items-center gap-2">
+                    <button id="sidebarAddSsrBtn" type="button" class="text-blue-950 hover:text-indigo-600 transition-colors p-0.5 cursor-pointer" title="Add SSR Request">
+                        <i data-lucide="plus" class="w-3.5 h-3.5 font-black"></i>
+                    </button>
+                    <span id="ssrCount" class="bg-blue-800 text-white px-1.5 py-0.5 rounded-full text-[8px] font-black">0</span>
+                </div>
+            </div>
+            <div id="ssrList" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1"></div>
         </aside>
 
         <section id="mainSectionArea" class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 print:p-0 bg-slate-300">
@@ -880,8 +894,11 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
 
     const pickFirst = (row, indexes) => {
         for (const idx of indexes) {
-            if (idx >= 0 && row[idx] !== undefined && row[idx] !== null && String(row[idx]).trim() !== '') {
-                return String(row[idx]).trim();
+            if (idx >= 0 && row[idx] !== undefined && row[idx] !== null) {
+                const val = String(row[idx]).trim();
+                if (val !== '' && val !== '-' && val !== '.' && val.toUpperCase() !== 'N/A' && val.toUpperCase() !== 'N.A.') {
+                    return val;
+                }
             }
         }
         return '';
@@ -979,9 +996,15 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
             const consignee = match.consignee || missingImporterName;
             const contNo = match.contNo;
             const blNo = match.blNo;
+            const contColIdx = (smtpContIdx !== -1) ? smtpContIdx : 2;
+            const blColIdx = (smtpBlIdx !== -1) ? smtpBlIdx : 9;
             const smtpRow = match.source === 'smtp'
                 ? row
-                : (rawSheets.smtp || []).find(s => String(s[2] || '').trim().toUpperCase() === contNo);
+                : (rawSheets.smtp || []).find(s => {
+                    const c = String(s[contColIdx] || '').trim().toUpperCase();
+                    const b = String(s[blColIdx] || '').trim().toUpperCase();
+                    return (contNo && c === contNo) || (blNo && b === blNo);
+                });
             const hkrRow = (!smtpRow && rawSheets.hkrHmrFiltered)
                 ? rawSheets.hkrHmrFiltered.find(h => String(h.ctr_no || '').trim().toUpperCase() === contNo)
                 : null;
@@ -1074,7 +1097,8 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
             let suggestionsHtml = '';
             sortedConsignees.forEach(data => {
                 const hasPending = data.pending > 0;
-                const bgColor = hasPending ? 'bg-red-300' : 'bg-gray-300';
+                const isHandover = data.vessel && !data.vessel.includes('NOT HANDOVER');
+                const bgColor = isHandover ? 'bg-green-300 text-green-950 font-bold' : 'bg-red-300 text-red-950 font-bold';
                 
                 suggestionsHtml += `
                     <div class="suggestion-item p-2 mb-1.5 ${bgColor} border border-slate-200 rounded hover:bg-yellow-400 hover:text-black cursor-pointer text-[9px]" 
@@ -3424,11 +3448,23 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
     const sizeIndex = headers.findIndex(h => String(h).toUpperCase().includes('SIZE'));
     const relevantRows = dataSource.slice(1).filter(row => String(row[consIndex] || '').trim() === selectedShipper);
     
+    const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
+    const smtpContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 
+        ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) 
+        : 2;
+    const smtpBlIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 
+        ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) 
+        : 9;
+
+    const webHeaders = (rawSheets.website && rawSheets.website[0]) || [];
+    const webContIdx = webHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 
+        ? webHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) 
+        : 3;
+
     const blGroups = {};
     const excludedTerms = ['CT3', 'CT4', 'MICT', 'SPRH', 'T2'];
     
     relevantRows.forEach(row => {
-        // ... (पुराना Logic Same रहेगा) ...
         const contNo = (consIndex === 24) ? String(row[2] || '').trim() : String(row[0] || '').trim();
         const blNo = (consIndex === 24) ? String(row[9] || 'N/A').trim() : String(row[2] || 'N/A').trim();
         const sizeValue = String(row[sizeIndex] || '').includes('40') ? 40 : 20;
@@ -3445,8 +3481,12 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
             };
         }
 
-        const smtpRow = rawSheets.smtp.find(s => String(s[2] || '').trim() === contNo);
-        const webRow = rawSheets.website.find(w => String(w[3] || '').trim() === contNo);
+        const smtpRow = rawSheets.smtp.find(s => {
+            const c = String(s[smtpContIdx] || '').trim().toUpperCase();
+            const b = String(s[smtpBlIdx] || '').trim().toUpperCase();
+            return (contNo && c === contNo.toUpperCase()) || (blNo && b === blNo.toUpperCase());
+        });
+        const webRow = rawSheets.website.find(w => String(w[webContIdx] || '').trim().toUpperCase() === contNo.toUpperCase());
         
         if (smtpRow) {
             blGroups[blNo].isAnySmtp = true;
@@ -3550,17 +3590,131 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
     }
 }
 
+        function isShipperInSmtp(shipperName) {
+            const sName = String(shipperName || '').trim().toUpperCase();
+            if (!sName) return false;
+            if (!rawSheets.smtp || rawSheets.smtp.length <= 1) return false;
+
+            const smtpHeaders = rawSheets.smtp[0] || [];
+            const sConsIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) !== -1 
+                ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) 
+                : 24;
+            const sContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 
+                ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) 
+                : 2;
+            const sBlIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 
+                ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) 
+                : 9;
+
+            // Direct check
+            const directMatch = rawSheets.smtp.slice(1).some(row => 
+                String(row[sConsIdx] || '').trim().toUpperCase() === sName
+            );
+            if (directMatch) return true;
+
+            // Indirect check via containers/BLs in shipper sheet
+            if (rawSheets.shipper && rawSheets.shipper.length > 1) {
+                const shipHeaders = rawSheets.shipper[0] || [];
+                const shipContIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 
+                    ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) 
+                    : 0;
+                const shipBlIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 
+                    ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) 
+                    : 2;
+                const shipConsIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 
+                    ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) 
+                    : 3;
+
+                const shipperConts = new Set();
+                const shipperBls = new Set();
+
+                rawSheets.shipper.slice(1).forEach(r => {
+                    if (String(r[shipConsIdx] || '').trim().toUpperCase() === sName) {
+                        const c = String(r[shipContIdx] || '').trim().toUpperCase();
+                        const b = String(r[shipBlIdx] || '').trim().toUpperCase();
+                        if (c && c !== '-') shipperConts.add(c);
+                        if (b && b !== '-') shipperBls.add(b);
+                    }
+                });
+
+                const indirectMatch = rawSheets.smtp.slice(1).some(row => {
+                    const c = String(row[sContIdx] || '').trim().toUpperCase();
+                    const b = String(row[sBlIdx] || '').trim().toUpperCase();
+                    return (c && shipperConts.has(c)) || (b && shipperBls.has(b));
+                });
+                if (indirectMatch) return true;
+            }
+            return false;
+        }
+
         function renderShipperList(shippers, consIndex) {
             const listEl = document.getElementById('shipperList');
+            const ssrListEl = document.getElementById('ssrList');
+            const ssrCountEl = document.getElementById('ssrCount');
+            
             const filter = shipperSearch.value.toLowerCase();
-            listEl.innerHTML = shippers
-                .filter(s => String(s).toLowerCase().includes(filter))
-                .map(name => `
-                    <button class="shipper-select-btn w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold uppercase transition-all flex items-center justify-between group ${selectedShipper === name ? 'bg-blue-700 text-white shadow-lg' : 'text-slate-900 hover:bg-slate-100'}" data-name="${name.replace(/'/g, "\\'")}">
-                        <span class="truncate">${name}</span>
-                        <i data-lucide="chevron-right" class="w-3 h-3 ${selectedShipper === name ? 'opacity-100' : 'opacity-0'}"></i>
-                    </button>
-                `).join('');
+            const filteredShippers = shippers.filter(s => String(s).toLowerCase().includes(filter));
+            
+            // Separate regular and SSR shippers
+            const regularShippers = [];
+            const ssrShippers = [];
+            
+            filteredShippers.forEach(name => {
+                const rows = rawSheets.shipper.slice(1).filter(row => String(row[3] || '').trim().toUpperCase() === name.toUpperCase());
+                const isSsr = rows.some(row => row[4] === 'SSR');
+                if (isSsr) {
+                    ssrShippers.push(name);
+                } else {
+                    regularShippers.push(name);
+                }
+            });
+            
+            if (ssrCountEl) {
+                ssrCountEl.innerText = ssrShippers.length;
+            }
+            
+            // Render regular shippers
+            listEl.innerHTML = regularShippers.map(name => `
+                <button class="shipper-select-btn w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold uppercase transition-all flex items-center justify-between group ${selectedShipper === name ? 'bg-blue-700 text-white shadow-lg' : 'text-slate-900 hover:bg-slate-100'}" data-name="${name.replace(/'/g, "\\'")}">
+                    <span class="truncate">${name}</span>
+                    <i data-lucide="chevron-right" class="w-3 h-3 ${selectedShipper === name ? 'opacity-100' : 'opacity-0'}"></i>
+                </button>
+            `).join('');
+            
+            // Render SSR shippers
+            if (ssrListEl) {
+                ssrListEl.innerHTML = ssrShippers.map(name => {
+                    const inSmtp = isShipperInSmtp(name);
+                    let btnClass = "";
+                    let badgeClass = "";
+                    if (selectedShipper === name) {
+                        btnClass = inSmtp 
+                            ? "bg-emerald-700 text-white shadow-lg" 
+                            : "bg-rose-700 text-white shadow-lg";
+                        badgeClass = inSmtp ? "bg-emerald-900" : "bg-rose-900";
+                    } else {
+                        btnClass = inSmtp 
+                            ? "bg-emerald-100 text-emerald-900 border border-emerald-300 hover:bg-emerald-200/80" 
+                            : "bg-rose-100 text-rose-900 border border-rose-200 hover:bg-rose-100";
+                        badgeClass = inSmtp ? "bg-emerald-600" : "bg-rose-600";
+                    }
+                    const activeIndicator = selectedShipper === name ? 'opacity-100' : 'opacity-0';
+                    const linkColorClass = selectedShipper === name ? 'text-white hover:text-slate-200' : 'text-blue-700 hover:text-blue-900';
+                    return `
+                        <div class="w-full flex items-center justify-between gap-1 p-0.5 rounded-lg transition-all ${selectedShipper === name ? (inSmtp ? 'bg-emerald-700' : 'bg-rose-700') : ''}">
+                            <button class="shipper-select-btn flex-1 text-left px-3 py-2 rounded-lg text-[9px] font-bold uppercase transition-all flex items-center justify-between group ${selectedShipper === name ? 'text-white' : btnClass}" data-name="${name.replace(/'/g, "\\'")}">
+                                <span class="truncate flex items-center gap-1.5">
+                                    <span class="${badgeClass} text-white text-[7px] px-1 py-0.5 rounded font-black shrink-0">SSR</span>
+                                    <span class="truncate">${name}</span>
+                                </span>
+                                <i data-lucide="chevron-right" class="w-3 h-3 ${activeIndicator}"></i>
+                            </button>
+                            <a href="javascript:void(0)" onclick="window.openSsrInvoiceModal(event, '${name.replace(/'/g, "\\'")}')" class="text-[9px] font-black ${linkColorClass} underline uppercase shrink-0 px-2 py-2" title="Generate SSR Invoice">Invoice</a>
+                        </div>
+                    `;
+                }).join('');
+            }
+            
             lucide.createIcons();
             document.querySelectorAll('.shipper-select-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
@@ -4248,13 +4402,16 @@ document.getElementById('updateCustomRemarksBtn').addEventListener('click', () =
         if (el) el.classList.add('hidden');
     });
 
-    // Show Add Shipper button only in shipper tab
+    // Show Add Shipper & Add SSR buttons only in shipper tab
     const addShipperBtn = document.getElementById('openAddShipperBtn');
+    const addSsrBtn = document.getElementById('openAddSsrBtn');
     if (addShipperBtn) {
         if (sheetName === 'shipper') {
             addShipperBtn.classList.remove('hidden');
+            if (addSsrBtn) addSsrBtn.classList.remove('hidden');
         } else {
             addShipperBtn.classList.add('hidden');
+            if (addSsrBtn) addSsrBtn.classList.add('hidden');
         }
     }
 
@@ -4409,7 +4566,10 @@ window.deleteHkrRow = async (index) => {
         return;
     }
 
-    const maxCols = Math.max(...data.map(r => r?.length || 0)); 
+    let maxCols = Math.max(...data.map(r => r?.length || 0)); 
+    if (sheetName === 'shipper') {
+        maxCols = Math.max(5, maxCols);
+    }
     
     // Trash icon SVG format mein
     const trashSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>`;
@@ -4442,7 +4602,10 @@ window.deleteHkrRow = async (index) => {
                     const allowed = [1,2,3,5,9,13,18,22,23,24,26];
                     if (!allowed.includes(colIndex)) continue;
                 }
-                const content = row[colIndex] ?? '';
+                let content = row[colIndex] ?? '';
+                if (isHeader && sheetName === 'shipper' && colIndex === 4 && !content) {
+                    content = 'TAG';
+                }
                 rowHtml += `<td class="px-2 py-1.5 border-r border-slate-200 truncate max-w-[200px] ${!isHeader ? 'editable-cell' : ''}"
                             ${!isHeader ? 'contenteditable="true"' : ''}
                             data-row="${rowIndex}" data-col="${colIndex}">${content}</td>`;
@@ -4546,15 +4709,53 @@ window.deleteHkrRow = async (index) => {
         saveLocalChangesBtn.addEventListener('click', () => {
             if (!currentSheetInView) return;
             const cells = document.querySelectorAll('#editableTable .editable-cell');
+            let ssrMismatches = [];
+            let editedRows = new Set();
+            
             cells.forEach(cell => {
                 const r = parseInt(cell.getAttribute('data-row'));
                 const c = parseInt(cell.getAttribute('data-col'));
                 if (!rawSheets[currentSheetInView][r]) rawSheets[currentSheetInView][r] = [];
-                rawSheets[currentSheetInView][r][c] = cell.innerText.trim();
+                
+                const oldVal = rawSheets[currentSheetInView][r][c];
+                const newVal = cell.innerText.trim();
+                if (oldVal !== newVal) {
+                    rawSheets[currentSheetInView][r][c] = newVal;
+                    if (currentSheetInView === 'smtp') {
+                        editedRows.add(r);
+                    }
+                }
             });
+
+            if (currentSheetInView === 'smtp' && editedRows.size > 0) {
+                const headers = rawSheets.smtp[0];
+                const sContIdx = headers.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 
+                    ? headers.findIndex(h => String(h).toUpperCase().includes('CONT')) 
+                    : 2;
+                
+                editedRows.forEach(r => {
+                    const row = rawSheets.smtp[r];
+                    if (row) {
+                        const contNo = String(row[sContIdx] || '').trim().toUpperCase();
+                        if (contNo) {
+                            const isSsr = rawSheets.shipper.some(s => 
+                                String(s[0] || '').trim().toUpperCase() === contNo && s[4] === 'SSR'
+                            );
+                            if (isSsr) {
+                                ssrMismatches.push(contNo);
+                            }
+                        }
+                    }
+                });
+            }
+
             saveToCloud(); processCloudData();
             saveLocalChangesBtn.innerHTML = 'CHANGES SAVED!';
             setTimeout(() => { saveLocalChangesBtn.innerHTML = 'Save Changes'; }, 2000);
+            
+            if (ssrMismatches.length > 0) {
+                alert(`Container ${ssrMismatches.join(", ")} is Planned on SSR is Recived, please Email to Satyam for Planning!!!`);
+            }
         });
 
         const addSmtpBtn = document.getElementById('addSmtpBtn');
@@ -5680,6 +5881,7 @@ if (smtpExcelInput) {
             let updatedCount = 0;
             let transferCount = 0;
             let hkrMatchCount = 0;
+            let ssrMismatches = [];
             
             const activeIndices = [1, 2, 3, 5, 9, 11, 13, 17, 18, 22, 23, 24, 26]; 
 
@@ -5689,6 +5891,13 @@ if (smtpExcelInput) {
                 const cellLValue = String(exRow[11] || '').toUpperCase();
 
                 if (contNo && (cellLValue.includes("KILARAIPUR") || cellLValue.includes("LUDHIANA"))) {
+                    // Check if planned on SSR
+                    const isSsr = rawSheets.shipper.some(s => 
+                        String(s[0] || '').trim().toUpperCase() === contNo && s[4] === 'SSR'
+                    );
+                    if (isSsr) {
+                        ssrMismatches.push(contNo);
+                    }
                     
                     let finalRemark = "HKR";
                     const lineVal = String(exRow[23] || '').trim().toUpperCase();
@@ -5759,8 +5968,10 @@ if (smtpExcelInput) {
             saveToCloud(); 
             processCloudData();
             
-            // Notification
             alert(`✓ SMTP Processing Complete!\nAdded: ${addedCount}\nUpdated: ${updatedCount}\nSynced to Website: ${transferCount}`);
+            if (ssrMismatches.length > 0) {
+                alert(`Container ${ssrMismatches.join(", ")} is Planned on SSR is Recived, please Email to Satyam for Planning!!!`);
+            }
         };
         reader.readAsBinaryString(file);
         e.target.value = ''; 
@@ -7267,8 +7478,20 @@ function openScanningHoldWindow() {
                     const statusClass = row.statusType === 'under' ? 'scan-hold-status-under' : 'scan-hold-status-done';
                     return `<td><span class="${statusClass}">${escapeHtml(row.status || '-')}</span></td>`;
                 }
+                let cellStyle = '';
+                if (col.key === 'consignee') {
+                    const smtpRows = Array.isArray(rawSheets.smtp) ? rawSheets.smtp : [];
+                    const smtpHeaders = smtpRows[0] || [];
+                    const sContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 
+                        ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) 
+                        : 2;
+                    const hasHandover = smtpRows.slice(1).some(s => String(s[sContIdx] || '').trim().toUpperCase() === String(row.contNo || '').trim().toUpperCase());
+                    cellStyle = hasHandover 
+                        ? ' style="background-color: #dcfce7; color: #15803d;"' 
+                        : ' style="background-color: #fee2e2; color: #b91c1c;"';
+                }
                 const className = col.key === 'consignee' ? ' class="scan-hold-consignee"' : (col.key === 'tpDate' ? ' class="scan-hold-date"' : '');
-                return `<td${className}>${escapeHtml(row[col.key] || '-')}</td>`;
+                return `<td${className}${cellStyle}>${escapeHtml(row[col.key] || '-')}</td>`;
             }).join('')}</tr>`;
         }).join('');
     };
@@ -7659,8 +7882,15 @@ function openSmtpPendingReportWindow() {
 
         body.innerHTML = rows.map(row => {
             return `<tr>${columns.map(col => {
+                let cellStyle = '';
+                if (col.key === 'consignee') {
+                    const isHandover = row.smtpNo && row.smtpNo !== '-';
+                    cellStyle = isHandover 
+                        ? ' style="background-color: #dcfce7; color: #15803d;"' 
+                        : ' style="background-color: #fee2e2; color: #b91c1c;"';
+                }
                 const className = col.key === 'consignee' ? ' class="smtp-report-consignee"' : (col.key === 'tpDate' ? ' class="smtp-report-date"' : '');
-                return `<td${className}>${escapeHtml(row[col.key] || '-')}</td>`;
+                return `<td${className}${cellStyle}>${escapeHtml(row[col.key] || '-')}</td>`;
             }).join('')}</tr>`;
         }).join('');
     };
@@ -8159,6 +8389,7 @@ function generatePendencyReport() {
 }
 // --- MANUAL ADD SHIPPER LOGIC ---
 const openAddShipperBtn = document.getElementById('openAddShipperBtn');
+const openAddSsrBtn = document.getElementById('openAddSsrBtn');
 const addShipperModal = document.getElementById('addShipperModal');
 const manualBlInput = document.getElementById('manualBlInput');
 const manualShipperNameInput = document.getElementById('manualShipperNameInput');
@@ -8169,10 +8400,26 @@ const containerPreviewArea = document.getElementById('containerPreviewArea');
 
 // --- COMPLETE ADD SHIPPER LOGIC (FIXED) ---
 let matchedContainers = [];
+let isSsrMode = false;
 
-// 1. Modal Kholne ka Button (Fix: Ye button click hona chahiye)
-document.getElementById('openAddShipperBtn').addEventListener('click', () => {
-    document.getElementById('addShipperModal').classList.remove('hidden');
+// Common modal open logic
+function openShipperModal(ssr = false) {
+    isSsrMode = ssr;
+    const modal = document.getElementById('addShipperModal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    
+    // Update labels/titles
+    const titleEl = modal.querySelector('h3');
+    const saveBtn = document.getElementById('saveManualShipperBtn');
+    if (ssr) {
+        if (titleEl) titleEl.innerHTML = '<i data-lucide="user-plus" class="w-4 h-4"></i> Add SSR Request';
+        if (saveBtn) saveBtn.innerText = 'Link & Save to SSR Request';
+    } else {
+        if (titleEl) titleEl.innerHTML = '<i data-lucide="user-plus" class="w-4 h-4"></i> Add Manual Shipper';
+        if (saveBtn) saveBtn.innerText = 'Link & Save to Shipper Tab';
+    }
+    
     // Saare fields reset karein
     document.getElementById('manualBlInput').value = ''; 
     document.getElementById('manualShipperNameInput').value = '';
@@ -8181,7 +8428,22 @@ document.getElementById('openAddShipperBtn').addEventListener('click', () => {
     document.getElementById('containerPreviewArea').classList.add('hidden');
     matchedContainers = [];
     if(window.lucide) lucide.createIcons();
-});
+}
+
+// 1. Modal Kholne ke Buttons
+if (openAddShipperBtn) {
+    openAddShipperBtn.addEventListener('click', () => openShipperModal(false));
+}
+if (openAddSsrBtn) {
+    openAddSsrBtn.addEventListener('click', () => openShipperModal(true));
+}
+const sidebarAddSsrBtn = document.getElementById('sidebarAddSsrBtn');
+if (sidebarAddSsrBtn) {
+    sidebarAddSsrBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openShipperModal(true);
+    });
+}
 
 // 2. Preview List ko Refresh karne ka function
 const refreshPreviewUI = () => {
@@ -8277,7 +8539,11 @@ document.getElementById('saveManualShipperBtn').addEventListener('click', async 
     let addedCount = 0;
     matchedContainers.forEach(m => {
         if (!rawSheets.shipper.some(s => String(s[0]).trim() === m.cont)) {
-            rawSheets.shipper.push([m.cont, m.size, m.bl, shipperName]);
+            if (isSsrMode) {
+                rawSheets.shipper.push([m.cont, m.size, m.bl, shipperName, 'SSR']);
+            } else {
+                rawSheets.shipper.push([m.cont, m.size, m.bl, shipperName]);
+            }
             addedCount++;
         }
     });
@@ -9016,7 +9282,348 @@ if (hkrHmrExcelInput) {
         reader.readAsBinaryString(file);
         e.target.value = '';
     });
-}        initAuth();
+}        // ==========================================
+// SSR INVOICE GENERATOR LOGIC
+// ==========================================
+window.openSsrInvoiceModal = function(event, shipperName) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    
+    const modal = document.getElementById('ssrInvoiceModal');
+    if (!modal) return;
+    
+    // Load config from localStorage
+    const savedBilling = localStorage.getItem(`ssr_invoice_billing_${shipperName}`) || '';
+    const savedGst = localStorage.getItem(`ssr_invoice_gst_${shipperName}`) || '';
+    const savedAddress = localStorage.getItem(`ssr_invoice_address_${shipperName}`) || '';
+    const savedRateInr = localStorage.getItem(`ssr_invoice_rate_inr_${shipperName}`) || '97.86';
+    const savedGstType = localStorage.getItem(`ssr_invoice_gst_type_${shipperName}`) || 'IGST';
+    
+    document.getElementById('invoiceConsignee').value = shipperName;
+    document.getElementById('invoiceBillingCustomer').value = savedBilling;
+    document.getElementById('invoiceGstNo').value = savedGst;
+    document.getElementById('invoiceAddress').value = savedAddress;
+    document.getElementById('invoiceRateInr').value = savedRateInr;
+    document.getElementById('invoiceGstType').value = savedGstType;
+    
+    // Resolve containers from rawSheets.shipper & rawSheets.smtp
+    const containers = [];
+    if (rawSheets.shipper && rawSheets.shipper.length > 1) {
+        const shipHeaders = rawSheets.shipper[0] || [];
+        const shipContIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 0;
+        const shipConsIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) : 3;
+        
+        const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
+        const smtpContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
+        const smtpSizeIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('SIZE')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('SIZE')) : 3;
+        
+        rawSheets.shipper.slice(1).forEach(sRow => {
+            const sName = String(sRow[shipConsIdx] || '').trim().toUpperCase();
+            if (sName === shipperName.toUpperCase()) {
+                const contNo = String(sRow[shipContIdx] || '').trim().toUpperCase();
+                if (contNo && contNo !== '-') {
+                    // Find size from SMTP
+                    const smtpRow = rawSheets.smtp.slice(1).find(row => String(row[smtpContIdx] || '').trim().toUpperCase() === contNo);
+                    let size = 20;
+                    if (smtpRow) {
+                        const sizeStr = String(smtpRow[smtpSizeIdx] || '');
+                        size = sizeStr.includes('40') ? 40 : 20;
+                    }
+                    if (!containers.some(c => c.contNo === contNo)) {
+                        containers.push({ contNo, size });
+                    }
+                }
+            }
+        });
+    }
+    
+    // Load containers checklist
+    const listEl = document.getElementById('invoiceContainersList');
+    if (containers.length === 0) {
+        listEl.innerHTML = '<p class="text-rose-500 italic p-2">No containers found in Shipper data for this Importer.</p>';
+    } else {
+        const checkedSaved = localStorage.getItem(`ssr_invoice_conts_${shipperName}`);
+        const checkedSet = checkedSaved ? new Set(JSON.parse(checkedSaved)) : null;
+        
+        listEl.innerHTML = containers.map((c, idx) => {
+            const isChecked = checkedSet ? checkedSet.has(c.contNo) : true;
+            return `
+                <label class="flex items-center gap-2 cursor-pointer p-1 hover:bg-slate-200/50 rounded w-full">
+                    <input type="checkbox" class="invoice-container-checkbox w-3.5 h-3.5 accent-[#1f4e79]" data-cont="${c.contNo}" data-size="${c.size}" ${isChecked ? 'checked' : ''}>
+                    <span>${c.contNo} (${c.size}")</span>
+                </label>
+            `;
+        }).join('');
+    }
+    
+    // Update preview helper
+    window.updateSsrInvoicePreview = function() {
+        const importer = document.getElementById('invoiceConsignee').value.trim();
+        const billing = document.getElementById('invoiceBillingCustomer').value.trim();
+        const gst = document.getElementById('invoiceGstNo').value.trim();
+        const address = document.getElementById('invoiceAddress').value.trim();
+        const exchangeRate = parseFloat(document.getElementById('invoiceRateInr').value) || 85.00;
+        const gstType = document.getElementById('invoiceGstType').value;
+        
+        // Find checked containers
+        const checkedBoxes = document.querySelectorAll('.invoice-container-checkbox:checked');
+        const selectedConts = Array.from(checkedBoxes).map(cb => ({
+            contNo: cb.getAttribute('data-cont'),
+            size: parseInt(cb.getAttribute('data-size'))
+        }));
+        
+        // Save selected containers to localStorage
+        const checkedList = selectedConts.map(c => c.contNo);
+        localStorage.setItem(`ssr_invoice_conts_${shipperName}`, JSON.stringify(checkedList));
+        
+        let grandTeu = 0;
+        let grandAmt = 0;
+        let grandCgst = 0;
+        let grandSgst = 0;
+        let grandIgst = 0;
+        let grandTotal = 0;
+        
+        const rowsHtml = selectedConts.map((c, idx) => {
+            const rateUsd = c.size === 40 ? 135 : 90;
+            const teu = c.size === 40 ? 2 : 1;
+            const amtInr = rateUsd * exchangeRate;
+            
+            let cgstPct = 0;
+            let sgstPct = 0;
+            let igstPct = 0;
+            let cgstAmt = 0;
+            let sgstAmt = 0;
+            let igstAmt = 0;
+            
+            if (gstType === 'IGST') {
+                igstPct = 18;
+                igstAmt = Math.round(amtInr * 0.18);
+            } else {
+                cgstPct = 9;
+                sgstPct = 9;
+                cgstAmt = Math.round(amtInr * 0.09);
+                sgstAmt = Math.round(amtInr * 0.09);
+            }
+            
+            const totalRow = amtInr + cgstAmt + sgstAmt + igstAmt;
+            
+            grandTeu += teu;
+            grandAmt += amtInr;
+            grandCgst += cgstAmt;
+            grandSgst += sgstAmt;
+            grandIgst += igstAmt;
+            grandTotal += totalRow;
+            
+            return `
+                <tr class="border-b border-slate-900">
+                    <td class="p-1 border-r border-slate-900 text-center">${idx + 1}</td>
+                    <td class="p-1 border-r border-slate-900 text-left">SSR CHARGES</td>
+                    <td class="p-1 border-r border-slate-900 text-left">${escapeHtml(c.contNo)}</td>
+                    <td class="p-1 border-r border-slate-900 text-center">${c.size}</td>
+                    <td class="p-1 border-r border-slate-900 text-right">$${rateUsd}</td>
+                    <td class="p-1 border-r border-slate-900 text-right">₹${exchangeRate.toFixed(2)}</td>
+                    <td class="p-1 border-r border-slate-900 text-center">996711</td>
+                    <td class="p-1 border-r border-slate-900 text-center">${teu}</td>
+                    <td class="p-1 border-r border-slate-900 text-right">₹${Math.round(amtInr).toLocaleString('en-IN')}</td>
+                    
+                    <td class="p-1 border-r border-slate-900 text-center">${cgstPct}%</td>
+                    <td class="p-1 border-r border-slate-900 text-right">₹${cgstAmt.toLocaleString('en-IN')}</td>
+                    <td class="p-1 border-r border-slate-900 text-center">${sgstPct}%</td>
+                    <td class="p-1 border-r border-slate-900 text-right">₹${sgstAmt.toLocaleString('en-IN')}</td>
+                    <td class="p-1 border-r border-slate-900 text-center">${igstPct}%</td>
+                    <td class="p-1 border-r border-slate-900 text-right">₹${igstAmt.toLocaleString('en-IN')}</td>
+                    
+                    <td class="p-1 text-right">₹${Math.round(totalRow).toLocaleString('en-IN')}</td>
+                </tr>
+            `;
+        }).join('');
+        
+        const previewHtml = `
+            <div class="invoice-container p-2" style="width: 100%; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif;">
+                
+                <!-- Title -->
+                <div class="text-center font-bold text-[12px] uppercase border-b-2 border-slate-900 pb-1 mb-2 tracking-wide">
+                    Performa Invoice for SSR Charges
+                </div>
+                
+                <!-- Header -->
+                <div class="flex gap-2 mb-3">
+                    
+                    <!-- Company Details -->
+                    <div class="flex-1 flex gap-2 border border-slate-900 p-2 text-[8px] leading-normal" style="flex: 1.4;">
+                        <div class="flex flex-col justify-start items-center shrink-0" style="width: 75px;">
+                            <div class="bg-red-700 text-white text-center text-[7px] font-black px-1.5 py-0.5 rounded-sm uppercase tracking-tighter" style="line-height: 1;">HIND</div>
+                            <div class="bg-green-700 text-white text-center text-[7px] font-black px-1 py-0.5 mt-0.5 rounded-sm uppercase tracking-tighter" style="line-height: 1;">TERMINALS</div>
+                            <p class="text-[4px] mt-0.5 text-center leading-none text-slate-500 italic">Moving India Ahead</p>
+                        </div>
+                        <div class="flex-1 leading-snug">
+                            <h4 class="font-black text-[9px] text-slate-900">HIND TERMINALS PVT.LTD.</h4>
+                            <p class="text-[7px] font-bold text-slate-600">(Corporate Identity Number: U63030MH2003PTC141927) Business Place: 07 - DELHI</p>
+                            <p class="font-bold"><span class="font-black">PAN NUMBER:</span> AABCH4778A, <span class="font-black">Address:</span> 103-107, 1st Floor, SALCON AURUM, PLOT NO -4, JASOLA DISTRICT CENTRE, NEW DELHI -110025</p>
+                            <p class="font-bold"><span class="font-black">Tel No:</span> 91-11-40558100, Fax: 91-11-40583771 <span class="font-black">Email:</span> railaccounts@hindterminals.com <span class="font-black">GST No:</span> 07AABCH4778A1ZR</p>
+                            <p class="font-bold"><span class="font-black">Regd Off:</span> 501, A-WING, 215 ATRIUM, ANDHERI KURLA ROAD, ANDHERI EAST, MUMBAI - 400093 (INDIA)</p>
+                            <p class="font-bold"><span class="font-black">Phone:</span> 91-22-67717777 Fax: 91-22-67717799; <span class="font-black">Email:</span> comm@hindterminals.com <span class="font-black">Website:</span> www.hindterminals.com</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Billing Customer Details -->
+                    <div class="flex-1 border border-slate-900 p-2 text-[8px] flex flex-col justify-between" style="flex: 1;">
+                        <div class="grid grid-cols-3 gap-y-1">
+                            <span class="font-black text-slate-500">Importer / Consignee:</span>
+                            <span class="col-span-2 font-black text-slate-900 text-[8.5px] border-b border-slate-200 pb-0.5">${escapeHtml(importer)}</span>
+                            
+                            <span class="font-black text-slate-500">Billing Customer ::</span>
+                            <span class="col-span-2 font-black text-slate-900 text-[8.5px] border-b border-slate-200 pb-0.5">${escapeHtml(billing)}</span>
+                            
+                            <span class="font-black text-slate-500">GST No:</span>
+                            <span class="col-span-2 font-black text-slate-900 text-[8.5px] border-b border-slate-200 pb-0.5">${escapeHtml(gst)}</span>
+                            
+                            <span class="font-black text-slate-500">Address:</span>
+                            <span class="col-span-2 font-bold text-slate-700 break-words leading-tight">${escapeHtml(address).replace(/\n/g, '<br>')}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Table -->
+                <table class="w-full text-slate-900 font-bold border-collapse border border-slate-900 text-[8px] leading-tight mb-3">
+                    <thead>
+                        <tr class="bg-slate-100 border-b border-slate-900 font-black">
+                            <th class="p-1 border-r border-slate-900 text-center w-[4%]">S. No</th>
+                            <th class="p-1 border-r border-slate-900 text-left w-[18%]">Description of Services</th>
+                            <th class="p-1 border-r border-slate-900 text-left w-[11%]">Container No</th>
+                            <th class="p-1 border-r border-slate-900 text-center w-[6%]">Size 20/40</th>
+                            <th class="p-1 border-r border-slate-900 text-right w-[9%]">Rate Per Container</th>
+                            <th class="p-1 border-r border-slate-900 text-right w-[8%]">Rate INR</th>
+                            <th class="p-1 border-r border-slate-900 text-center w-[7%]">SAC/HSN Code</th>
+                            <th class="p-1 border-r border-slate-900 text-center w-[5%]">TEU</th>
+                            <th class="p-1 border-r border-slate-900 text-right w-[9%]">Total Amount</th>
+                            
+                            <th class="p-1 border-r border-slate-900 text-center w-[4%]">CGST</th>
+                            <th class="p-1 border-r border-slate-900 text-right w-[7%]">CGST Amt</th>
+                            <th class="p-1 border-r border-slate-900 text-center w-[4%]">SGST</th>
+                            <th class="p-1 border-r border-slate-900 text-right w-[7%]">SGST Amt</th>
+                            <th class="p-1 border-r border-slate-900 text-center w-[4%]">IGST</th>
+                            <th class="p-1 border-r border-slate-900 text-right w-[7%]">IGST Amt</th>
+                            
+                            <th class="p-1 text-right w-[10%]">Total(Rs.)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml ? rowsHtml : '<tr><td colspan="16" class="p-4 text-center text-rose-500 italic">Please select at least one container to bill.</td></tr>'}
+                        <tr class="bg-slate-50 border-t border-slate-900 font-black">
+                            <td colspan="7" class="p-1 border-r border-slate-900 text-right uppercase">Grand Totals:</td>
+                            <td class="p-1 border-r border-slate-900 text-center">${grandTeu}</td>
+                            <td class="p-1 border-r border-slate-900 text-right">₹${Math.round(grandAmt).toLocaleString('en-IN')}</td>
+                            
+                            <td class="p-1 border-r border-slate-900 text-center">-</td>
+                            <td class="p-1 border-r border-slate-900 text-right">₹${Math.round(grandCgst).toLocaleString('en-IN')}</td>
+                            <td class="p-1 border-r border-slate-900 text-center">-</td>
+                            <td class="p-1 border-r border-slate-900 text-right">₹${Math.round(grandSgst).toLocaleString('en-IN')}</td>
+                            <td class="p-1 border-r border-slate-900 text-center">-</td>
+                            <td class="p-1 border-r border-slate-900 text-right">₹${Math.round(grandIgst).toLocaleString('en-IN')}</td>
+                            
+                            <td class="p-1 text-right bg-slate-100 text-[8.5px] font-black">₹${Math.round(grandTotal).toLocaleString('en-IN')}</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <!-- Rates & Bank Details Info -->
+                <div class="flex gap-2">
+                    <div class="flex-1 flex flex-col justify-start gap-1 font-bold text-[8.5px] text-slate-800" style="flex: 1;">
+                        <p class="font-black">For 20' - 90 USD + 18% GST</p>
+                        <p class="font-black">For 40' - 135 USD + 18% GST</p>
+                    </div>
+                    
+                    <div class="flex-1 border border-slate-900 p-2 text-[7.5px]" style="flex: 1.5;">
+                        <h5 class="font-black text-[8px] uppercase border-b pb-0.5 mb-1 text-slate-800">BANK DETAILS</h5>
+                        <div class="grid grid-cols-3 gap-y-0.5">
+                            <span class="font-black text-slate-500">Beneficiary Name :-</span>
+                            <span class="col-span-2 font-black text-slate-900">HIND TERMINALS PRIVATE LIMITED</span>
+                            
+                            <span class="font-black text-slate-500">Beneficiary Account Number :-</span>
+                            <span class="col-span-2 font-black text-slate-900">147905000065</span>
+                            
+                            <span class="font-black text-slate-500">Beneficiary Bank Name & Address :-</span>
+                            <span class="col-span-2 font-bold text-slate-700 leading-tight">ICICI Bank, JNPT Navi Mumbai - Branch & ATM,<br>Jawaharlal nehru port trust, Port users bldg, Sheva tal uran, Navi Mumbai, Maharashtra - 400707</span>
+                            
+                            <span class="font-black text-slate-500">Beneficiary Bank IFSC :-</span>
+                            <span class="col-span-2 font-black text-slate-900">ICIC0001479</span>
+                            
+                            <span class="font-black text-slate-500">Beneficiary Bank Branch MICR CODE :-</span>
+                            <span class="col-span-2 font-black text-slate-900">400229196</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Signatures -->
+                <div class="flex justify-between items-end mt-12 text-[8px] font-black">
+                    <div class="text-center w-36">
+                        <div class="border-b border-slate-900 h-8"></div>
+                        <p class="mt-1 uppercase text-slate-500">Prepared By</p>
+                    </div>
+                    <div class="text-center w-48">
+                        <p class="uppercase text-slate-700 text-[7px] mb-8 font-black">For HIND TERMINALS PVT.LTD.</p>
+                        <div class="border-b border-slate-900"></div>
+                        <p class="mt-1 uppercase text-slate-500">Authorised Signatory</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('ssrInvoicePrintArea').innerHTML = previewHtml;
+    };
+    
+    // Initial preview render
+    window.updateSsrInvoicePreview();
+    
+    // Save Handler (local changes)
+    document.getElementById('saveInvoiceConfigBtn').onclick = function() {
+        const billing = document.getElementById('invoiceBillingCustomer').value.trim();
+        const gst = document.getElementById('invoiceGstNo').value.trim();
+        const address = document.getElementById('invoiceAddress').value.trim();
+        const rateInr = document.getElementById('invoiceRateInr').value.trim();
+        const gstType = document.getElementById('invoiceGstType').value;
+        
+        localStorage.setItem(`ssr_invoice_billing_${shipperName}`, billing);
+        localStorage.setItem(`ssr_invoice_gst_${shipperName}`, gst);
+        localStorage.setItem(`ssr_invoice_address_${shipperName}`, address);
+        localStorage.setItem(`ssr_invoice_rate_inr_${shipperName}`, rateInr);
+        localStorage.setItem(`ssr_invoice_gst_type_${shipperName}`, gstType);
+        
+        window.updateSsrInvoicePreview();
+        
+        const saveBtn = document.getElementById('saveInvoiceConfigBtn');
+        saveBtn.innerText = "PREVIEW UPDATED!";
+        saveBtn.classList.remove('bg-[#1f4e79]');
+        saveBtn.classList.add('bg-emerald-600');
+        setTimeout(() => {
+            saveBtn.innerText = "Save & Update Preview";
+            saveBtn.classList.remove('bg-emerald-600');
+            saveBtn.classList.add('bg-[#1f4e79]');
+        }, 1500);
+    };
+    
+    // PDF Download Handler
+    document.getElementById('downloadSsrPdfBtn').onclick = function() {
+        const element = document.getElementById('ssrInvoicePrintArea');
+        const options = {
+            margin: 8,
+            filename: `SSR_Invoice_${shipperName}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2.5, useCORS: true },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+        };
+        html2pdf().from(element).set(options).save();
+    };
+    
+    // Show modal
+    modal.classList.remove('hidden');
+    lucide.createIcons();
+};
+
+initAuth();
     </script>
 <div id="runningTrainsModal" class="fixed inset-0 bg-slate-900/45 backdrop-blur-sm z-[99999] hidden flex items-center justify-center p-1.5">
     <div class="bg-[#e5e7eb] rounded-none shadow-2xl w-full h-full flex flex-col border border-slate-500 overflow-hidden">
@@ -9178,6 +9785,94 @@ if (hkrHmrExcelInput) {
             <p class="text-[9px] text-slate-500 font-bold uppercase italic mr-auto mt-2">*Cross-verifying SMTP vs Website Data...</p>
             <button id="generateLotReportBtn" class="bg-blue-700 text-white px-6 py-2 rounded-lg font-bold text-[10px] uppercase shadow-md hover:bg-blue-800 transition-all">Generate Report</button>
             <button onclick="document.getElementById('lotBreakModal').classList.add('hidden')" class="bg-slate-800 text-white px-6 py-2 rounded-lg font-bold text-[10px] uppercase">Close</button>
+        </div>
+    </div>
+</div>
+<!-- SSR Invoice Modal -->
+<div id="ssrInvoiceModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[99999] hidden flex items-center justify-center p-2">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-[98vw] h-[95vh] flex flex-col border border-slate-300 overflow-hidden">
+        
+        <!-- Header -->
+        <div class="bg-[#1f4e79] p-3.5 flex justify-between items-center text-white shrink-0">
+            <div class="flex items-center gap-2.5">
+                <i data-lucide="file-text" class="w-5 h-5"></i>
+                <h2 class="font-bold uppercase tracking-tight text-xs md:text-sm">SSR Performa Invoice Generator</h2>
+            </div>
+            <div class="flex items-center gap-2.5">
+                <button id="downloadSsrPdfBtn" type="button" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg font-bold text-[10px] uppercase flex items-center gap-1.5 shadow transition-all active:scale-95">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i> Download PDF
+                </button>
+                <button onclick="document.getElementById('ssrInvoiceModal').classList.add('hidden')" class="text-white hover:rotate-90 transition-all">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Body: Form on the left, Preview on the right -->
+        <div class="flex-1 flex overflow-hidden bg-slate-100">
+            
+            <!-- Config Form -->
+            <div class="w-80 md:w-96 bg-white border-r border-slate-300 p-4 overflow-y-auto custom-scrollbar flex flex-col gap-4 shrink-0">
+                <h3 class="text-[11px] font-black text-slate-700 uppercase border-b pb-1">Invoice Configuration</h3>
+                
+                <div>
+                    <label class="text-[9px] font-black text-slate-400 uppercase mb-1 block">Importer / Consignee</label>
+                    <input type="text" id="invoiceConsignee" oninput="window.updateSsrInvoicePreview()" class="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded font-bold text-[11px] outline-none focus:ring-1 focus:ring-blue-500 uppercase">
+                </div>
+                
+                <div>
+                    <label class="text-[9px] font-black text-slate-400 uppercase mb-1 block">Billing Customer</label>
+                    <input type="text" id="invoiceBillingCustomer" oninput="window.updateSsrInvoicePreview()" class="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded font-bold text-[11px] outline-none focus:ring-1 focus:ring-blue-500 uppercase">
+                </div>
+                
+                <div>
+                    <label class="text-[9px] font-black text-slate-400 uppercase mb-1 block">GST No</label>
+                    <input type="text" id="invoiceGstNo" oninput="window.updateSsrInvoicePreview()" class="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded font-bold text-[11px] outline-none focus:ring-1 focus:ring-blue-500 uppercase">
+                </div>
+                
+                <div>
+                    <label class="text-[9px] font-black text-slate-400 uppercase mb-1 block">Address</label>
+                    <textarea id="invoiceAddress" rows="3" oninput="window.updateSsrInvoicePreview()" class="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded font-bold text-[11px] outline-none focus:ring-1 focus:ring-blue-500 uppercase"></textarea>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="text-[9px] font-black text-slate-400 uppercase mb-1 block">Exchange Rate (INR)</label>
+                        <input type="number" step="0.01" id="invoiceRateInr" oninput="window.updateSsrInvoicePreview()" value="85.00" class="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded font-bold text-[11px] outline-none focus:ring-1 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="text-[9px] font-black text-slate-400 uppercase mb-1 block">GST Type</label>
+                        <select id="invoiceGstType" onchange="window.updateSsrInvoicePreview()" class="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded font-bold text-[11px] outline-none focus:ring-1 focus:ring-blue-500">
+                            <option value="IGST">IGST (18%)</option>
+                            <option value="CGST_SGST">CGST (9%) + SGST (9%)</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- Containers Checklist -->
+                <div class="flex-1 flex flex-col min-h-[150px]">
+                    <label class="text-[9px] font-black text-slate-400 uppercase mb-1.5 block">Select Containers to Bill</label>
+                    <div id="invoiceContainersList" class="flex-1 border border-slate-300 rounded p-2 overflow-y-auto custom-scrollbar bg-slate-50 text-[10px] font-bold text-slate-700 space-y-1.5">
+                        <!-- Checklist loaded dynamically -->
+                    </div>
+                </div>
+
+                <!-- Update Button -->
+                <button id="saveInvoiceConfigBtn" type="button" class="w-full bg-[#1f4e79] hover:bg-blue-800 text-white font-black py-2.5 rounded shadow transition-all active:scale-95 uppercase text-[10px]">
+                    Save & Update Preview
+                </button>
+            </div>
+            
+            <!-- Live Preview -->
+            <div class="flex-1 p-4 overflow-auto custom-scrollbar bg-[#f1f3f5] flex justify-center items-start">
+                <div id="ssrInvoicePreviewWrapper" class="bg-white p-6 shadow-md border border-slate-300" style="width: 297mm; min-height: 210mm; box-sizing: border-box;">
+                    <!-- Printable invoice structure -->
+                    <div id="ssrInvoicePrintArea" class="text-[10px] text-slate-900 leading-tight select-text uppercase">
+                        <!-- Template filled dynamically -->
+                    </div>
+                </div>
+            </div>
+            
         </div>
     </div>
 </div>
