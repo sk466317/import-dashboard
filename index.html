@@ -24,6 +24,106 @@
             letter-spacing: -0.01em; 
             background-color: #ffffff; 
         }
+
+        /* ────────────────────────────────────────────────
+         * VISUAL BASIC / DESKTOP COMPACT STYLE OVERRIDES
+         * ──────────────────────────────────────────────── */
+        aside, main, header, section, div, button, input, select {
+            border-radius: 3px !important; /* Visual Basic style flat/slight rounded corners */
+        }
+        
+        /* Stats boxes compact style */
+        #overallStats > div {
+            padding: 3px 6px !important;
+            border-radius: 3px !important;
+            box-shadow: none !important;
+        }
+        #overallStats > div span:nth-child(1) {
+            font-size: 7px !important;
+        }
+        #overallStats > div span:nth-child(2) {
+            font-size: 14px !important;
+            margin-top: 1px !important;
+        }
+        #overallStats > div div {
+            font-size: 7px !important;
+            margin-top: 0 !important;
+        }
+        
+        /* Sidebar container compact style */
+        #sidebarContainer {
+            width: 13rem !important; /* 208px instead of 240px for a more compact sidebar */
+            background-color: #f1f5f9 !important;
+            border-right: 2px solid #cbd5e1 !important;
+            padding: 0.5rem !important;
+        }
+        #sidebarContainer > div {
+            padding: 0.25rem !important;
+            margin-bottom: 0.25rem !important;
+        }
+        
+        /* Sidebar buttons compact style */
+        .shipper-select-btn {
+            padding-top: 3px !important;
+            padding-bottom: 3px !important;
+            padding-left: 6px !important;
+            padding-right: 6px !important;
+            border-radius: 2px !important;
+            font-size: 8px !important;
+            margin-bottom: 2px !important;
+        }
+        
+        /* Buttons globally compact style */
+        button, label.topbar-action {
+            padding-top: 3px !important;
+            padding-bottom: 3px !important;
+            font-size: 8.5px !important;
+            border-radius: 2px !important;
+            box-shadow: none !important;
+        }
+        
+        /* Main Action Buttons list at center bottom */
+        .flex.items-center.gap-3.mt-4 button {
+            padding: 3px 8px !important;
+            font-size: 8.5px !important;
+            border-radius: 2px !important;
+        }
+        
+        /* Table compact grid styling */
+        table {
+            border: 1px solid #94a3b8 !important;
+        }
+        th, td {
+            border: 1px solid #cbd5e1 !important;
+            padding: 3px 5px !important;
+            font-size: 8.5px !important;
+            line-height: 1.3 !important;
+        }
+        th {
+            background-color: #475569 !important; /* Lighter slate header */
+            color: #ffffff !important;
+        }
+        tfoot tr, tfoot td {
+            background-color: #e2e8f0 !important; /* Light slate/silver footer */
+            color: #0f172a !important;
+        }
+        
+        /* Outer box styling */
+        .report-box {
+            border-radius: 3px !important;
+            border: 1px solid #cbd5e1 !important;
+            box-shadow: none !important;
+            background-color: #ffffff !important;
+        }
+        
+        /* Input & Select fields */
+        input[type="text"], select {
+            padding-top: 2px !important;
+            padding-bottom: 2px !important;
+            height: auto !important;
+            border-radius: 2px !important;
+            font-size: 8.5px !important;
+        }
         .font-arial-black {
             font-family: "Arial Black", Gadget, sans-serif;
         }
@@ -378,7 +478,7 @@ table {
         UPLOAD HKR/HMR EXCEL
         <input type="file" id="hkrHmrExcelInput" class="hidden" accept=".xlsx,.xls,.csv">
     </label>
-    <p class="text-[9px] font-bold text-slate-400 italic block w-full sm:w-auto">Filter: KILARAIPUR/LUDHIANA containers only.</p>
+    <p class="text-[9px] font-bold text-slate-400 italic block w-full sm:w-auto">Filter: KILARAIPUR/LUDHIANA/RANGIAN containers only.</p>
 </div>
                     <!-- Website Tab Context Tools -->
                     <div id="websiteUpdateSection" class="hidden items-center gap-3 bg-white p-2 rounded-xl border border-slate-600 shadow-sm flex-wrap">
@@ -800,7 +900,18 @@ table {
         <tfoot id="reportFooter" class="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-300"></tfoot>
     </table>
 </div>
-<div class="flex items-center gap-3 mt-4">
+<div class="flex items-center justify-center gap-3 mt-4 p-2.5 bg-slate-100 border border-slate-400">
+    <button id="mailSsrRequestBtn" 
+            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-md active:scale-95">
+        <i data-lucide="mail" class="w-4 h-4"></i>
+        Mail SSR Request
+    </button>
+    <button id="mainSsrInvoiceBtn" 
+            class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-md active:scale-95">
+        <i data-lucide="file-text" class="w-4 h-4"></i>
+        Generate SSR Invoice
+    </button>
+
     <button id="sendRailedWhatsappBtn" 
             class="bg-green-700 hover:bg-green-800 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-md active:scale-95">
         <i data-lucide="send" class="w-4 h-4"></i>
@@ -884,6 +995,109 @@ table {
     </main>
     <script type="module">
 // ==========================================
+// TELEGRAM NOTIFICATION SYSTEM
+// ==========================================
+const TELEGRAM_BOT_TOKEN = "8616537455:AAE9X7flCY4WpNZm66KgwMyBqSIisMAVNMw"; 
+const TELEGRAM_CHAT_ID = "870021557"; 
+
+async function sendCustomTelegramMessage(messageText) {
+    if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
+        console.error("Telegram Token या Chat ID मिसिंग है।");
+        return;
+    }
+    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${TELEGRAM_CHAT_ID}&text=${encodeURIComponent(messageText)}&parse_mode=HTML`;
+    try {
+        const response = await fetch(url, { method: 'GET' });
+        if (!response.ok) {
+            console.error("Telegram मैसेज भेजने में फ़ेल हुआ।");
+        } else {
+            console.log("मैसेज सफलतापूर्वक भेज दिया गया!");
+        }
+    } catch (error) {
+        console.error("API Error:", error);
+    }
+}
+
+async function checkAndSendTelegramHandover(updatedContainers) {
+    if (!updatedContainers || updatedContainers.length === 0) return;
+    if (!rawSheets.shipper || rawSheets.shipper.length <= 1) return;
+    if (!rawSheets.smtp || rawSheets.smtp.length <= 1) return;
+
+    const smtpHeaders = rawSheets.smtp[0] || [];
+    const sContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
+    const sBlIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 9;
+    const sVesselIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('VESSEL')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('VESSEL')) : 5;
+    const sHandoverIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('HANDOVER')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('HANDOVER')) : 18;
+    const sLineIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('LINE')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('LINE')) : 23;
+
+    const shipHeaders = rawSheets.shipper[0] || [];
+    const shipContIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 0;
+    const shipBlIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 2;
+    const shipConsIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) : 3;
+
+    const countContainersForBl = (bl) => {
+        const cleanBl = String(bl).trim().toUpperCase();
+        let count = 0;
+        rawSheets.shipper.slice(1).forEach(r => {
+            if (String(r[shipBlIdx] || '').trim().toUpperCase() === cleanBl) {
+                count++;
+            }
+        });
+        return count;
+    };
+
+    const blGroups = {};
+
+    updatedContainers.forEach(cont => {
+        const cleanCont = String(cont).trim().toUpperCase();
+        const shipRow = rawSheets.shipper.slice(1).find(s => String(s[shipContIdx] || '').trim().toUpperCase() === cleanCont);
+        if (!shipRow) return;
+
+        const customerName = String(shipRow[shipConsIdx] || '').trim();
+        const isSsr = (shipRow[4] === 'SSR');
+
+        const smtpRow = rawSheets.smtp.slice(1).find(s => String(s[sContIdx] || '').trim().toUpperCase() === cleanCont);
+        if (!smtpRow) return;
+
+        const blNo = String(smtpRow[sBlIdx] || '').trim();
+        const vesselName = String(smtpRow[sVesselIdx] || '').trim();
+        const handoverDate = String(smtpRow[sHandoverIdx] || smtpRow[17] || '').trim();
+        const line = String(smtpRow[sLineIdx] || '').trim();
+
+        if (blNo) {
+            const key = `${blNo}||${customerName}`;
+            if (!blGroups[key]) {
+                blGroups[key] = {
+                    customerName,
+                    vesselName,
+                    handoverDate,
+                    blNo,
+                    line,
+                    isSsr,
+                    containers: []
+                };
+            }
+            blGroups[key].containers.push(cleanCont);
+        }
+    });
+
+    for (const key of Object.keys(blGroups)) {
+        const group = blGroups[key];
+        const totalContainers = countContainersForBl(group.blNo);
+        
+        let message = "";
+        if (group.isSsr) {
+            message = `Dear Sir, \nPlease Note Below SSR Request Containers are Handover today,\n\n${group.customerName}\n${group.vesselName} / ${group.handoverDate}\n${group.blNo} (${group.line}) (${totalContainers})\n\nKindly Email to plan on SSR. \nThanks & Regards`;
+        } else {
+            message = `Dear Sir, \nPlease Note Below Urgent Request Containers are Handover today,\n\n${group.customerName}\n${group.vesselName} / ${group.handoverDate}\n${group.blNo} (${group.line}) (${totalContainers})\n\nThanks & Regards`;
+        }
+        
+        await sendCustomTelegramMessage(message);
+    }
+}
+window.checkAndSendTelegramHandover = checkAndSendTelegramHandover;
+
+// ==========================================
 // SEARCH LOGIC with SUGGESTIONS - WITH VESSEL FILTERING
 // ==========================================
 document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
@@ -930,11 +1144,13 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
         // Collect matching rows from SMTP first, then SHIPPER fallback.
         const matches = [];
         const seenKeys = new Set();
+        let smtpContIdx = -1;
+        let smtpBlIdx = -1;
 
         if (rawSheets.smtp && rawSheets.smtp.length > 1) {
             const smtpHeaders = rawSheets.smtp[0] || [];
-            const smtpContIdx = findHeaderIndex(smtpHeaders, [/^CONT/i, /CONT.*NO/i], -1);
-            const smtpBlIdx = findHeaderIndex(smtpHeaders, [/^BL/i, /BL.*NO/i, /BILL/i], -1);
+            smtpContIdx = findHeaderIndex(smtpHeaders, [/^CONT/i, /CONT.*NO/i], -1);
+            smtpBlIdx = findHeaderIndex(smtpHeaders, [/^BL/i, /BL.*NO/i, /BILL/i], -1);
             const smtpConsIdx = findHeaderIndex(smtpHeaders, [/CONSIGNEE/i, /SHIPPER/i], -1);
             const smtpSizeIdx = findHeaderIndex(smtpHeaders, [/^SIZE$/i, /SIZE/i], -1);
             const smtpVesselIdx = findHeaderIndex(smtpHeaders, [/DISCH.*VSL/i, /VESSEL/i], -1);
@@ -1476,6 +1692,100 @@ const getVisibleBLs = () => {
     });
     return blList;
 };
+
+// ────────────────────────────────────────────────
+// MAIL SSR REQUEST BUTTON CLICK EVENT
+// ────────────────────────────────────────────────
+const mailSsrRequestBtn = document.getElementById('mailSsrRequestBtn');
+if (mailSsrRequestBtn) {
+    mailSsrRequestBtn.addEventListener('click', () => {
+        const currentShipper = selectedShipper || document.getElementById('activeShipperName').innerText;
+        if (!currentShipper || currentShipper === 'Active Shipper') {
+            alert("Please select a customer from the sidebar first.");
+            return;
+        }
+
+        if (!currentShipperAllGroups || currentShipperAllGroups.length === 0) {
+            alert("No B/L data found for this customer.");
+            return;
+        }
+
+        let blVal = document.getElementById('blFilter') ? document.getElementById('blFilter').value : 'ALL';
+        let selectedGroup = null;
+        if (blVal && blVal !== 'ALL') {
+            selectedGroup = currentShipperAllGroups.find(g => g.blNo === blVal);
+        } else {
+            selectedGroup = currentShipperAllGroups[0];
+        }
+
+        if (!selectedGroup) {
+            alert("No matching B/L group found.");
+            return;
+        }
+
+        const to = "Satyam.Pandey@hindterminals.com";
+        const cc = "jasolaops@hindterminals.com;marketing.ludhiana@hindterminals.com;customerserviceludhiana@hindterminals.com";
+        
+        const subject = `Urgent SSR Request SSR Request ${currentShipper} , ${selectedGroup.blNo} (${selectedGroup.line}) , ${selectedGroup.vessel} / (${selectedGroup.stats.total} Containers)`;
+
+        let emailTable = "BILL_NO\tsmtp no\tCONTAINER_NO\tLINE\tRAKE_NO\tDisch_Vsl_Name\tTP_Submitting_Dt\tRAILING_DATE\tREMARKS\n";
+        
+        const shipHeaders = rawSheets.shipper[0] || [];
+        const shipContIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 0;
+        const shipBlIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 2;
+        const shipConsIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) : 3;
+
+        const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
+        const sContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
+        
+        const webHeaders = (rawSheets.website && rawSheets.website[0]) || [];
+        const webContIdx = webHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? webHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 3;
+
+        rawSheets.shipper.slice(1).forEach(row => {
+            const consigneeVal = String(row[shipConsIdx] || '').trim();
+            const blVal = String(row[shipBlIdx] || '').trim();
+            if (consigneeVal.toUpperCase() === currentShipper.toUpperCase() && blVal.toUpperCase() === selectedGroup.blNo.toUpperCase()) {
+                const contNo = String(row[shipContIdx] || '').trim();
+                
+                const smtpRow = rawSheets.smtp.slice(1).find(s => String(s[sContIdx] || '').trim().toUpperCase() === contNo.toUpperCase());
+                const smtpNo = smtpRow ? String(smtpRow[1] || '').trim() : '-';
+                const line = smtpRow ? String(smtpRow[23] || '').trim() : (selectedGroup.line || '-');
+                const vessel = smtpRow ? String(smtpRow[5] || '').trim() : (selectedGroup.vessel || '-');
+                const handoverDt = smtpRow ? String(smtpRow[18] || smtpRow[17] || '').trim() : (selectedGroup.handoverDt || '-');
+                const smtpRemark = smtpRow ? String(smtpRow[22] || '').trim() : '';
+
+                const webRow = rawSheets.website.slice(1).find(w => String(w[webContIdx] || '').trim().toUpperCase() === contNo.toUpperCase());
+                const rakeNo = webRow ? String(webRow[4] || '').trim() : '-';
+                const railingDate = webRow ? String(webRow[8] || '').trim() : '-';
+                const webRemark = webRow ? String(webRow[9] || '').trim() : '';
+                
+                const finalRemarks = webRemark || smtpRemark || '-';
+
+                emailTable += `${selectedGroup.blNo}\t${smtpNo}\t${contNo}\t${line}\t${rakeNo}\t${vessel}\t${handoverDt}\t${railingDate}\t${finalRemarks}\n`;
+            }
+        });
+
+        const body = `Dear Sir,\n\nKindly Plan Subject containers urgently on SSR , same is very urgent shipment customer has already approved SSR charges.\nContainer Details :-\n${emailTable}\nThanks & Regards,`;
+
+        const mailtoUrl = `mailto:${to}?cc=${cc}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        window.location.href = mailtoUrl;
+    });
+}
+
+// ────────────────────────────────────────────────
+// MAIN SSR INVOICE BUTTON CLICK EVENT
+// ────────────────────────────────────────────────
+const mainSsrInvoiceBtn = document.getElementById('mainSsrInvoiceBtn');
+if (mainSsrInvoiceBtn) {
+    mainSsrInvoiceBtn.addEventListener('click', () => {
+        const currentShipper = selectedShipper || document.getElementById('activeShipperName').innerText;
+        if (!currentShipper || currentShipper === 'Active Shipper') {
+            alert("Please select a customer from the sidebar first.");
+            return;
+        }
+        window.openSsrInvoiceModal(null, currentShipper);
+    });
+}
 
 // ────────────────────────────────────────────────
 // WHATSAPP MESSAGE LOGIC - NEW FORMAT WITH EMOJIS
@@ -3647,6 +3957,49 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
             return false;
         }
 
+        function hasShipperTransitOrPending(name) {
+            if (!rawSheets.shipper || rawSheets.shipper.length <= 1) return false;
+            
+            const shipHeaders = rawSheets.shipper[0] || [];
+            const shipContIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 0;
+            const shipBlIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 2;
+            const shipConsIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) : 3;
+
+            const webHeaders = (rawSheets.website && rawSheets.website[0]) || [];
+            const webContIdx = webHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? webHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 3;
+
+            const upperName = name.toUpperCase();
+            let hasTransitOrPending = false;
+            let hasContainers = false;
+            
+            rawSheets.shipper.slice(1).forEach(row => {
+                if (String(row[shipConsIdx] || '').trim().toUpperCase() === upperName) {
+                    hasContainers = true;
+                    const contNo = String(row[shipContIdx] || '').trim().toUpperCase();
+                    
+                    const webRow = rawSheets.website.slice(1).find(w => String(w[webContIdx] || '').trim().toUpperCase() === contNo);
+                    if (webRow) {
+                        const railDateRaw = webRow[8];
+                        const railDateStr = String(railDateRaw || '').trim();
+                        const isRailed = railDateStr && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(railDateStr.toUpperCase());
+                        
+                        if (isRailed) {
+                            const remark = String(webRow[9] || '').trim().toUpperCase();
+                            if (!remark.includes('TRAIN ARRIVED')) {
+                                hasTransitOrPending = true;
+                            }
+                        } else {
+                            hasTransitOrPending = true;
+                        }
+                    } else {
+                        hasTransitOrPending = true;
+                    }
+                }
+            });
+            
+            return hasContainers && hasTransitOrPending;
+        }
+
         function renderShipperList(shippers, consIndex) {
             const listEl = document.getElementById('shipperList');
             const ssrListEl = document.getElementById('ssrList');
@@ -3668,18 +4021,120 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
                     regularShippers.push(name);
                 }
             });
+
+            // Sorting helper (Latest update date in SMTP first)
+            const parseSortDate = (str) => {
+                if (!str || str === '-' || str === 'N/A') return 0;
+                const parsed = Date.parse(str);
+                if (!isNaN(parsed)) return parsed;
+                
+                const clean = String(str).trim();
+                const parts = clean.split(/[-.\/\s]/);
+                if (parts.length >= 3) {
+                    const part0 = parseInt(parts[0], 10);
+                    const part1 = parseInt(parts[1], 10);
+                    const part2 = parseInt(parts[2], 10);
+                    if (part0 > 1000) {
+                        return new Date(part0, part1 - 1, part2).getTime();
+                    }
+                    let y = part2;
+                    if (y < 100) y += 2000;
+                    return new Date(y, part1 - 1, part0).getTime();
+                }
+                return 0;
+            };
+
+            const shipperTimestamps = {};
+            const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
+            const sContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
+            const sBlIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 9;
+            const sTpIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('TP_SUBMITTING')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('TP_SUBMITTING')) : 18;
+            const sConsIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) : 24;
+
+            const shipHeaders = (rawSheets.shipper && rawSheets.shipper[0]) || [];
+            const shipContIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 0;
+            const shipBlIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 2;
+            const shipConsIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) : 3;
+
+            const getShipperLatestTimestamp = (sName) => {
+                if (shipperTimestamps[sName] !== undefined) return shipperTimestamps[sName];
+                let maxTime = 0;
+                const upperName = sName.toUpperCase();
+                
+                // 1. Direct match by name in SMTP rows
+                rawSheets.smtp.slice(1).forEach(row => {
+                    if (String(row[sConsIdx] || '').trim().toUpperCase() === upperName) {
+                        const t = parseSortDate(String(row[sTpIdx] || row[17] || ''));
+                        if (t > maxTime) maxTime = t;
+                    }
+                });
+                
+                // 2. Indirect match via container/BL linked in Shipper sheet
+                const shipperConts = new Set();
+                const shipperBls = new Set();
+                rawSheets.shipper.slice(1).forEach(r => {
+                    if (String(r[shipConsIdx] || '').trim().toUpperCase() === upperName) {
+                        const c = String(r[shipContIdx] || '').trim().toUpperCase();
+                        const b = String(r[shipBlIdx] || '').trim().toUpperCase();
+                        if (c && c !== '-') shipperConts.add(c);
+                        if (b && b !== '-') shipperBls.add(b);
+                    }
+                });
+                
+                rawSheets.smtp.slice(1).forEach(row => {
+                    const c = String(row[sContIdx] || '').trim().toUpperCase();
+                    const b = String(row[sBlIdx] || '').trim().toUpperCase();
+                    if ((c && shipperConts.has(c)) || (b && shipperBls.has(b))) {
+                        const t = parseSortDate(String(row[sTpIdx] || row[17] || ''));
+                        if (t > maxTime) maxTime = t;
+                    }
+                });
+                
+                shipperTimestamps[sName] = maxTime;
+                return maxTime;
+            };
+
+            // Sort regular shippers list: Priority 1 - has Transit or Pending containers, Priority 2 - Latest update date
+            regularShippers.sort((a, b) => {
+                const transitA = hasShipperTransitOrPending(a) ? 1 : 0;
+                const transitB = hasShipperTransitOrPending(b) ? 1 : 0;
+                if (transitA !== transitB) {
+                    return transitB - transitA; // Has Transit or Pending containers floats to the top
+                }
+                return getShipperLatestTimestamp(b) - getShipperLatestTimestamp(a);
+            });
+            
+            // SSR Shippers list sorted by latest update date
+            ssrShippers.sort((a, b) => getShipperLatestTimestamp(b) - getShipperLatestTimestamp(a));
             
             if (ssrCountEl) {
                 ssrCountEl.innerText = ssrShippers.length;
             }
             
             // Render regular shippers
-            listEl.innerHTML = regularShippers.map(name => `
-                <button class="shipper-select-btn w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold uppercase transition-all flex items-center justify-between group ${selectedShipper === name ? 'bg-blue-700 text-white shadow-lg' : 'text-slate-900 hover:bg-slate-100'}" data-name="${name.replace(/'/g, "\\'")}">
-                    <span class="truncate">${name}</span>
-                    <i data-lucide="chevron-right" class="w-3 h-3 ${selectedShipper === name ? 'opacity-100' : 'opacity-0'}"></i>
-                </button>
-            `).join('');
+            listEl.innerHTML = regularShippers.map(name => {
+                const isTransitPending = hasShipperTransitOrPending(name);
+                let btnClass = "";
+                if (selectedShipper === name) {
+                    if (isTransitPending) {
+                        btnClass = "bg-amber-600 text-white shadow-lg";
+                    } else {
+                        btnClass = "bg-blue-700 text-white shadow-lg";
+                    }
+                } else {
+                    if (isTransitPending) {
+                        btnClass = "bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200/80";
+                    } else {
+                        btnClass = "text-slate-900 hover:bg-slate-100";
+                    }
+                }
+                return `
+                    <button class="shipper-select-btn w-full text-left px-3 py-2 rounded-lg text-[9px] font-bold uppercase transition-all flex items-center justify-between group ${btnClass}" data-name="${name.replace(/'/g, "\\'")}">
+                        <span class="truncate">${name}</span>
+                        <i data-lucide="chevron-right" class="w-3 h-3 ${selectedShipper === name ? 'opacity-100' : 'opacity-0'}"></i>
+                    </button>
+                `;
+            }).join('');
             
             // Render SSR shippers
             if (ssrListEl) {
@@ -3687,21 +4142,30 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
                     const inSmtp = isShipperInSmtp(name);
                     let btnClass = "";
                     let badgeClass = "";
+                    let wrapperBgClass = "";
                     if (selectedShipper === name) {
-                        btnClass = inSmtp 
-                            ? "bg-emerald-700 text-white shadow-lg" 
-                            : "bg-rose-700 text-white shadow-lg";
-                        badgeClass = inSmtp ? "bg-emerald-900" : "bg-rose-900";
+                        if (inSmtp) {
+                            btnClass = "text-white shadow-lg";
+                            badgeClass = "bg-emerald-900";
+                            wrapperBgClass = "bg-emerald-700";
+                        } else {
+                            btnClass = "text-white shadow-lg";
+                            badgeClass = "bg-rose-900";
+                            wrapperBgClass = "bg-rose-700";
+                        }
                     } else {
-                        btnClass = inSmtp 
-                            ? "bg-emerald-100 text-emerald-900 border border-emerald-300 hover:bg-emerald-200/80" 
-                            : "bg-rose-100 text-rose-900 border border-rose-200 hover:bg-rose-100";
-                        badgeClass = inSmtp ? "bg-emerald-600" : "bg-rose-600";
+                        if (inSmtp) {
+                            btnClass = "bg-emerald-100 text-emerald-900 border border-emerald-300 hover:bg-emerald-200/80";
+                            badgeClass = "bg-emerald-600";
+                        } else {
+                            btnClass = "bg-rose-100 text-rose-900 border border-rose-200 hover:bg-rose-100";
+                            badgeClass = "bg-rose-600";
+                        }
                     }
                     const activeIndicator = selectedShipper === name ? 'opacity-100' : 'opacity-0';
                     const linkColorClass = selectedShipper === name ? 'text-white hover:text-slate-200' : 'text-blue-700 hover:text-blue-900';
                     return `
-                        <div class="w-full flex items-center justify-between gap-1 p-0.5 rounded-lg transition-all ${selectedShipper === name ? (inSmtp ? 'bg-emerald-700' : 'bg-rose-700') : ''}">
+                        <div class="w-full flex items-center justify-between gap-1 p-0.5 rounded-lg transition-all ${wrapperBgClass}">
                             <button class="shipper-select-btn flex-1 text-left px-3 py-2 rounded-lg text-[9px] font-bold uppercase transition-all flex items-center justify-between group ${selectedShipper === name ? 'text-white' : btnClass}" data-name="${name.replace(/'/g, "\\'")}">
                                 <span class="truncate flex items-center gap-1.5">
                                     <span class="${badgeClass} text-white text-[7px] px-1 py-0.5 rounded font-black shrink-0">SSR</span>
@@ -4727,6 +5191,7 @@ window.deleteHkrRow = async (index) => {
                 }
             });
 
+            let updatedContainers = [];
             if (currentSheetInView === 'smtp' && editedRows.size > 0) {
                 const headers = rawSheets.smtp[0];
                 const sContIdx = headers.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 
@@ -4738,12 +5203,7 @@ window.deleteHkrRow = async (index) => {
                     if (row) {
                         const contNo = String(row[sContIdx] || '').trim().toUpperCase();
                         if (contNo) {
-                            const isSsr = rawSheets.shipper.some(s => 
-                                String(s[0] || '').trim().toUpperCase() === contNo && s[4] === 'SSR'
-                            );
-                            if (isSsr) {
-                                ssrMismatches.push(contNo);
-                            }
+                            updatedContainers.push(contNo);
                         }
                     }
                 });
@@ -4753,8 +5213,8 @@ window.deleteHkrRow = async (index) => {
             saveLocalChangesBtn.innerHTML = 'CHANGES SAVED!';
             setTimeout(() => { saveLocalChangesBtn.innerHTML = 'Save Changes'; }, 2000);
             
-            if (ssrMismatches.length > 0) {
-                alert(`Container ${ssrMismatches.join(", ")} is Planned on SSR is Recived, please Email to Satyam for Planning!!!`);
+            if (updatedContainers.length > 0) {
+                checkAndSendTelegramHandover(updatedContainers);
             }
         });
 
@@ -5865,7 +6325,13 @@ if (smtpExcelInput) {
         reader.onload = (evt) => {
             const bstr = evt.target.result;
             const wb = XLSX.read(bstr, { type: 'binary' });
-            const ws = wb.Sheets[wb.SheetNames[0]];
+            let ws = null;
+            const smtpSheetName = wb.SheetNames.find(name => name.toUpperCase() === 'SMTP');
+            if (smtpSheetName) {
+                ws = wb.Sheets[smtpSheetName];
+            } else {
+                ws = wb.Sheets[wb.SheetNames[0]];
+            }
             const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
             
             if (!jsonData.length || !hasRowValues(jsonData[0])) {
@@ -5881,26 +6347,97 @@ if (smtpExcelInput) {
             let updatedCount = 0;
             let transferCount = 0;
             let hkrMatchCount = 0;
-            let ssrMismatches = [];
+            let updatedContainers = [];
             
-            const activeIndices = [1, 2, 3, 5, 9, 11, 13, 17, 18, 22, 23, 24, 26]; 
+            const headerRow = jsonData[0] || [];
+            const mappedIndices = {};
+            
+            const findUploadedIndex = (dbHeaderName) => {
+                if (!dbHeaderName) return -1;
+                const dbUpper = dbHeaderName.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                
+                // Try exact match first
+                let idx = headerRow.findIndex(h => {
+                    const u = String(h).toUpperCase().replace(/[^A-Z0-9]/g, '');
+                    return u === dbUpper || u.includes(dbUpper) || dbUpper.includes(u);
+                });
+                if (idx !== -1) return idx;
+
+                // Try synonym matches
+                if (dbHeaderName === 'CONT_Nos.') {
+                    idx = headerRow.findIndex(h => {
+                        const u = String(h).toUpperCase();
+                        return u.includes('CONT') || u.includes('CONTAINER');
+                    });
+                } else if (dbHeaderName === 'BL_No.') {
+                    idx = headerRow.findIndex(h => {
+                        const u = String(h).toUpperCase();
+                        return u.includes('BL_') || u.includes('BL') || u.includes('BILL');
+                    });
+                } else if (dbHeaderName === 'Destination') {
+                    idx = headerRow.findIndex(h => {
+                        const u = String(h).toUpperCase();
+                        return u.includes('DEST') || u.includes('TERM') || u.includes('PLACE') || u.includes('PORT');
+                    });
+                } else if (dbHeaderName === 'Disch_Vsl_Name') {
+                    idx = headerRow.findIndex(h => {
+                        const u = String(h).toUpperCase();
+                        return u.includes('VESSEL') || u.includes('VSL') || u.includes('DISCH');
+                    });
+                } else if (dbHeaderName === 'Handover Date') {
+                    idx = headerRow.findIndex(h => {
+                        const u = String(h).toUpperCase();
+                        return u.includes('HANDOVER') || u.includes('SUBMITTING') || u.includes('SUBMIT') || u.includes('TP_SUB');
+                    });
+                } else if (dbHeaderName === 'Discharge Date') {
+                    idx = headerRow.findIndex(h => {
+                        const u = String(h).toUpperCase();
+                        return u.includes('DISCH_DT') || u.includes('DISCHARGE') || u.includes('DISCH');
+                    });
+                } else if (dbHeaderName === 'Remarks') {
+                    idx = headerRow.findIndex(h => {
+                        const u = String(h).toUpperCase();
+                        return u.includes('REMARK') || u.includes('REM');
+                    });
+                } else if (dbHeaderName === 'Consignee') {
+                    idx = headerRow.findIndex(h => {
+                        const u = String(h).toUpperCase();
+                        return u.includes('CONSIGNEE') || u.includes('IMPORTER') || u.includes('SHIPPER');
+                    });
+                }
+                return idx;
+            };
+
+            const dbHeaders = DEFAULT_SOURCE_HEADERS.smtp;
+            const activeIndices = [1, 2, 3, 5, 9, 11, 13, 17, 18, 22, 23, 24, 26];
+            
+            activeIndices.forEach(i => {
+                const dbName = dbHeaders[i];
+                const uploadedIdx = findUploadedIndex(dbName);
+                mappedIndices[i] = uploadedIdx !== -1 ? uploadedIdx : i;
+            });
 
             jsonData.slice(1).forEach(exRow => {
-                const contNo = String(exRow[2] || '').trim().toUpperCase();
-                const blNo = String(exRow[9] || '').trim();
-                const cellLValue = String(exRow[11] || '').toUpperCase();
+                if (!hasRowValues(exRow)) return;
 
-                if (contNo && (cellLValue.includes("KILARAIPUR") || cellLValue.includes("LUDHIANA"))) {
-                    // Check if planned on SSR
-                    const isSsr = rawSheets.shipper.some(s => 
-                        String(s[0] || '').trim().toUpperCase() === contNo && s[4] === 'SSR'
-                    );
-                    if (isSsr) {
-                        ssrMismatches.push(contNo);
-                    }
+                const contNo = String(exRow[mappedIndices[2]] || '').trim().toUpperCase();
+                const blNo = String(exRow[mappedIndices[9]] || '').trim();
+                const cellLValue = String(exRow[mappedIndices[11]] || '').toUpperCase();
+                
+                const cleanLVal = cellLValue.replace(/\s+/g, '');
+                const isMatchingDest = cleanLVal.includes("KILARAIPUR") || 
+                                     cleanLVal.includes("LUDHIANA") || 
+                                     cleanLVal.includes("LUDHIYANA") || 
+                                     cleanLVal.includes("RANGIAN") ||
+                                     cleanLVal.includes("KLR") ||
+                                     cleanLVal.includes("LDH") ||
+                                     cellLValue.includes("KILA RAIPUR");
+
+                if (contNo && isMatchingDest) {
+                    updatedContainers.push(contNo);
                     
                     let finalRemark = "HKR";
-                    const lineVal = String(exRow[23] || '').trim().toUpperCase();
+                    const lineVal = String(exRow[mappedIndices[23]] || '').trim().toUpperCase();
                     if (lineVal.includes("MSC")) finalRemark = "-";
 
                     if (rawSheets.hkrHmrFiltered && rawSheets.hkrHmrFiltered.length > 0) {
@@ -5913,7 +6450,10 @@ if (smtpExcelInput) {
                         }
                     }
 
-                    exRow[22] = finalRemark;
+                    const remarksUpIdx = mappedIndices[22];
+                    if (remarksUpIdx !== -1) {
+                        exRow[remarksUpIdx] = finalRemark;
+                    }
 
                     // Match container by Container Number in rawSheets.smtp (Column C / index 2)
                     const existingSmtpIdx = rawSheets.smtp.findIndex((s, idx) =>
@@ -5923,8 +6463,9 @@ if (smtpExcelInput) {
                     if (existingSmtpIdx !== -1) {
                         // Update existing container record in SMTP instead of adding duplicate
                         activeIndices.forEach(i => {
-                            if (exRow[i] !== undefined && exRow[i] !== '') {
-                                rawSheets.smtp[existingSmtpIdx][i] = exRow[i];
+                            const upIdx = mappedIndices[i];
+                            if (exRow[upIdx] !== undefined && exRow[upIdx] !== '') {
+                                rawSheets.smtp[existingSmtpIdx][i] = exRow[upIdx];
                             }
                         });
                         updatedCount++;
@@ -5932,8 +6473,11 @@ if (smtpExcelInput) {
                         // Add new container record to SMTP
                         let optimizedRow = new Array(27).fill(""); 
                         activeIndices.forEach(i => { 
-                            optimizedRow[i] = exRow[i] !== undefined ? exRow[i] : ""; 
+                            const upIdx = mappedIndices[i];
+                            optimizedRow[i] = exRow[upIdx] !== undefined ? exRow[upIdx] : ""; 
                         });
+                        // Explicitly set calculated remark
+                        optimizedRow[22] = finalRemark;
                         rawSheets.smtp.push(optimizedRow);
                         addedCount++;
                     }
@@ -5943,7 +6487,7 @@ if (smtpExcelInput) {
                         idx > 0 && String(w[3] || '').trim().toUpperCase() === contNo
                     );
                     if (!alreadyInWebsite) {
-                        const rawTpDate = exRow[18] || exRow[17];
+                        const rawTpDate = exRow[mappedIndices[18]] || exRow[mappedIndices[17]];
                         const tpDateFormatted = typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(rawTpDate) : rawTpDate;
                         
                         rawSheets.website.push([
@@ -5969,8 +6513,8 @@ if (smtpExcelInput) {
             processCloudData();
             
             alert(`✓ SMTP Processing Complete!\nAdded: ${addedCount}\nUpdated: ${updatedCount}\nSynced to Website: ${transferCount}`);
-            if (ssrMismatches.length > 0) {
-                alert(`Container ${ssrMismatches.join(", ")} is Planned on SSR is Recived, please Email to Satyam for Planning!!!`);
+            if (updatedContainers.length > 0) {
+                checkAndSendTelegramHandover(updatedContainers);
             }
         };
         reader.readAsBinaryString(file);
@@ -9199,11 +9743,12 @@ if (hkrHmrExcelInput) {
 
                     // Check if destination contains ANY of the 3 required keywords
                     let newRemark = "";
-                    if (destName.includes("KILA RAIPUR BLOCK - MSC")) {
+                    const cleanDest = destName.replace(/\s+/g, '');
+                    if (destName.includes("KILA RAIPUR") || cleanDest.includes("KILARAIPUR") || cleanDest.includes("KLR")) {
                         newRemark = "HMR";
-                    } else if (destName.includes("RANGIAN")) {
+                    } else if (destName.includes("RANGIAN") || cleanDest.includes("RANGIAN") || cleanDest.includes("HKR")) {
                         newRemark = "HKR";
-                    } else if (destName.includes("LUDHIYANA") || destName.includes("LUDHIANA")) {
+                    } else if (destName.includes("LUDHIYANA") || destName.includes("LUDHIANA") || cleanDest.includes("LUDHIANA") || cleanDest.includes("LUDHIYANA") || cleanDest.includes("LDH")) {
                         newRemark = "HDL";
                     }
 
