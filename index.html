@@ -904,7 +904,7 @@ table {
     <button id="mailSsrRequestBtn" 
             class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-md active:scale-95">
         <i data-lucide="mail" class="w-4 h-4"></i>
-        Mail SSR Request
+        Mail SSR / Lot Break
     </button>
     <button id="mainSsrInvoiceBtn" 
             class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase transition-all flex items-center gap-2 shadow-md active:scale-95">
@@ -1693,9 +1693,202 @@ const getVisibleBLs = () => {
     return blList;
 };
 
-// ────────────────────────────────────────────────
-// MAIL SSR REQUEST BUTTON CLICK EVENT
-// ────────────────────────────────────────────────
+function generateSsrPlainTextTable(currentShipper, selectedGroup) {
+    const rows = [];
+    const uniqueSmtpNos = new Set();
+    let c20 = 0, c40 = 0;
+
+    const shipHeaders = rawSheets.shipper[0] || [];
+    const shipContIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 0;
+    const shipBlIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 2;
+    const shipConsIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) : 3;
+    const shipSizeIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('SIZE')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('SIZE')) : -1;
+
+    const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
+    const sContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
+    const smtpNoIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('SMTP')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('SMTP')) : 1;
+
+    rawSheets.shipper.slice(1).forEach(row => {
+        const consigneeVal = String(row[shipConsIdx] || '').trim();
+        const blVal = String(row[shipBlIdx] || '').trim();
+        if (consigneeVal.toUpperCase() === currentShipper.toUpperCase() && blVal.toUpperCase() === selectedGroup.blNo.toUpperCase()) {
+            const contNo = String(row[shipContIdx] || '').trim();
+            const size = shipSizeIdx !== -1 ? String(row[shipSizeIdx] || '').trim() : '20';
+
+            if (size.includes('40')) {
+                c40++;
+            } else {
+                c20++;
+            }
+
+            const smtpRow = rawSheets.smtp.slice(1).find(s => String(s[sContIdx] || '').trim().toUpperCase() === contNo.toUpperCase());
+            const smtpNo = smtpRow ? String(smtpRow[smtpNoIdx] || '').trim() : '';
+            if (smtpNo && smtpNo !== '-') {
+                uniqueSmtpNos.add(smtpNo);
+            }
+
+            rows.push(`${contNo} (${size})`);
+        }
+    });
+
+    const smtpNoString = uniqueSmtpNos.size > 0 ? Array.from(uniqueSmtpNos).join(" / ") : "-";
+
+    let sizeSummary = "";
+    if (c20 > 0 && c40 > 0) {
+        sizeSummary = `${c20}x20 & ${c40}x40`;
+    } else if (c40 > 0) {
+        sizeSummary = `${c40}x40`;
+    } else {
+        sizeSummary = `${c20}x20`;
+    }
+
+    let tableText = "CONTAINER_NO(SIZE)\n";
+    rows.forEach(r => {
+        tableText += `${r}\n`;
+    });
+
+    return {
+        tableText,
+        smtpNoString,
+        sizeSummary
+    };
+}
+
+function generateLotPlainTextTable(currentShipper, selectedGroup) {
+    const headers = ["CONTAINER_NO", "SIZE", "REMARKS"];
+    const rows = [];
+    const uniqueSmtpNos = new Set();
+
+    const shipHeaders = rawSheets.shipper[0] || [];
+    const shipContIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 0;
+    const shipBlIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 2;
+    const shipConsIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) : 3;
+    const shipSizeIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('SIZE')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('SIZE')) : -1;
+
+    const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
+    const sContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
+    const smtpNoIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('SMTP')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('SMTP')) : 1;
+
+    const webHeaders = (rawSheets.website && rawSheets.website[0]) || [];
+    const webContIdx = webHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? webHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 3;
+
+    rawSheets.shipper.slice(1).forEach(row => {
+        const consigneeVal = String(row[shipConsIdx] || '').trim();
+        const blVal = String(row[shipBlIdx] || '').trim();
+        if (consigneeVal.toUpperCase() === currentShipper.toUpperCase() && blVal.toUpperCase() === selectedGroup.blNo.toUpperCase()) {
+            const contNo = String(row[shipContIdx] || '').trim();
+            const size = shipSizeIdx !== -1 ? String(row[shipSizeIdx] || '').trim() : '20';
+
+            const smtpRow = rawSheets.smtp.slice(1).find(s => String(s[sContIdx] || '').trim().toUpperCase() === contNo.toUpperCase());
+            const smtpNo = smtpRow ? String(smtpRow[smtpNoIdx] || '').trim() : '';
+            if (smtpNo && smtpNo !== '-') {
+                uniqueSmtpNos.add(smtpNo);
+            }
+            const handoverDt = smtpRow ? String(smtpRow[18] || smtpRow[17] || '').trim() : (selectedGroup.handoverDt || '-');
+            const smtpRemark = smtpRow ? String(smtpRow[22] || '').trim() : '';
+
+            const webRow = rawSheets.website.slice(1).find(w => String(w[webContIdx] || '').trim().toUpperCase() === contNo.toUpperCase());
+            let railingDate = webRow ? String(webRow[8] || '').trim() : 'PENDING';
+            if (!railingDate || railingDate === '-' || railingDate.toUpperCase() === 'N/A') railingDate = 'PENDING';
+            
+            const webRemark = webRow ? String(webRow[9] || '').trim() : '';
+            const finalRemarks = webRemark || smtpRemark || `CONTAINER HANDOVER TO HTPL ON ${handoverDt}`;
+
+            rows.push([
+                contNo,
+                size,
+                finalRemarks
+            ]);
+        }
+    });
+
+    const smtpNoString = uniqueSmtpNos.size > 0 ? Array.from(uniqueSmtpNos).join(" / ") : "-";
+
+    const colWidths = headers.map((h, i) => {
+        let max = h.length;
+        rows.forEach(r => {
+            const valLen = String(r[i] || '').length;
+            if (valLen > max) max = valLen;
+        });
+        return max;
+    });
+
+    const pad = (str, width) => {
+        const s = String(str);
+        return s + " ".repeat(Math.max(0, width - s.length));
+    };
+
+    let tableText = "";
+    tableText += headers.map((h, i) => pad(h, colWidths[i])).join("\t") + "\n";
+    rows.forEach(r => {
+        tableText += r.map((val, i) => pad(val, colWidths[i])).join("\t") + "\n";
+    });
+
+    return {
+        tableText,
+        smtpNoString
+    };
+}
+
+function showEmailChoiceModal(onSelect) {
+    const modalId = 'emailChoiceModal';
+    const existing = document.getElementById(modalId);
+    if (existing) existing.remove();
+
+    const modalHtml = `
+    <div id="${modalId}" class="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[9999] no-print">
+        <div class="bg-white rounded shadow-2xl border border-slate-300 w-[320px] p-4 animate-in fade-in zoom-in-95 duration-150">
+            <div class="flex justify-between items-center border-b border-slate-200 pb-2 mb-3">
+                <span class="text-[10px] font-black uppercase text-slate-800 flex items-center gap-1.5">
+                    <i data-lucide="mail" class="w-3.5 h-3.5 text-blue-600"></i> Choose Email Option
+                </span>
+                <button id="closeEmailChoiceModalBtn" class="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                </button>
+            </div>
+            
+            <p class="text-[9px] text-slate-600 font-bold mb-4 leading-normal">
+                Which Email Request would you like to send for the currently selected customer and B/L?
+            </p>
+            
+            <div class="flex flex-col gap-2">
+                <button id="chooseSsrBtn" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 rounded text-[9px] uppercase tracking-wide transition-all shadow active:scale-98 flex items-center justify-center gap-1.5">
+                    <i data-lucide="file-text" class="w-3.5 h-3.5"></i> SSR Request Email
+                </button>
+                <button id="chooseLotBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded text-[9px] uppercase tracking-wide transition-all shadow active:scale-98 flex items-center justify-center gap-1.5">
+                    <i data-lucide="split" class="w-3.5 h-3.5"></i> LOT Break Request Email
+                </button>
+                <button id="cancelEmailChoiceModalBtn" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2 rounded text-[9px] uppercase tracking-wide transition-all border border-slate-300 active:scale-98">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+    `;
+
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = modalHtml;
+    document.body.appendChild(wrapper.firstElementChild);
+    
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+
+    const modalEl = document.getElementById(modalId);
+    document.getElementById('closeEmailChoiceModalBtn').onclick = () => modalEl.remove();
+    document.getElementById('cancelEmailChoiceModalBtn').onclick = () => modalEl.remove();
+
+    document.getElementById('chooseSsrBtn').addEventListener('click', () => {
+        modalEl.remove();
+        onSelect('SSR');
+    });
+
+    document.getElementById('chooseLotBtn').addEventListener('click', () => {
+        modalEl.remove();
+        onSelect('LOT');
+    });
+}
+
 const mailSsrRequestBtn = document.getElementById('mailSsrRequestBtn');
 if (mailSsrRequestBtn) {
     mailSsrRequestBtn.addEventListener('click', () => {
@@ -1710,65 +1903,44 @@ if (mailSsrRequestBtn) {
             return;
         }
 
-        let blVal = document.getElementById('blFilter') ? document.getElementById('blFilter').value : 'ALL';
-        let selectedGroup = null;
-        if (blVal && blVal !== 'ALL') {
-            selectedGroup = currentShipperAllGroups.find(g => g.blNo === blVal);
-        } else {
-            selectedGroup = currentShipperAllGroups[0];
+        const selectedKeys = Array.from(selectedReportBLs);
+        if (selectedKeys.length === 0) {
+            alert("select BL for generate email");
+            return;
         }
+
+        const activeBlKey = selectedKeys[0];
+        const selectedGroup = currentShipperAllGroups.find(g => normalizeBLKey(g.blNo) === activeBlKey);
 
         if (!selectedGroup) {
             alert("No matching B/L group found.");
             return;
         }
 
-        const to = "Satyam.Pandey@hindterminals.com";
-        const cc = "jasolaops@hindterminals.com;marketing.ludhiana@hindterminals.com;customerserviceludhiana@hindterminals.com";
-        
-        const subject = `Urgent SSR Request SSR Request ${currentShipper} , ${selectedGroup.blNo} (${selectedGroup.line}) , ${selectedGroup.vessel} / (${selectedGroup.stats.total} Containers)`;
+        showEmailChoiceModal((choice) => {
+            const to = "Satyam.Pandey@hindterminals.com";
+            const cc = "jasolaops@hindterminals.com;marketing.ludhiana@hindterminals.com;customerserviceludhiana@hindterminals.com";
+            
+            let subject = "";
+            let bodyText = "";
 
-        let emailTable = "BILL_NO\tsmtp no\tCONTAINER_NO\tLINE\tRAKE_NO\tDisch_Vsl_Name\tTP_Submitting_Dt\tRAILING_DATE\tREMARKS\n";
-        
-        const shipHeaders = rawSheets.shipper[0] || [];
-        const shipContIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 0;
-        const shipBlIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 2;
-        const shipConsIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) : 3;
+            if (choice === 'SSR') {
+                const ssrData = generateSsrPlainTextTable(currentShipper, selectedGroup);
+                subject = `Urgent SSR Request ${currentShipper} , ${selectedGroup.blNo} (${selectedGroup.line}) , ${selectedGroup.vessel} / (${selectedGroup.stats.total} Containers)`;
+                bodyText = `Dear Sir, \n\nKindly Plan Subject containers urgently on SSR , same is very urgent shipment customer has already approved SSR charges.\n\nCustomer Name : ${currentShipper}\nDisch_Vsl_Name : ${selectedGroup.vessel} / Dated : ${selectedGroup.handoverDt} / ${selectedGroup.line}\nsmtp no : ${ssrData.smtpNoString}\n\n------------------------------------------------------------------------------------------------------\nBL_No.: ${selectedGroup.blNo} | ${ssrData.sizeSummary} containers\n------------------------------------------------------------------------------------------------------\n${ssrData.tableText}------------------------------------------------------------------------------------------------------\n\nThanks and Regards \nCustomer Service Desk\nHind Terminals Pvt Ltd\nICD Kilaraipur`;
+            } else if (choice === 'LOT') {
+                const lotData = generateLotPlainTextTable(currentShipper, selectedGroup);
+                subject = `LOT Break Urgent Request ${currentShipper} / ${selectedGroup.blNo} (${selectedGroup.line}) (${selectedGroup.stats.total} Containers)`;
+                bodyText = `Dear Sir, \n\nKindly Plan Balance containers urgently, same is LOT and very urgent shipment customer has already requested to move in LOT .\n\nCustomer Name : ${currentShipper}\nDisch_Vsl_Name : ${selectedGroup.vessel} / Dated : ${selectedGroup.handoverDt} / ${selectedGroup.line}\nsmtp no : ${lotData.smtpNoString}\n\n------------------------------------------------------------------------------------------------------\nBL_No.: ${selectedGroup.blNo} | ${selectedGroup.stats.total} containers | Railout ${selectedGroup.stats.railed} | Pending ${selectedGroup.stats.pending}\n------------------------------------------------------------------------------------------------------\n${lotData.tableText}------------------------------------------------------------------------------------------------------\n\nThanks and Regards \nCustomer Service Desk\nHind Terminals Pvt Ltd\nICD Kilaraipur`;
+            }
 
-        const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
-        const sContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
-        
-        const webHeaders = (rawSheets.website && rawSheets.website[0]) || [];
-        const webContIdx = webHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? webHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 3;
+            const mailtoUrl = `mailto:${to}?cc=${cc}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
+            window.location.href = mailtoUrl;
 
-        rawSheets.shipper.slice(1).forEach(row => {
-            const consigneeVal = String(row[shipConsIdx] || '').trim();
-            const blVal = String(row[shipBlIdx] || '').trim();
-            if (consigneeVal.toUpperCase() === currentShipper.toUpperCase() && blVal.toUpperCase() === selectedGroup.blNo.toUpperCase()) {
-                const contNo = String(row[shipContIdx] || '').trim();
-                
-                const smtpRow = rawSheets.smtp.slice(1).find(s => String(s[sContIdx] || '').trim().toUpperCase() === contNo.toUpperCase());
-                const smtpNo = smtpRow ? String(smtpRow[1] || '').trim() : '-';
-                const line = smtpRow ? String(smtpRow[23] || '').trim() : (selectedGroup.line || '-');
-                const vessel = smtpRow ? String(smtpRow[5] || '').trim() : (selectedGroup.vessel || '-');
-                const handoverDt = smtpRow ? String(smtpRow[18] || smtpRow[17] || '').trim() : (selectedGroup.handoverDt || '-');
-                const smtpRemark = smtpRow ? String(smtpRow[22] || '').trim() : '';
-
-                const webRow = rawSheets.website.slice(1).find(w => String(w[webContIdx] || '').trim().toUpperCase() === contNo.toUpperCase());
-                const rakeNo = webRow ? String(webRow[4] || '').trim() : '-';
-                const railingDate = webRow ? String(webRow[8] || '').trim() : '-';
-                const webRemark = webRow ? String(webRow[9] || '').trim() : '';
-                
-                const finalRemarks = webRemark || smtpRemark || '-';
-
-                emailTable += `${selectedGroup.blNo}\t${smtpNo}\t${contNo}\t${line}\t${rakeNo}\t${vessel}\t${handoverDt}\t${railingDate}\t${finalRemarks}\n`;
+            if (typeof showTopToast === 'function') {
+                showTopToast("Outlook email template opened successfully!", "bg-teal-700", 4500);
             }
         });
-
-        const body = `Dear Sir,\n\nKindly Plan Subject containers urgently on SSR , same is very urgent shipment customer has already approved SSR charges.\nContainer Details :-\n${emailTable}\nThanks & Regards,`;
-
-        const mailtoUrl = `mailto:${to}?cc=${cc}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-        window.location.href = mailtoUrl;
     });
 }
 
@@ -4333,13 +4505,17 @@ async function loadDataFromPublicRest(force = false) {
             return true;
         }
 
-        let fullStr = "";
+        const chunkPromises = [];
         for (let i = 0; i < chunkCount; i++) {
-            const chunkData = await fetchFirestoreRestDoc('artifacts', appId, 'public', 'data', 'report_chunks', `chunk_${i}`);
-            const chunk = getFirestoreRestString(chunkData, 'data');
-            if (!chunk) throw new Error(`Missing cloud chunk ${i + 1}/${chunkCount}`);
-            fullStr += chunk;
+            chunkPromises.push(fetchFirestoreRestDoc('artifacts', appId, 'public', 'data', 'report_chunks', `chunk_${i}`));
         }
+        const chunkResults = await Promise.all(chunkPromises);
+        let fullStr = "";
+        chunkResults.forEach((chunkData, index) => {
+            const chunk = getFirestoreRestString(chunkData, 'data');
+            if (!chunk) throw new Error(`Missing cloud chunk ${index + 1}/${chunkCount}`);
+            fullStr += chunk;
+        });
 
         rawSheets = JSON.parse(fullStr);
         lastUpdated = newUpdated || lastUpdated;
@@ -4381,7 +4557,7 @@ async function saveToCloud() {
 
     try {
         const str = JSON.stringify(rawSheets);
-        const chunkSize = 500000;
+        const chunkSize = 1000000;
         const chunkCount = Math.ceil(str.length / chunkSize);
 
         for (let i = 0; i < chunkCount; i++) {
@@ -4432,16 +4608,20 @@ async function loadData(force = false) {
                     cloudLabel.innerText = "Online (No Data)";
                     return;
                 }
-                let fullStr = "";
+                const chunkPromises = [];
                 for (let i = 0; i < chunkCount; i++) {
                     const chunkRef = doc(db, 'artifacts', appId, 'public', 'data', 'report_chunks', `chunk_${i}`);
-                    const chunkSnap = await getDoc(chunkRef);
+                    chunkPromises.push(getDoc(chunkRef));
+                }
+                const snaps = await Promise.all(chunkPromises);
+                let fullStr = "";
+                snaps.forEach((chunkSnap, index) => {
                     if (chunkSnap.exists()) {
                         fullStr += chunkSnap.data().data;
                     } else {
-                        throw new Error(`Missing cloud chunk ${i + 1}/${chunkCount}`);
+                        throw new Error(`Missing cloud chunk ${index + 1}/${chunkCount}`);
                     }
-                }
+                });
                 if (fullStr) {
                     rawSheets = JSON.parse(fullStr);
                     lastUpdated = newUpdated;
