@@ -803,6 +803,16 @@ table {
 </div>
 
 </div>
+            <!-- HKR Shippers Header -->
+            <div class="p-2 border-t border-b border-slate-400 bg-blue-300/50 flex justify-between items-center shrink-0">
+                <span class="text-[10px] font-black text-blue-900 tracking-wider uppercase">HKR Shippers</span>
+                <div class="flex items-center gap-2">
+                    <button id="sidebarAddHkrBtn" type="button" class="text-blue-950 hover:text-indigo-600 transition-colors p-0.5 cursor-pointer" title="Add HKR Shipper">
+                        <i data-lucide="plus" class="w-3.5 h-3.5 font-black"></i>
+                    </button>
+                    <span id="hkrCount" class="bg-blue-800 text-white px-1.5 py-0.5 rounded-full text-[8px] font-black">0</span>
+                </div>
+            </div>
             <div id="shipperList" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1"></div>
             <!-- SSR Request Header -->
             <div class="p-2 border-t border-b border-slate-400 bg-blue-300/50 flex justify-between items-center shrink-0">
@@ -4281,6 +4291,10 @@ function processAndRenderReport(consIndex, shouldPopulateFilters = false) {
             
             if (ssrCountEl) {
                 ssrCountEl.innerText = ssrShippers.length;
+            }
+            const hkrCountEl = document.getElementById('hkrCount');
+            if (hkrCountEl) {
+                hkrCountEl.innerText = regularShippers.length;
             }
             
             // Render regular shippers
@@ -9168,6 +9182,13 @@ if (sidebarAddSsrBtn) {
         openShipperModal(true);
     });
 }
+const sidebarAddHkrBtn = document.getElementById('sidebarAddHkrBtn');
+if (sidebarAddHkrBtn) {
+    sidebarAddHkrBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openShipperModal(false);
+    });
+}
 
 // 2. Preview List ko Refresh karne ka function
 const refreshPreviewUI = () => {
@@ -9217,7 +9238,97 @@ document.getElementById('addManualToPreviewBtn').addEventListener('click', () =>
     refreshPreviewUI();
 });
 
-// 5. B/L Lookup (SMTP search)
+// Helper: Autocomplete functions
+function getUniqueSmtpShippers() {
+    if (!rawSheets.smtp || rawSheets.smtp.length <= 1) return [];
+    const headers = rawSheets.smtp[0] || [];
+    const sConsIdx = headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) !== -1 
+                     ? headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) 
+                     : 24;
+    
+    const shippers = new Set();
+    rawSheets.smtp.slice(1).forEach(row => {
+        const val = String(row[sConsIdx] || '').trim();
+        if (val && val !== '-') {
+            shippers.add(val.toUpperCase());
+        }
+    });
+    return Array.from(shippers).sort();
+}
+
+function getUniqueSmtpBls() {
+    if (!rawSheets.smtp || rawSheets.smtp.length <= 1) return [];
+    const headers = rawSheets.smtp[0] || [];
+    const sBlIdx = headers.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 
+                   ? headers.findIndex(h => String(h).toUpperCase().includes('BL')) 
+                   : 9;
+    const sConsIdx = headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) !== -1 
+                     ? headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) 
+                     : 24;
+    
+    const activeShipper = document.getElementById('manualShipperNameInput').value.trim().toUpperCase();
+    
+    const bls = new Set();
+    rawSheets.smtp.slice(1).forEach(row => {
+        const consignee = String(row[sConsIdx] || '').trim().toUpperCase();
+        if (!activeShipper || consignee === activeShipper) {
+            const val = String(row[sBlIdx] || '').trim();
+            if (val && val !== '-') {
+                bls.add(val.toUpperCase());
+            }
+        }
+    });
+    return Array.from(bls).sort();
+}
+
+function setupAutocomplete(inputId, suggestionsId, getItemsFn) {
+    const input = document.getElementById(inputId);
+    const suggestions = document.getElementById(suggestionsId);
+    if (!input || !suggestions) return;
+
+    input.addEventListener('input', () => {
+        const value = input.value.trim().toUpperCase();
+        if (!value) {
+            suggestions.innerHTML = '';
+            suggestions.classList.add('hidden');
+            return;
+        }
+
+        const items = getItemsFn();
+        const filtered = items.filter(item => item.includes(value));
+
+        if (filtered.length === 0) {
+            suggestions.innerHTML = '';
+            suggestions.classList.add('hidden');
+            return;
+        }
+
+        suggestions.innerHTML = filtered.map(item => `
+            <div class="px-3 py-1.5 hover:bg-slate-100 cursor-pointer font-bold text-xs text-slate-700 uppercase transition-colors" data-value="${item}">
+                ${item}
+            </div>
+        `).join('');
+
+        suggestions.classList.remove('hidden');
+
+        suggestions.querySelectorAll('[data-value]').forEach(el => {
+            el.addEventListener('click', () => {
+                input.value = el.getAttribute('data-value');
+                suggestions.innerHTML = '';
+                suggestions.classList.add('hidden');
+                input.dispatchEvent(new Event('input'));
+            });
+        });
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!input.contains(e.target) && !suggestions.contains(e.target)) {
+            suggestions.classList.add('hidden');
+        }
+    });
+}
+
+// 5. B/L Lookup (SMTP search) with Dynamic Lookup Index
 document.getElementById('manualBlInput').addEventListener('input', (e) => {
     const searchVal = e.target.value.trim().toUpperCase();
     const status = document.getElementById('blMatchStatus');
@@ -9227,24 +9338,59 @@ document.getElementById('manualBlInput').addEventListener('input', (e) => {
         return;
     }
 
-    const matches = rawSheets.smtp.filter(row => String(row[9] || '').toUpperCase() === searchVal);
+    const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
+    const sContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
+    const sSizeIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('SIZE')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('SIZE')) : 3;
+    const sBlIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 9;
+    const sConsIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) : 24;
+
+    const matches = rawSheets.smtp.filter(row => String(row[sBlIdx] || '').trim().toUpperCase() === searchVal);
     
     if (matches.length > 0) {
         matchedContainers = matches.map(row => ({ 
-            cont: String(row[2]).trim(), 
-            size: String(row[3]).includes('40') ? '40' : '20', 
+            cont: String(row[sContIdx]).trim(), 
+            size: String(row[sSizeIdx]).includes('40') ? '40' : '20', 
             bl: searchVal 
         }));
         status.className = "mt-1 text-[9px] font-bold uppercase text-emerald-600";
         status.innerText = `✅ Found ${matches.length} in SMTP`;
         
         if (!document.getElementById('manualShipperNameInput').value) {
-            document.getElementById('manualShipperNameInput').value = matches[0][24] || '';
+            document.getElementById('manualShipperNameInput').value = String(matches[0][sConsIdx] || '').trim();
         }
         refreshPreviewUI();
     } else {
         status.className = "mt-1 text-[9px] font-bold uppercase text-amber-500";
         status.innerText = "⚠️ Not in SMTP. Add containers manually below.";
+    }
+});
+
+// Initialize Autocompletes
+setupAutocomplete('manualShipperNameInput', 'manualShipperSuggestions', getUniqueSmtpShippers);
+setupAutocomplete('manualBlInput', 'manualBlSuggestions', getUniqueSmtpBls);
+
+// Auto-fill B/L and trigger containers lookup when Shipper is selected/matched
+document.getElementById('manualShipperNameInput').addEventListener('input', (e) => {
+    const shipperVal = e.target.value.trim().toUpperCase();
+    if (!shipperVal) return;
+
+    const uniqueShippers = getUniqueSmtpShippers();
+    if (uniqueShippers.includes(shipperVal)) {
+        const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
+        const sBlIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 9;
+        const sConsIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) : 24;
+
+        const matchingRow = rawSheets.smtp.slice(1).find(row => String(row[sConsIdx] || '').trim().toUpperCase() === shipperVal);
+        if (matchingRow) {
+            const blNo = String(matchingRow[sBlIdx] || '').trim().toUpperCase();
+            if (blNo && blNo !== '-') {
+                const blInput = document.getElementById('manualBlInput');
+                if (blInput && blInput.value !== blNo) {
+                    blInput.value = blNo;
+                    blInput.dispatchEvent(new Event('input'));
+                }
+            }
+        }
     }
 });
 
@@ -10023,7 +10169,7 @@ window.openSsrInvoiceModal = function(event, shipperName) {
     const savedBilling = localStorage.getItem(`ssr_invoice_billing_${shipperName}`) || '';
     const savedGst = localStorage.getItem(`ssr_invoice_gst_${shipperName}`) || '';
     const savedAddress = localStorage.getItem(`ssr_invoice_address_${shipperName}`) || '';
-    const savedRateInr = localStorage.getItem(`ssr_invoice_rate_inr_${shipperName}`) || '97.86';
+    const savedRateInr = localStorage.getItem(`ssr_invoice_rate_inr_${shipperName}`) || '00.00';
     const savedGstType = localStorage.getItem(`ssr_invoice_gst_type_${shipperName}`) || 'IGST';
     
     document.getElementById('invoiceConsignee').value = shipperName;
@@ -10089,7 +10235,7 @@ window.openSsrInvoiceModal = function(event, shipperName) {
         const billing = document.getElementById('invoiceBillingCustomer').value.trim();
         const gst = document.getElementById('invoiceGstNo').value.trim();
         const address = document.getElementById('invoiceAddress').value.trim();
-        const exchangeRate = parseFloat(document.getElementById('invoiceRateInr').value) || 85.00;
+        const exchangeRate = parseFloat(document.getElementById('invoiceRateInr').value) || 0;
         const gstType = document.getElementById('invoiceGstType').value;
         
         // Find checked containers
@@ -10332,6 +10478,13 @@ window.openSsrInvoiceModal = function(event, shipperName) {
     
     // PDF Download Handler
     document.getElementById('downloadSsrPdfBtn').onclick = function() {
+        const rateVal = document.getElementById('invoiceRateInr').value.trim();
+        const rateNum = parseFloat(rateVal) || 0;
+        if (rateNum === 0 || rateVal === '00.00' || rateVal === '0' || !rateVal) {
+            alert("Please update the Exchange Rate (INR) before downloading the PDF!");
+            return;
+        }
+        
         const element = document.getElementById('ssrInvoicePrintArea');
         const options = {
             margin: 8,
@@ -10412,14 +10565,16 @@ initAuth();
             <button onclick="document.getElementById('addShipperModal').classList.add('hidden')"><i data-lucide="x" class="w-5 h-5"></i></button>
         </div>
         <div class="p-6 space-y-4">
-            <div>
-                <label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">B/L Number (Lookup from SMTP)</label>
-                <input type="text" id="manualBlInput" placeholder="Enter B/L Number..." class="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-teal-500 uppercase">
-                <div id="blMatchStatus" class="mt-1 text-[9px] font-bold uppercase"></div>
+            <div class="relative">
+                <label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">Shipper / Consignee Name (Lookup from SMTP)</label>
+                <input type="text" id="manualShipperNameInput" placeholder="Type Shipper Name..." class="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-teal-500 uppercase" autocomplete="off">
+                <div id="manualShipperSuggestions" class="absolute left-0 right-0 bg-white border border-slate-300 rounded-lg max-h-40 overflow-y-auto hidden z-[100002] shadow-lg custom-scrollbar"></div>
             </div>
-            <div>
-                <label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">Shipper / Consignee Name</label>
-                <input type="text" id="manualShipperNameInput" placeholder="Type Shipper Name..." class="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-teal-500 uppercase">
+            <div class="relative">
+                <label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">B/L Number (Lookup from SMTP)</label>
+                <input type="text" id="manualBlInput" placeholder="Enter B/L Number..." class="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-teal-500 uppercase" autocomplete="off">
+                <div id="blMatchStatus" class="mt-1 text-[9px] font-bold uppercase"></div>
+                <div id="manualBlSuggestions" class="absolute left-0 right-0 bg-white border border-slate-300 rounded-lg max-h-40 overflow-y-auto hidden z-[100002] shadow-lg custom-scrollbar"></div>
             </div>
 <div id="manualInputFields" class="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
     <p class="text-[9px] font-black text-blue-600 uppercase mb-2">Manual Container Entry</p>
