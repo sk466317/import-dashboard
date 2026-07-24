@@ -1116,6 +1116,23 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
     const nameDisplay = document.getElementById('smtpConsigneeName');
     const missingImporterName = 'Importer Name Not Updated';
 
+    // Intercept exact match in HKR (Not Discharge) first!
+    if (searchVal.length >= 4 && rawSheets.hkrHmrFiltered && rawSheets.hkrHmrFiltered.length > 0) {
+        const exactMatch = rawSheets.hkrHmrFiltered.find(hkrRow => 
+            String(hkrRow.ctr_no || '').trim().toUpperCase() === searchVal
+        );
+        if (exactMatch) {
+            window.showHkrDetailModal(
+                exactMatch.ctr_no, 
+                exactMatch.line_code || '-', 
+                exactMatch.assigned_remark || 'PENDING', 
+                exactMatch.vessel_name || '-', 
+                exactMatch.eta_dttm || '-'
+            );
+            return;
+        }
+    }
+
     const pickFirst = (row, indexes) => {
         for (const idx of indexes) {
             if (idx >= 0 && row[idx] !== undefined && row[idx] !== null) {
@@ -1430,15 +1447,16 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
                 let hkrHtml = '';
                 hkrMatches.forEach(hkr => {
                     hkrHtml += `
-                        <div class="p-2 mb-1.5 bg-orange-50 text-orange-950 font-bold border border-orange-300 rounded text-[9px]">
+                        <div class="p-2 mb-1.5 bg-orange-50 text-orange-950 font-bold border border-orange-300 rounded text-[9px] cursor-pointer hover:bg-orange-100 hover:border-orange-500 transition-all active:scale-[0.99] select-none"
+                             onclick="window.showHkrDetailModal('${hkr.ctr_no.replace(/'/g, "\\'")}', '${(hkr.line_code || '-').replace(/'/g, "\\'")}', '${(hkr.assigned_remark || 'PENDING').replace(/'/g, "\\'")}', '${(hkr.vessel_name || '-').replace(/'/g, "\\'")}', '${(hkr.eta_dttm || '-').replace(/'/g, "\\'")}')">
                             <div class="font-bold text-[10px] text-red-700 uppercase flex justify-between items-center">
-                                <span class="bg-slate-200 px-1 py-0.5 rounded text-slate-800"> ${hkr.ctr_no}</span>
+                                <span class="bg-slate-200 px-1 py-0.5 rounded text-slate-800">📦 ${hkr.ctr_no}</span>
                                 <span class="bg-red-600 text-white px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase tracking-tight">Not Discharge</span>
                             </div>
                             <div class="grid grid-cols-2 gap-x-2 gap-y-1 mt-1.5 text-[8.5px] text-slate-800 font-bold leading-tight">
                                 <div><span class="font-black text-slate-400 uppercase">Line:</span> ${hkr.line_code || '-'}</div>
-                                <div><span class="font-black text-slate-400 uppercase"> Remark:</span> ${hkr.assigned_remark || 'PENDING'}</div>
-                                <div class="col-span-2"><span class="font-black text-slate-400 uppercase">Vessel :</span> ${hkr.vessel_name || '-'}</div>
+                                <div><span class="font-black text-slate-400 uppercase">Remark:</span> ${hkr.assigned_remark || 'PENDING'}</div>
+                                <div class="col-span-2"><span class="font-black text-slate-400 uppercase">Vessel:</span> ${hkr.vessel_name || '-'}</div>
                                 <div class="col-span-2"><span class="font-black text-slate-400 uppercase">E.T.A.:</span> ${hkr.eta_dttm || '-'}</div>
                             </div>
                         </div>
@@ -1456,6 +1474,160 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
         resultBox.style.maxHeight = '';
     }
 });
+
+// window.showHkrDetailModal definition
+window.showHkrDetailModal = function(ctrNo, lineCode, assignedRemark, vesselName, etaDttm) {
+    document.getElementById('hkrModalContNo').innerText = ctrNo;
+    document.getElementById('hkrModalLineCode').innerText = lineCode;
+    document.getElementById('hkrModalAssignedRemark').innerText = assignedRemark;
+    document.getElementById('hkrModalVesselName').innerText = vesselName;
+    document.getElementById('hkrModalEtaDttm').innerText = etaDttm;
+
+    const copyText = `Dear Sir,
+
+Below container is not yet discharge., Expected discharge ${etaDttm} as per updated from Mundra Port tentative vessel arrival report
+
+CONTAINER NO : ${ctrNo}
+STATUS : DISCHARGE PENDING
+LINE CODE : ${lineCode}
+ASSIGNED REMARK : ${assignedRemark}
+VESSEL NAME : ${vesselName}
+ETA DTTM : ${etaDttm}
+
+For More accurate Information, Kindly Track on respected Shipping Line website.
+
+Above information is just updated from Mundra Port tentative vessel arrival report.`;
+
+    const htmlText = `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1e293b; line-height: 1.5; text-align: left;">
+    <p style="margin: 0 0 12px 0;">Dear Sir,</p>
+    <p style="margin: 0 0 16px 0;">Below container is not yet discharge., Expected discharge ${etaDttm} as per updated from Mundra Port tentative vessel arrival report</p>
+    
+    <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td align="left" style="padding-top: 16px; padding-bottom: 24px;">
+                <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 450px; background-color: #f4f7fa; border: 1px solid #cbd5e1; font-family: Arial, sans-serif; text-transform: uppercase;">
+                    <tr>
+                        <td style="padding: 16px; background-color: #f4f7fa;">
+                            <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; font-size: 12px; font-weight: bold; color: #334155;">
+                                <!-- Container No & Status -->
+                                <tr>
+                                    <td style="padding-bottom: 12px; text-align: left; vertical-align: top; background-color: #f4f7fa;">
+                                        <span style="font-size: 10px; color: #64748b; font-weight: bold; display: block; letter-spacing: 0.5px; margin: 0 0 2px 0;">CONTAINER NO</span>
+                                        <span style="font-size: 13px; color: #0f172a; font-weight: bold; letter-spacing: 0.5px; margin: 0;">${ctrNo}</span>
+                                    </td>
+                                    <td style="padding-bottom: 12px; text-align: right; vertical-align: top; background-color: #f4f7fa;">
+                                        <span style="font-size: 10px; color: #64748b; font-weight: bold; display: block; letter-spacing: 0.5px; margin: 0 0 2px 0;">STATUS</span>
+                                        <span style="background-color: #ef4444; color: #ffffff; padding: 2px 6px; font-size: 9px; font-weight: bold; border: 1px solid #dc2626; display: inline-block;">DISCHARGE PENDING</span>
+                                    </td>
+                                </tr>
+                                
+                                <!-- Divider 1 -->
+                                <tr>
+                                    <td colspan="2" style="border-top: 1px solid #cbd5e1; padding-top: 8px; padding-bottom: 4px; background-color: #f4f7fa;"></td>
+                                </tr>
+                                
+                                <!-- Line Code & Assigned Remark -->
+                                <tr>
+                                    <td style="padding-bottom: 8px; text-align: left; width: 50%; vertical-align: top; background-color: #f4f7fa;">
+                                        <span style="font-size: 10px; color: #64748b; font-weight: bold; display: block; letter-spacing: 0.5px; margin: 0 0 2px 0;">LINE CODE</span>
+                                        <span style="font-size: 12px; color: #0f172a; font-weight: bold; margin: 0;">${lineCode}</span>
+                                    </td>
+                                    <td style="padding-bottom: 8px; text-align: left; width: 50%; vertical-align: top; background-color: #f4f7fa;">
+                                        <span style="font-size: 10px; color: #64748b; font-weight: bold; display: block; letter-spacing: 0.5px; margin: 0 0 2px 0;">ASSIGNED REMARK</span>
+                                        <span style="font-size: 12px; color: #0f172a; font-weight: bold; margin: 0;">${assignedRemark}</span>
+                                    </td>
+                                </tr>
+                                
+                                <!-- Divider 2 -->
+                                <tr>
+                                    <td colspan="2" style="border-top: 1px solid #cbd5e1; padding-top: 8px; padding-bottom: 4px; background-color: #f4f7fa;"></td>
+                                </tr>
+                                
+                                <!-- Vessel Name -->
+                                <tr>
+                                    <td colspan="2" style="padding-bottom: 8px; text-align: left; vertical-align: top; background-color: #f4f7fa;">
+                                        <span style="font-size: 10px; color: #64748b; font-weight: bold; display: block; letter-spacing: 0.5px; margin: 0 0 2px 0;">VESSEL NAME</span>
+                                        <span style="font-size: 12px; color: #0f172a; font-weight: bold; margin: 0;">${vesselName}</span>
+                                    </td>
+                                </tr>
+                                
+                                <!-- ETA DTTM -->
+                                <tr>
+                                    <td colspan="2" style="text-align: left; vertical-align: top; background-color: #f4f7fa;">
+                                        <span style="font-size: 10px; color: #64748b; font-weight: bold; display: block; letter-spacing: 0.5px; margin: 0 0 2px 0;">ETA DTTM</span>
+                                        <span style="font-size: 12px; color: #0f172a; font-weight: bold; margin: 0;">${etaDttm}</span>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+    
+    <p style="margin: 24px 0 12px 0;">For More accurate Information, Kindly Track on respected Shipping Line website.</p>
+    <p style="margin: 0;">Above information is just updated from Mundra Port tentative vessel arrival report.</p>
+</div>`;
+
+    document.getElementById('hkrModalCopyTextarea').value = copyText;
+    
+    // Clear search box and hide suggestion dropdown
+    document.getElementById('smtpBlSearch').value = '';
+    const resultBox = document.getElementById('smtpConsigneeBox');
+    resultBox.classList.add('hidden');
+    resultBox.style.maxHeight = '';
+    
+    // Reset copy button status
+    const copyBtn = document.getElementById('hkrModalCopyBtn');
+    copyBtn.innerHTML = '<i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy Message';
+    copyBtn.classList.remove('bg-emerald-600', 'border-emerald-800');
+    copyBtn.classList.add('bg-orange-600', 'border-orange-800');
+
+    // Bind copy action
+    copyBtn.onclick = function() {
+        const blobHtml = new Blob([htmlText], { type: 'text/html' });
+        const blobText = new Blob([copyText], { type: 'text/plain' });
+        const clipboardData = [new ClipboardItem({
+            'text/html': blobHtml,
+            'text/plain': blobText
+        })];
+
+        navigator.clipboard.write(clipboardData).then(() => {
+            copyBtn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5"></i> COPIED!';
+            copyBtn.classList.remove('bg-orange-600', 'border-orange-800');
+            copyBtn.classList.add('bg-emerald-600', 'border-emerald-800');
+            setTimeout(() => {
+                copyBtn.innerHTML = '<i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy Message';
+                copyBtn.classList.remove('bg-emerald-600', 'border-emerald-800');
+                copyBtn.classList.add('bg-orange-600', 'border-orange-800');
+                if (window.lucide) lucide.createIcons();
+            }, 2000);
+            if (window.lucide) lucide.createIcons();
+        }).catch(err => {
+            console.error("Failed to copy HTML, falling back to text:", err);
+            navigator.clipboard.writeText(copyText).then(() => {
+                copyBtn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5"></i> COPIED!';
+                copyBtn.classList.remove('bg-orange-600', 'border-orange-800');
+                copyBtn.classList.add('bg-emerald-600', 'border-emerald-800');
+                setTimeout(() => {
+                    copyBtn.innerHTML = '<i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy Message';
+                    copyBtn.classList.remove('bg-emerald-600', 'border-emerald-800');
+                    copyBtn.classList.add('bg-orange-600', 'border-orange-800');
+                    if (window.lucide) lucide.createIcons();
+                }, 2000);
+                if (window.lucide) lucide.createIcons();
+            }).catch(e => {
+                alert("Failed to copy to clipboard.");
+            });
+        });
+    };
+
+    // Show modal
+    document.getElementById('hkrDetailModal').classList.remove('hidden');
+    if (window.lucide) lucide.createIcons();
+};
+
 // LOT BREAK REPORT - COMPLETE FIXED LOGIC
 let lastLotBreakData = [];
 document.getElementById('lotBreakReportBtn').addEventListener('click', () => {
@@ -10606,7 +10778,8 @@ initAuth();
             <div class="relative">
                 <label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">Shipper / Consignee Name (Lookup from SMTP)</label>
                 <input type="text" id="manualShipperNameInput" placeholder="Type Shipper Name..." class="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-teal-500 uppercase" autocomplete="off">
-                <div id="manualShipperSuggestions" class="absolute left-0 right-0 bg-white border border-slate-300 rounded-lg max-h-40 overflow-y-auto hidden z-[100002] shadow-lg custom-scrollbar"></div>
+                <div id="manualShipperSuggestions" class="absolute left-0 right-0 bg-white border border-slate-300 rounded-lg max-h-40 overflow-y-auto hidden z-[100002] shadow
+-lg custom-scrollbar"></div>
             </div>
             <div class="relative">
                 <label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">B/L Number (Lookup from SMTP)</label>
@@ -10791,6 +10964,83 @@ initAuth();
                 </div>
             </div>
             
+        </div>
+    </div>
+</div>
+
+<!-- HKR Pending Container Details & Copy Modal -->
+<div id="hkrDetailModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100002] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-2xl w-full max-w-md overflow-hidden flex flex-col border border-slate-300">
+        <div class="bg-slate-900 px-4 py-2.5 flex justify-between items-center text-white shrink-0">
+            <h3 class="font-black uppercase text-[10px] tracking-wide flex items-center gap-1.5">
+                <i data-lucide="info" class="w-3.5 h-3.5"></i> Pending Container Details
+            </h3>
+            <button onclick="document.getElementById('hkrDetailModal').classList.add('hidden')" class="text-white hover:scale-110 transition-transform">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+        <div class="p-4 space-y-4 flex-1 overflow-y-auto">
+            <!-- Container Stats/Details Grid matching user screenshot design -->
+            <div class="bg-[#f4f7fa] border border-[#e2e8f0] p-4 rounded-lg shadow-sm">
+                <div class="space-y-3 text-[9.5px] font-bold text-slate-800 uppercase">
+                    <!-- Row 1: Container No & Status -->
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <span class="text-[8px] font-black text-slate-400 block tracking-wider">CONTAINER NO</span>
+                            <span id="hkrModalContNo" class="text-slate-900 font-black text-[11px] tracking-wide"></span>
+                        </div>
+                        <div>
+                            <span class="text-[8px] font-black text-slate-400 block tracking-wider">STATUS</span>
+                            <span class="bg-[#ef4444] text-white px-2 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider inline-block mt-0.5 animate-pulse" style="border-radius: 4px;">DISCHARGE PENDING</span>
+                        </div>
+                    </div>
+                    
+                    <div class="border-t border-[#e2e8f0]"></div>
+                    
+                    <!-- Row 2: Line Code & Assigned Remark -->
+                    <div class="grid grid-cols-2 gap-2 pt-1">
+                        <div>
+                            <span class="text-[8px] font-black text-slate-400 block tracking-wider">LINE CODE</span>
+                            <span id="hkrModalLineCode" class="text-slate-900 font-black text-[10px]"></span>
+                        </div>
+                        <div>
+                            <span class="text-[8px] font-black text-slate-400 block tracking-wider">ASSIGNED REMARK</span>
+                            <span id="hkrModalAssignedRemark" class="text-slate-900 font-black text-[10px]"></span>
+                        </div>
+                    </div>
+                    
+                    <div class="border-t border-[#e2e8f0]"></div>
+                    
+                    <!-- Row 3: Vessel Name -->
+                    <div class="pt-1">
+                        <span class="text-[8px] font-black text-slate-400 block tracking-wider">VESSEL NAME</span>
+                        <span id="hkrModalVesselName" class="text-slate-900 font-black text-[10px]"></span>
+                    </div>
+                    
+                    <!-- Row 4: ETA DTTM -->
+                    <div class="pt-1">
+                        <span class="text-[8px] font-black text-slate-400 block tracking-wider">ETA DTTM</span>
+                        <span id="hkrModalEtaDttm" class="text-slate-900 font-black text-[10px]"></span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Copy Text Preview -->
+            <div>
+                <label class="text-[9px] font-black text-slate-500 uppercase mb-1 block">Message Preview to Copy</label>
+                <textarea id="hkrModalCopyTextarea" readonly class="w-full h-36 px-2.5 py-2 bg-slate-50 border border-slate-300 font-mono text-[9px] font-bold text-slate-700 leading-normal focus:outline-none select-all rounded-none resize-none"></textarea>
+            </div>
+            
+            <!-- Buttons -->
+            <div class="flex gap-2 justify-end pt-1">
+                <button onclick="document.getElementById('hkrDetailModal').classList.add('hidden')" class="px-4 py-1.5 bg-[#4b5563] hover:bg-[#374151] text-white rounded-none border border-slate-700 font-bold text-[9px] uppercase transition-all shadow-sm">
+                    Close
+                </button>
+                <button id="hkrModalCopyBtn" class="px-5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-none border border-orange-800 font-black text-[9px] uppercase transition-all shadow-sm flex items-center gap-1.5">
+                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                    Copy Message
+                </button>
+            </div>
         </div>
     </div>
 </div>
