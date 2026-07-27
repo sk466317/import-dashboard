@@ -1116,20 +1116,30 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
     const nameDisplay = document.getElementById('smtpConsigneeName');
     const missingImporterName = 'Importer Name Not Updated';
 
-    // Intercept exact match in HKR (Not Discharge) first!
+    // Intercept exact match in HKR (Not Discharge) first - BUT ONLY if it does not exist in SMTP!
     if (searchVal.length >= 4 && rawSheets.hkrHmrFiltered && rawSheets.hkrHmrFiltered.length > 0) {
-        const exactMatch = rawSheets.hkrHmrFiltered.find(hkrRow => 
-            String(hkrRow.ctr_no || '').trim().toUpperCase() === searchVal
+        const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
+        const smtpContIndex = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 
+                              ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) 
+                              : 2;
+        const existsInSmtp = rawSheets.smtp && rawSheets.smtp.slice(1).some(row => 
+            String(row[smtpContIndex] || '').trim().toUpperCase() === searchVal
         );
-        if (exactMatch) {
-            window.showHkrDetailModal(
-                exactMatch.ctr_no, 
-                exactMatch.line_code || '-', 
-                exactMatch.assigned_remark || 'PENDING', 
-                exactMatch.vessel_name || '-', 
-                exactMatch.eta_dttm || '-'
+
+        if (!existsInSmtp) {
+            const exactMatch = rawSheets.hkrHmrFiltered.find(hkrRow => 
+                String(hkrRow.ctr_no || '').trim().toUpperCase() === searchVal
             );
-            return;
+            if (exactMatch) {
+                window.showHkrDetailModal(
+                    exactMatch.ctr_no, 
+                    exactMatch.line_code || '-', 
+                    exactMatch.assigned_remark || 'PENDING', 
+                    exactMatch.vessel_name || '-', 
+                    exactMatch.eta_dttm || '-'
+                );
+                return;
+            }
         }
     }
 
@@ -1426,12 +1436,20 @@ document.getElementById('smtpBlSearch').addEventListener('input', (e) => {
                 });
             });
         } else {
-            // Search in HKR data as fallback
+            // Search in HKR data as fallback - filter out containers already present in SMTP
             const hkrMatches = [];
             if (rawSheets.hkrHmrFiltered && rawSheets.hkrHmrFiltered.length > 0) {
+                const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
+                const smtpContIndex = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 
+                                      ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) 
+                                      : 2;
+                const smtpContsSet = new Set(
+                    rawSheets.smtp.slice(1).map(row => String(row[smtpContIndex] || '').trim().toUpperCase())
+                );
+
                 rawSheets.hkrHmrFiltered.forEach(hkrRow => {
                     const ctrNo = String(hkrRow.ctr_no || '').trim().toUpperCase();
-                    if (ctrNo.includes(searchVal)) {
+                    if (ctrNo.includes(searchVal) && !smtpContsSet.has(ctrNo)) {
                         hkrMatches.push(hkrRow);
                     }
                 });
@@ -9455,13 +9473,66 @@ function getUniqueSmtpShippers() {
     const sConsIdx = headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) !== -1 
                      ? headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) 
                      : 24;
-    
+    const sTpIdx = headers.findIndex(h => String(h).toUpperCase().includes('TP_SUBMITTING')) !== -1 
+                   ? headers.findIndex(h => String(h).toUpperCase().includes('TP_SUBMITTING')) 
+                   : 18;
+    const sContIdx = headers.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 
+                     ? headers.findIndex(h => String(h).toUpperCase().includes('CONT')) 
+                     : 2;
+
+    const parseRowDate = (str) => {
+        if (!str || str === '-' || str === 'N/A') return null;
+        const parsed = Date.parse(str);
+        if (!isNaN(parsed)) return new Date(parsed);
+        
+        const clean = String(str).trim();
+        const parts = clean.split(/[-.\/\s]/);
+        if (parts.length >= 3) {
+            const part0 = parseInt(parts[0], 10);
+            const part1 = parseInt(parts[1], 10);
+            const part2 = parseInt(parts[2], 10);
+            if (part0 > 1000) {
+                return new Date(part0, part1 - 1, part2);
+            }
+            let y = part2;
+            if (y < 100) y += 2000;
+            return new Date(y, part1 - 1, part0);
+        }
+        return null;
+    };
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+
     const shippers = new Set();
     rawSheets.smtp.slice(1).forEach(row => {
         const val = String(row[sConsIdx] || '').trim();
-        if (val && val !== '-') {
-            shippers.add(val.toUpperCase());
+        if (!val || val === '-') return;
+
+        // 1. Current Month Check
+        const dateStr = String(row[sTpIdx] || row[17] || '').trim();
+        const dateObj = parseRowDate(dateStr);
+        const isCurrentMonth = dateObj && 
+                               (dateObj.getFullYear() === currentYear) && 
+                               (dateObj.getMonth() === currentMonth);
+        if (!isCurrentMonth) return;
+
+        // 2. Pending Remarks in Website check (RAILING_DATE === 'PENDING' or not present)
+        const contNo = String(row[sContIdx] || '').trim().toUpperCase();
+        if (!contNo) return;
+
+        const webRow = rawSheets.website && rawSheets.website.slice(1).find(w => 
+            String(w[3] || '').trim().toUpperCase() === contNo
+        );
+        let isPendingInWeb = true;
+        if (webRow) {
+            const railDate = String(webRow[8] || '').trim().toUpperCase();
+            isPendingInWeb = (railDate === 'PENDING');
         }
+        if (!isPendingInWeb) return;
+
+        shippers.add(val.toUpperCase());
     });
     return Array.from(shippers).sort();
 }
@@ -9475,6 +9546,9 @@ function getUniqueSmtpBls() {
     const sConsIdx = headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) !== -1 
                      ? headers.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) 
                      : 24;
+    const sContIdx = headers.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 
+                     ? headers.findIndex(h => String(h).toUpperCase().includes('CONT')) 
+                     : 2;
     
     const activeShipper = document.getElementById('manualShipperNameInput').value.trim().toUpperCase();
     
@@ -9482,6 +9556,20 @@ function getUniqueSmtpBls() {
     rawSheets.smtp.slice(1).forEach(row => {
         const consignee = String(row[sConsIdx] || '').trim().toUpperCase();
         if (!activeShipper || consignee === activeShipper) {
+            const contNo = String(row[sContIdx] || '').trim().toUpperCase();
+            if (!contNo) return;
+
+            // Check if pending in website sheet
+            const webRow = rawSheets.website && rawSheets.website.slice(1).find(w => 
+                String(w[3] || '').trim().toUpperCase() === contNo
+            );
+            let isPendingInWeb = true;
+            if (webRow) {
+                const railDate = String(webRow[8] || '').trim().toUpperCase();
+                isPendingInWeb = (railDate === 'PENDING');
+            }
+            if (!isPendingInWeb) return;
+
             const val = String(row[sBlIdx] || '').trim();
             if (val && val !== '-') {
                 bls.add(val.toUpperCase());
@@ -9496,16 +9584,9 @@ function setupAutocomplete(inputId, suggestionsId, getItemsFn) {
     const suggestions = document.getElementById(suggestionsId);
     if (!input || !suggestions) return;
 
-    input.addEventListener('input', () => {
-        const value = input.value.trim().toUpperCase();
-        if (!value) {
-            suggestions.innerHTML = '';
-            suggestions.classList.add('hidden');
-            return;
-        }
-
+    const renderItems = (value) => {
         const items = getItemsFn();
-        const filtered = items.filter(item => item.includes(value));
+        const filtered = value ? items.filter(item => item.includes(value)) : items;
 
         if (filtered.length === 0) {
             suggestions.innerHTML = '';
@@ -9529,6 +9610,22 @@ function setupAutocomplete(inputId, suggestionsId, getItemsFn) {
                 input.dispatchEvent(new Event('input'));
             });
         });
+    };
+
+    input.addEventListener('input', () => {
+        const value = input.value.trim().toUpperCase();
+        renderItems(value);
+    });
+
+    input.addEventListener('focus', () => {
+        const value = input.value.trim().toUpperCase();
+        renderItems(value);
+    });
+
+    input.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const value = input.value.trim().toUpperCase();
+        renderItems(value);
     });
 
     document.addEventListener('click', (e) => {
@@ -9554,7 +9651,22 @@ document.getElementById('manualBlInput').addEventListener('input', (e) => {
     const sBlIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 9;
     const sConsIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) : 24;
 
-    const matches = rawSheets.smtp.filter(row => String(row[sBlIdx] || '').trim().toUpperCase() === searchVal);
+    const matches = rawSheets.smtp.filter(row => {
+        if (String(row[sBlIdx] || '').trim().toUpperCase() !== searchVal) return false;
+        const contNo = String(row[sContIdx] || '').trim().toUpperCase();
+        if (!contNo) return false;
+
+        // Check if pending in website sheet
+        const webRow = rawSheets.website && rawSheets.website.slice(1).find(w => 
+            String(w[3] || '').trim().toUpperCase() === contNo
+        );
+        let isPendingInWeb = true;
+        if (webRow) {
+            const railDate = String(webRow[8] || '').trim().toUpperCase();
+            isPendingInWeb = (railDate === 'PENDING');
+        }
+        return isPendingInWeb;
+    });
     
     if (matches.length > 0) {
         matchedContainers = matches.map(row => ({ 
@@ -9589,8 +9701,25 @@ document.getElementById('manualShipperNameInput').addEventListener('input', (e) 
         const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
         const sBlIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 9;
         const sConsIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE')) : 24;
+        const sContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
 
-        const matchingRow = rawSheets.smtp.slice(1).find(row => String(row[sConsIdx] || '').trim().toUpperCase() === shipperVal);
+        const matchingRow = rawSheets.smtp.slice(1).find(row => {
+            const nameMatch = String(row[sConsIdx] || '').trim().toUpperCase() === shipperVal;
+            if (!nameMatch) return false;
+            
+            const contNo = String(row[sContIdx] || '').trim().toUpperCase();
+            if (!contNo) return false;
+
+            const webRow = rawSheets.website && rawSheets.website.slice(1).find(w => 
+                String(w[3] || '').trim().toUpperCase() === contNo
+            );
+            let isPendingInWeb = true;
+            if (webRow) {
+                const railDate = String(webRow[8] || '').trim().toUpperCase();
+                isPendingInWeb = (railDate === 'PENDING');
+            }
+            return isPendingInWeb;
+        });
         if (matchingRow) {
             const blNo = String(matchingRow[sBlIdx] || '').trim().toUpperCase();
             if (blNo && blNo !== '-') {
@@ -10257,9 +10386,48 @@ if (hkrHmrExcelInput) {
                     return;
                 }
 
-                // SMTP column indices
-                const smtpContIndex = 2;      // CONT_Nos. (Column C)
-                const smtpRemarksIndex = 22;  // Remarks (Column W)
+                // SMTP column indices (dynamic lookup)
+                const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
+                const smtpContIndex = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 
+                                      ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) 
+                                      : 2;
+                const smtpRemarksIndex = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('REMARK')) !== -1 
+                                         ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('REMARK')) 
+                                         : 22;
+
+                // HKR/HMR uploaded Excel column indices (dynamic lookup)
+                const hkrHeaders = jsonData[0] || [];
+                const hkrCtrIndex = hkrHeaders.findIndex(h => {
+                    const s = String(h).toUpperCase();
+                    return s.includes('CTR') || s.includes('CONTAINER');
+                }) !== -1 ? hkrHeaders.findIndex(h => {
+                    const s = String(h).toUpperCase();
+                    return s.includes('CTR') || s.includes('CONTAINER');
+                }) : 4;
+
+                const hkrDestIndex = hkrHeaders.findIndex(h => {
+                    const s = String(h).toUpperCase();
+                    return s.includes('DEST') || s.includes('STATION') || s.includes('PLACE');
+                }) !== -1 ? hkrHeaders.findIndex(h => {
+                    const s = String(h).toUpperCase();
+                    return s.includes('DEST') || s.includes('STATION') || s.includes('PLACE');
+                }) : 7;
+                
+                const hkrVesselIndex = hkrHeaders.findIndex(h => String(h).toUpperCase().includes('VSL') || String(h).toUpperCase().includes('VESSEL')) !== -1
+                                       ? hkrHeaders.findIndex(h => String(h).toUpperCase().includes('VSL') || String(h).toUpperCase().includes('VESSEL'))
+                                       : 1;
+                
+                const hkrEtaIndex = hkrHeaders.findIndex(h => String(h).toUpperCase().includes('ETA')) !== -1
+                                    ? hkrHeaders.findIndex(h => String(h).toUpperCase().includes('ETA'))
+                                    : 2;
+
+                const hkrSizeIndex = hkrHeaders.findIndex(h => String(h).toUpperCase().includes('SIZE')) !== -1
+                                     ? hkrHeaders.findIndex(h => String(h).toUpperCase().includes('SIZE'))
+                                     : 5;
+
+                const hkrLineIndex = hkrHeaders.findIndex(h => String(h).toUpperCase().includes('LINE')) !== -1
+                                     ? hkrHeaders.findIndex(h => String(h).toUpperCase().includes('LINE'))
+                                     : 8;
 
                 // Existing containers to prevent duplicates
                 const existingHkrContainers = new Set(
@@ -10272,10 +10440,10 @@ if (hkrHmrExcelInput) {
                 let savedContainers = [...(rawSheets.hkrHmrFiltered || [])]; // Preserve existing
 
                 jsonData.slice(1).forEach(exRow => {
-                    const ctrNo = String(exRow[4] || '').trim().toUpperCase(); // E - ctr_no
+                    const ctrNo = String(exRow[hkrCtrIndex] || '').trim().toUpperCase();
                     if (!ctrNo) return;
 
-                    const destName = String(exRow[7] || '').trim().toUpperCase(); // H - destination_name
+                    const destName = String(exRow[hkrDestIndex] || '').trim().toUpperCase();
 
                     // Check if destination contains ANY of the 3 required keywords
                     let newRemark = "";
@@ -10315,12 +10483,12 @@ if (hkrHmrExcelInput) {
 
                     // Save matching container
                     savedContainers.push({
-                        vessel_name:     String(exRow[1] || '').trim(),
-                        eta_dttm:        formatToDDMMYYYY_HHMM(exRow[2] || ''),
+                        vessel_name:     String(exRow[hkrVesselIndex] || '').trim(),
+                        eta_dttm:        formatToDDMMYYYY_HHMM(exRow[hkrEtaIndex] || ''),
                         ctr_no:          ctrNo,
-                        ctr_size:        String(exRow[5] || '').trim(),
-                        destination_name: String(exRow[7] || '').trim(),
-                        line_code:       String(exRow[8] || '').trim(),
+                        ctr_size:        String(exRow[hkrSizeIndex] || '').trim(),
+                        destination_name: destName,
+                        line_code:       String(exRow[hkrLineIndex] || '').trim(),
                         assigned_remark: newRemark,
                         upload_timestamp: new Date().toISOString()
                     });
@@ -10778,8 +10946,7 @@ initAuth();
             <div class="relative">
                 <label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">Shipper / Consignee Name (Lookup from SMTP)</label>
                 <input type="text" id="manualShipperNameInput" placeholder="Type Shipper Name..." class="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-teal-500 uppercase" autocomplete="off">
-                <div id="manualShipperSuggestions" class="absolute left-0 right-0 bg-white border border-slate-300 rounded-lg max-h-40 overflow-y-auto hidden z-[100002] shadow
--lg custom-scrollbar"></div>
+                <div id="manualShipperSuggestions" class="absolute left-0 right-0 bg-white border border-slate-300 rounded-lg max-h-40 overflow-y-auto hidden z-[100002] shadow-lg custom-scrollbar"></div>
             </div>
             <div class="relative">
                 <label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">B/L Number (Lookup from SMTP)</label>
