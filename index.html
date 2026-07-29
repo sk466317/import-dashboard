@@ -1210,9 +1210,9 @@ async function checkAndSendTelegramRailout() {
         const isRailed = railDateStr && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(railDateStr.toUpperCase());
         if (!isRailed) return;
 
-        // Find match in regular HKR shippers list (tag is NOT SSR)
+        // Find match in shippers list (supporting both regular and SSR)
         const shipRow = rawSheets.shipper.slice(1).find(s => 
-            String(s[shipContIdx] || '').trim().toUpperCase() === contNo && s[4] !== 'SSR'
+            String(s[shipContIdx] || '').trim().toUpperCase() === contNo
         );
         if (!shipRow) return;
 
@@ -1223,29 +1223,40 @@ async function checkAndSendTelegramRailout() {
 
     if (newlyRailedBls.size === 0) return;
 
-    // 2. Group the updated B/Ls by Shipper so we send one message per shipper
+    // 2. Group the updated B/Ls by ShipperKey (shipperName||isSsr) so we send separate messages
     const shipperGroups = {};
 
     newlyRailedBls.forEach(blNo => {
-        // Find shipper name for this BL
+        // Find shipper name and tag for this BL
         const shipRow = rawSheets.shipper.slice(1).find(s => 
             String(s[shipBlIdx] || '').trim().toUpperCase() === blNo
         );
         if (!shipRow) return;
 
         const shipperName = String(shipRow[shipConsIdx] || '').trim().toUpperCase();
-        if (!shipperGroups[shipperName]) {
-            shipperGroups[shipperName] = [];
+        const isSsr = shipRow[4] === 'SSR';
+        const shipperKey = `${shipperName}||${isSsr}`;
+
+        if (!shipperGroups[shipperKey]) {
+            shipperGroups[shipperKey] = [];
         }
-        if (!shipperGroups[shipperName].includes(blNo)) {
-            shipperGroups[shipperName].push(blNo);
+        if (!shipperGroups[shipperKey].includes(blNo)) {
+            shipperGroups[shipperKey].push(blNo);
         }
     });
 
-    // 3. For each shipper, construct the message showing the complete BL statuses
-    for (const shipperName of Object.keys(shipperGroups)) {
-        const blList = shipperGroups[shipperName];
-        let message = `Dear Sir,\nPlease note below containers railout:-\n${shipperName}\n`;
+    // 3. For each shipperKey, construct the message showing the complete BL statuses
+    for (const shipperKey of Object.keys(shipperGroups)) {
+        const [shipperName, isSsrStr] = shipperKey.split('||');
+        const isSsr = (isSsrStr === 'true');
+        const blList = shipperGroups[shipperKey];
+        
+        let message = "";
+        if (isSsr) {
+            message = `Dear Sir,\nPlease note below railout on SSR Request :-\n${shipperName}\n`;
+        } else {
+            message = `Dear Sir,\nPlease note below containers railout:-\n${shipperName}\n`;
+        }
 
         blList.forEach(blNo => {
             const sizeDesc = countSizesForBl(blNo);
@@ -1258,7 +1269,8 @@ async function checkAndSendTelegramRailout() {
             rawSheets.shipper.slice(1).forEach(r => {
                 if (String(r[shipBlIdx] || '').trim().toUpperCase() === blNo) {
                     const c = String(r[shipContIdx] || '').trim().toUpperCase();
-                    if (c) allConts.push(c);
+                    const rSsr = r[4] === 'SSR';
+                    if (c && rSsr === isSsr) allConts.push(c);
                 }
             });
 
@@ -1332,6 +1344,13 @@ async function sendManualTelegramForShipper(shipperName) {
         alert("Please select a customer/shipper from the sidebar first!");
         return;
     }
+
+    const selectedKeys = Array.from(selectedReportBLs);
+    if (selectedKeys.length === 0) {
+        alert("Please select at least one B/L checkbox [ ] first!");
+        return;
+    }
+
     if (!rawSheets.website || rawSheets.website.length <= 1) {
         alert("Website sheet is empty!");
         return;
@@ -1366,94 +1385,128 @@ async function sendManualTelegramForShipper(shipperName) {
         return `${total}x20`;
     };
 
-    // Find all B/Ls for this shipper
-    const blSet = new Set();
+    // Filter B/Ls for this shipper that are selected in selectedReportBLs
+    const blList = [];
     rawSheets.shipper.slice(1).forEach(r => {
         const sName = String(r[shipConsIdx] || '').trim().toUpperCase();
         if (sName === shipperName.toUpperCase()) {
             const bl = String(r[shipBlIdx] || '').trim().toUpperCase();
-            if (bl) blSet.add(bl);
+            if (bl && selectedKeys.includes(normalizeBLKey(bl)) && !blList.includes(bl)) {
+                blList.push(bl);
+            }
         }
     });
 
-    if (blSet.size === 0) {
-        alert(`No B/L data found for shipper: ${shipperName}`);
+    if (blList.length === 0) {
+        alert(`None of the selected B/L checkboxes belong to customer: ${shipperName}`);
         return;
     }
 
-    let message = `Dear Sir,\nPlease note below containers railout:-\n${shipperName.toUpperCase()}\n`;
+    // Separate B/Ls into SSR and HKR groups
+    const ssrBls = [];
+    const hkrBls = [];
 
-    blSet.forEach(blNo => {
-        const sizeDesc = countSizesForBl(blNo);
-        message += `-----------\n`;
-        message += `BL: ${blNo} | ${sizeDesc}\n`;
-        message += `-----------\n`;
-
-        // Get all containers under this BL
-        const allConts = [];
-        rawSheets.shipper.slice(1).forEach(r => {
-            if (String(r[shipBlIdx] || '').trim().toUpperCase() === blNo) {
-                const c = String(r[shipContIdx] || '').trim().toUpperCase();
-                if (c) allConts.push(c);
-            }
-        });
-
-        // Group railed containers by Rake/Date, and collect pending ones
-        const railedGroups = {};
-        const pendingList = [];
-
-        allConts.forEach(c => {
-            const webRow = rawSheets.website.slice(1).find(w => 
-                String(w[3] || '').trim().toUpperCase() === c
-            );
-            
-            let isRailed = false;
-            let rakeNo = '';
-            let railingDate = '';
-
-            if (webRow) {
-                const railDateRaw = webRow[8];
-                const railDateStr = String(railDateRaw || '').trim();
-                isRailed = railDateStr && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(railDateStr.toUpperCase());
-                if (isRailed) {
-                    rakeNo = String(webRow[4] || '').trim();
-                    railingDate = railDateStr;
-                }
-            }
-
-            if (isRailed) {
-                const cleanDate = formatToDDMMYYYY(railingDate);
-                const moveKey = `${rakeNo}||${cleanDate}`;
-                if (!railedGroups[moveKey]) {
-                    railedGroups[moveKey] = [];
-                }
-                railedGroups[moveKey].push(c);
-            } else {
-                pendingList.push(c);
-            }
-        });
-
-        // Append Railed groups to message
-        for (const moveKey of Object.keys(railedGroups)) {
-            const [rakeNo, cleanDate] = moveKey.split('||');
-            message += `🚆${rakeNo} | ${cleanDate}\n`;
-            railedGroups[moveKey].forEach(c => {
-                message += `✅${c}\n`;
-            });
-        }
-
-        // Append Pending list to message
-        if (pendingList.length > 0) {
-            message += `🚆Not Railout (${pendingList.length})\n`;
-            pendingList.forEach(c => {
-                message += `⚠️${c}\n`;
-            });
+    blList.forEach(blNo => {
+        const shipRow = rawSheets.shipper.slice(1).find(s => 
+            String(s[shipBlIdx] || '').trim().toUpperCase() === blNo
+        );
+        const isSsr = shipRow && shipRow[4] === 'SSR';
+        if (isSsr) {
+            ssrBls.push(blNo);
+        } else {
+            hkrBls.push(blNo);
         }
     });
 
-    message += `-----------\n\nThanks & Regards,`;
-    await sendCustomTelegramMessage(message);
-    alert(`Telegram Message Sent successfully for ${shipperName}!`);
+    const sendGroupMessage = async (bls, isSsr) => {
+        let message = "";
+        if (isSsr) {
+            message = `Dear Sir,\nPlease note below railout on SSR Request :-\n${shipperName.toUpperCase()}\n`;
+        } else {
+            message = `Dear Sir,\nPlease note below containers railout:-\n${shipperName.toUpperCase()}\n`;
+        }
+
+        bls.forEach(blNo => {
+            const sizeDesc = countSizesForBl(blNo);
+            message += `-----------\n`;
+            message += `BL: ${blNo} | ${sizeDesc}\n`;
+            message += `-----------\n`;
+
+            // Get all containers under this BL
+            const allConts = [];
+            rawSheets.shipper.slice(1).forEach(r => {
+                if (String(r[shipBlIdx] || '').trim().toUpperCase() === blNo) {
+                    const c = String(r[shipContIdx] || '').trim().toUpperCase();
+                    const rSsr = r[4] === 'SSR';
+                    if (c && rSsr === isSsr) allConts.push(c);
+                }
+            });
+
+            // Group railed containers by Rake/Date, and collect pending ones
+            const railedGroups = {};
+            const pendingList = [];
+
+            allConts.forEach(c => {
+                const webRow = rawSheets.website.slice(1).find(w => 
+                    String(w[3] || '').trim().toUpperCase() === c
+                );
+                
+                let isRailed = false;
+                let rakeNo = '';
+                let railingDate = '';
+
+                if (webRow) {
+                    const railDateRaw = webRow[8];
+                    const railDateStr = String(railDateRaw || '').trim();
+                    isRailed = railDateStr && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(railDateStr.toUpperCase());
+                    if (isRailed) {
+                        rakeNo = String(webRow[4] || '').trim();
+                        railingDate = railDateStr;
+                    }
+                }
+
+                if (isRailed) {
+                    const cleanDate = formatToDDMMYYYY(railingDate);
+                    const moveKey = `${rakeNo}||${cleanDate}`;
+                    if (!railedGroups[moveKey]) {
+                        railedGroups[moveKey] = [];
+                    }
+                    railedGroups[moveKey].push(c);
+                } else {
+                    pendingList.push(c);
+                }
+            });
+
+            // Append Railed groups to message
+            for (const moveKey of Object.keys(railedGroups)) {
+                const [rakeNo, cleanDate] = moveKey.split('||');
+                message += `🚆${rakeNo} | ${cleanDate}\n`;
+                railedGroups[moveKey].forEach(c => {
+                    message += `✅${c}\n`;
+                });
+            }
+
+            // Append Pending list to message
+            if (pendingList.length > 0) {
+                message += `🚆Not Railout (${pendingList.length})\n`;
+                pendingList.forEach(c => {
+                    message += `⚠️${c}\n`;
+                });
+            }
+        });
+
+        message += `-----------\n\nThanks & Regards,`;
+        await sendCustomTelegramMessage(message);
+    };
+
+    if (ssrBls.length > 0) {
+        await sendGroupMessage(ssrBls, true);
+    }
+    if (hkrBls.length > 0) {
+        await sendGroupMessage(hkrBls, false);
+    }
+
+    alert(`Telegram Message(s) Sent successfully for ${shipperName}!`);
 }
 
 document.getElementById('sendManualTelegramMsgBtn').addEventListener('click', () => {
@@ -2290,6 +2343,7 @@ const getVisibleBLs = () => {
 
 function generateSsrPlainTextTable(currentShipper, selectedGroup) {
     const rows = [];
+    const htmlRows = [];
     const uniqueSmtpNos = new Set();
     let c20 = 0, c40 = 0;
 
@@ -2307,22 +2361,24 @@ function generateSsrPlainTextTable(currentShipper, selectedGroup) {
         const consigneeVal = String(row[shipConsIdx] || '').trim();
         const blVal = String(row[shipBlIdx] || '').trim();
         if (consigneeVal.toUpperCase() === currentShipper.toUpperCase() && blVal.toUpperCase() === selectedGroup.blNo.toUpperCase()) {
-            const contNo = String(row[shipContIdx] || '').trim();
-            const size = shipSizeIdx !== -1 ? String(row[shipSizeIdx] || '').trim() : '20';
+            const contNo = String(row[shipContIdx] || '').trim().toUpperCase();
+            const rawSize = shipSizeIdx !== -1 ? String(row[shipSizeIdx] || '').trim() : '20';
+            const sizeNum = rawSize.includes('40') ? '40' : '20';
 
-            if (size.includes('40')) {
+            if (sizeNum === '40') {
                 c40++;
             } else {
                 c20++;
             }
 
-            const smtpRow = rawSheets.smtp.slice(1).find(s => String(s[sContIdx] || '').trim().toUpperCase() === contNo.toUpperCase());
+            const smtpRow = rawSheets.smtp.slice(1).find(s => String(s[sContIdx] || '').trim().toUpperCase() === contNo);
             const smtpNo = smtpRow ? String(smtpRow[smtpNoIdx] || '').trim() : '';
             if (smtpNo && smtpNo !== '-') {
                 uniqueSmtpNos.add(smtpNo);
             }
 
-            rows.push(`${contNo} (${size})`);
+            rows.push(`🔰${contNo} (${sizeNum})`);
+            htmlRows.push(`🔰${contNo} (${sizeNum})`);
         }
     });
 
@@ -2337,23 +2393,30 @@ function generateSsrPlainTextTable(currentShipper, selectedGroup) {
         sizeSummary = `${c20}x20`;
     }
 
+    const headerText = `BL_No.: ${selectedGroup.blNo} | ${sizeSummary} containers`;
+    const htmlHeader = `📒 BL_No.: ${selectedGroup.blNo} | ${sizeSummary} containers`;
+
     let tableText = "CONTAINER_NO(SIZE)\n";
     rows.forEach(r => {
         tableText += `${r}\n`;
     });
 
+    let htmlText = "CONTAINER_NO(SIZE)<br>";
+    htmlRows.forEach(r => {
+        htmlText += `${r}<br>`;
+    });
+
     return {
+        headerText,
+        htmlHeader,
         tableText,
+        htmlText,
         smtpNoString,
         sizeSummary
     };
 }
 
 function generateLotPlainTextTable(currentShipper, selectedGroup) {
-    const headers = ["CONTAINER_NO", "SIZE", "REMARKS"];
-    const rows = [];
-    const uniqueSmtpNos = new Set();
-
     const shipHeaders = rawSheets.shipper[0] || [];
     const shipContIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 0;
     const shipBlIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 2;
@@ -2364,63 +2427,61 @@ function generateLotPlainTextTable(currentShipper, selectedGroup) {
     const sContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
     const smtpNoIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('SMTP')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('SMTP')) : 1;
 
-    const webHeaders = (rawSheets.website && rawSheets.website[0]) || [];
-    const webContIdx = webHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? webHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 3;
+    const uniqueSmtpNos = new Set();
+    let totalCount = 0;
+    let pendingCount = 0;
+    let railedCount = 0;
+    const pendingRows = [];
+    const htmlPendingRows = [];
 
     rawSheets.shipper.slice(1).forEach(row => {
         const consigneeVal = String(row[shipConsIdx] || '').trim();
         const blVal = String(row[shipBlIdx] || '').trim();
         if (consigneeVal.toUpperCase() === currentShipper.toUpperCase() && blVal.toUpperCase() === selectedGroup.blNo.toUpperCase()) {
-            const contNo = String(row[shipContIdx] || '').trim();
-            const size = shipSizeIdx !== -1 ? String(row[shipSizeIdx] || '').trim() : '20';
+            const contNo = String(row[shipContIdx] || '').trim().toUpperCase();
+            const rawSize = shipSizeIdx !== -1 ? String(row[shipSizeIdx] || '').trim() : '20';
+            const sizeNum = rawSize.includes('40') ? '40' : '20';
 
-            const smtpRow = rawSheets.smtp.slice(1).find(s => String(s[sContIdx] || '').trim().toUpperCase() === contNo.toUpperCase());
+            totalCount++;
+
+            const smtpRow = rawSheets.smtp.slice(1).find(s => String(s[sContIdx] || '').trim().toUpperCase() === contNo);
             const smtpNo = smtpRow ? String(smtpRow[smtpNoIdx] || '').trim() : '';
             if (smtpNo && smtpNo !== '-') {
                 uniqueSmtpNos.add(smtpNo);
             }
-            const handoverDt = smtpRow ? String(smtpRow[18] || smtpRow[17] || '').trim() : (selectedGroup.handoverDt || '-');
-            const smtpRemark = smtpRow ? String(smtpRow[22] || '').trim() : '';
 
-            const webRow = rawSheets.website.slice(1).find(w => String(w[webContIdx] || '').trim().toUpperCase() === contNo.toUpperCase());
-            let railingDate = webRow ? String(webRow[8] || '').trim() : 'PENDING';
-            if (!railingDate || railingDate === '-' || railingDate.toUpperCase() === 'N/A') railingDate = 'PENDING';
-            
-            const webRemark = webRow ? String(webRow[9] || '').trim() : '';
-            const finalRemarks = webRemark || smtpRemark || `CONTAINER HANDOVER TO HTPL ON ${handoverDt}`;
+            // Check if railed in website data
+            const webRow = rawSheets.website.slice(1).find(w => String(w[3] || '').trim().toUpperCase() === contNo);
+            let isRailed = false;
+            if (webRow) {
+                const railDateRaw = webRow[8];
+                const railDateStr = String(railDateRaw || '').trim();
+                isRailed = railDateStr && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(railDateStr.toUpperCase());
+            }
 
-            rows.push([
-                contNo,
-                size,
-                finalRemarks
-            ]);
+            if (isRailed) {
+                railedCount++;
+            } else {
+                pendingCount++;
+                pendingRows.push(`⚠️${contNo} | ${sizeNum} | Pending`);
+                htmlPendingRows.push(`⚠️${contNo} | ${sizeNum} | Pending`);
+            }
         }
     });
 
     const smtpNoString = uniqueSmtpNos.size > 0 ? Array.from(uniqueSmtpNos).join(" / ") : "-";
 
-    const colWidths = headers.map((h, i) => {
-        let max = h.length;
-        rows.forEach(r => {
-            const valLen = String(r[i] || '').length;
-            if (valLen > max) max = valLen;
-        });
-        return max;
-    });
+    const headerText = `BL_No.: ${selectedGroup.blNo} | ${totalCount} containers | ✔️Railout ${railedCount} | ⚠️Pending ${pendingCount}`;
+    const htmlHeader = `📒 BL_No.: ${selectedGroup.blNo} | ${totalCount} containers | ✔️Railout ${railedCount} | ⚠️Pending ${pendingCount}`;
 
-    const pad = (str, width) => {
-        const s = String(str);
-        return s + " ".repeat(Math.max(0, width - s.length));
-    };
-
-    let tableText = "";
-    tableText += headers.map((h, i) => pad(h, colWidths[i])).join("\t") + "\n";
-    rows.forEach(r => {
-        tableText += r.map((val, i) => pad(val, colWidths[i])).join("\t") + "\n";
-    });
+    const tableText = pendingRows.length > 0 ? pendingRows.join('\n') + '\n\n' : 'No pending containers.\n\n';
+    const htmlText = htmlPendingRows.length > 0 ? htmlPendingRows.join('<br>') + '<br><br>' : 'No pending containers.<br><br>';
 
     return {
+        headerText,
+        htmlHeader,
         tableText,
+        htmlText,
         smtpNoString
     };
 }
@@ -2504,36 +2565,150 @@ if (mailSsrRequestBtn) {
             return;
         }
 
-        const activeBlKey = selectedKeys[0];
-        const selectedGroup = currentShipperAllGroups.find(g => normalizeBLKey(g.blNo) === activeBlKey);
-
-        if (!selectedGroup) {
-            alert("No matching B/L group found.");
+        const selectedGroups = currentShipperAllGroups.filter(g => selectedKeys.includes(normalizeBLKey(g.blNo)));
+        if (selectedGroups.length === 0) {
+            alert("No matching B/L groups found.");
             return;
         }
 
-        showEmailChoiceModal((choice) => {
+        showEmailChoiceModal(async (choice) => {
             const to = "Satyam.Pandey@hindterminals.com";
             const cc = "jasolaops@hindterminals.com;marketing.ludhiana@hindterminals.com;customerserviceludhiana@hindterminals.com";
             
             let subject = "";
             let bodyText = "";
 
+            const blListStr = selectedGroups.map(g => g.blNo).join(', ');
+            const lineListStr = [...new Set(selectedGroups.map(g => g.line))].join(', ');
+            const vesselListStr = [...new Set(selectedGroups.map(g => g.vessel))].join(', ');
+            const handoverListStr = [...new Set(selectedGroups.map(g => g.handoverDt))].join(', ');
+            const totalConts = selectedGroups.reduce((sum, g) => sum + g.stats.total, 0);
+
+            let plainText = "";
+            let htmlText = "";
+
             if (choice === 'SSR') {
-                const ssrData = generateSsrPlainTextTable(currentShipper, selectedGroup);
-                subject = `Urgent SSR Request ${currentShipper} , ${selectedGroup.blNo} (${selectedGroup.line}) , ${selectedGroup.vessel} / (${selectedGroup.stats.total} Containers)`;
-                bodyText = `Dear Sir, \n\nKindly Plan Subject containers urgently on SSR , same is very urgent shipment customer has already approved SSR charges.\n\nCustomer Name : ${currentShipper}\nDisch_Vsl_Name : ${selectedGroup.vessel} / Dated : ${selectedGroup.handoverDt} / ${selectedGroup.line}\nsmtp no : ${ssrData.smtpNoString}\n\n------------------------------------------------------------------------------------------------------\nBL_No.: ${selectedGroup.blNo} | ${ssrData.sizeSummary} containers\n------------------------------------------------------------------------------------------------------\n${ssrData.tableText}------------------------------------------------------------------------------------------------------\n\nThanks and Regards \nCustomer Service Desk\nHind Terminals Pvt Ltd\nICD Kilaraipur`;
+                const ssrBlocks = [];
+                const ssrHtmlBlocks = [];
+                const uniqueSmtpNos = new Set();
+                
+                selectedGroups.forEach(g => {
+                    const ssrData = generateSsrPlainTextTable(currentShipper, g);
+                    if (ssrData.smtpNoString && ssrData.smtpNoString !== '-') {
+                        ssrData.smtpNoString.split('/').forEach(s => uniqueSmtpNos.add(s.trim()));
+                    }
+                    
+                    let block = `------------------------------------------------------------------------------------------------------\n`;
+                    block += `📒 BL_No.: ${g.blNo} | ${ssrData.sizeSummary} containers\n`;
+                    block += `------------------------------------------------------------------------------------------------------\n`;
+                    block += ssrData.tableText;
+                    ssrBlocks.push(block);
+
+                    let htmlBlock = `------------------------------------------------------------------------------------------------------<br>`;
+                    htmlBlock += `<b>📒 BL_No.: ${g.blNo} | ${ssrData.sizeSummary} containers</b><br>`;
+                    htmlBlock += `------------------------------------------------------------------------------------------------------<br>`;
+                    htmlBlock += ssrData.htmlText;
+                    ssrHtmlBlocks.push(htmlBlock);
+                });
+
+                const smtpNoStringCombined = uniqueSmtpNos.size > 0 ? Array.from(uniqueSmtpNos).join(" / ") : "-";
+                
+                subject = `Urgent SSR Request ${currentShipper} , ${blListStr} (${lineListStr}) , ${vesselListStr} / (${totalConts} Containers)`;
+                plainText = `Dear Sir,\n\nKindly Plan Subject containers urgently on SSR , same is very urgent shipment customer has already approved SSR charges.\n\nCustomer Name : ${currentShipper}\nDisch_Vsl_Name : ${vesselListStr} / Dated : ${handoverListStr} / ${lineListStr}\nsmtp no : ${smtpNoStringCombined}\n\n` + ssrBlocks.join("\n") + `\n\nThanks and Regards\nCustomer Service Desk\nHind Terminals Pvt Ltd\nICD Kilaraipur`;
+                
+                htmlText = `<div style="font-family: Arial, sans-serif; font-size: 11pt; color: #333333; line-height: 1.4;">` +
+                           `Dear Sir,<br><br>` +
+                           `Kindly Plan Subject containers urgently on SSR , same is very urgent shipment customer has already approved SSR charges.<br><br>` +
+                           `<b>Customer Name :</b> <span style="color:#0070c0; font-weight:bold;">${currentShipper}</span><br>` +
+                           `<b>Disch_Vsl_Name :</b> <span style="color:#0070c0; font-weight:bold;">${vesselListStr} / Dated : ${handoverListStr} / ${lineListStr}</span><br>` +
+                           `<b>smtp no :</b> <span style="color:#0070c0; font-weight:bold;">${smtpNoStringCombined}</span><br><br>` +
+                           ssrHtmlBlocks.join("<br>") + `<br><br>` +
+                           `Thanks and Regards<br>` +
+                           `Customer Service Desk<br>` +
+                           `Hind Terminals Pvt Ltd<br>` +
+                           `ICD Kilaraipur</div>`;
+                
             } else if (choice === 'LOT') {
-                const lotData = generateLotPlainTextTable(currentShipper, selectedGroup);
-                subject = `LOT Break Urgent Request ${currentShipper} / ${selectedGroup.blNo} (${selectedGroup.line}) (${selectedGroup.stats.total} Containers)`;
-                bodyText = `Dear Sir, \n\nKindly Plan Balance containers urgently, same is LOT and very urgent shipment customer has already requested to move in LOT .\n\nCustomer Name : ${currentShipper}\nDisch_Vsl_Name : ${selectedGroup.vessel} / Dated : ${selectedGroup.handoverDt} / ${selectedGroup.line}\nsmtp no : ${lotData.smtpNoString}\n\n------------------------------------------------------------------------------------------------------\nBL_No.: ${selectedGroup.blNo} | ${selectedGroup.stats.total} containers | Railout ${selectedGroup.stats.railed} | Pending ${selectedGroup.stats.pending}\n------------------------------------------------------------------------------------------------------\n${lotData.tableText}------------------------------------------------------------------------------------------------------\n\nThanks and Regards \nCustomer Service Desk\nHind Terminals Pvt Ltd\nICD Kilaraipur`;
+                const lotBlocks = [];
+                const lotHtmlBlocks = [];
+                const uniqueSmtpNos = new Set();
+                
+                selectedGroups.forEach(g => {
+                    const lotData = generateLotPlainTextTable(currentShipper, g);
+                    if (lotData.smtpNoString && lotData.smtpNoString !== '-') {
+                        lotData.smtpNoString.split('/').forEach(s => uniqueSmtpNos.add(s.trim()));
+                    }
+                    
+                    let block = `------------------------------------------------------------------------------------------------------\n`;
+                    block += `${lotData.htmlHeader}\n`;
+                    block += `------------------------------------------------------------------------------------------------------\n`;
+                    block += lotData.tableText;
+                    block += `\n`;
+                    lotBlocks.push(block);
+
+                    let htmlBlock = `------------------------------------------------------------------------------------------------------<br>`;
+                    htmlBlock += `<b>${lotData.htmlHeader}</b><br>`;
+                    htmlBlock += `------------------------------------------------------------------------------------------------------<br>`;
+                    htmlBlock += lotData.htmlText;
+                    lotHtmlBlocks.push(htmlBlock);
+                });
+
+                const smtpNoStringCombined = uniqueSmtpNos.size > 0 ? Array.from(uniqueSmtpNos).join(" / ") : "-";
+                
+                subject = `LOT Break Urgent Request ${currentShipper} / ${blListStr} (${lineListStr}) (${totalConts} Containers)`;
+                plainText = `Dear Sir,\n\nKindly Plan Balance containers urgently, same is LOT and very urgent shipment customer has already requested to move in LOT .\n\nCustomer Name : ${currentShipper}\nDisch_Vsl_Name : ${vesselListStr} / Dated : ${handoverListStr} / ${lineListStr}\nsmtp no : ${smtpNoStringCombined}\n\n` + lotBlocks.join("\n") + `\n\nThanks and Regards\nCustomer Service Desk\nHind Terminals Pvt Ltd\nICD Kilaraipur`;
+                
+                htmlText = `<div style="font-family: Arial, sans-serif; font-size: 11pt; color: #333333; line-height: 1.4;">` +
+                           `Dear Sir,<br><br>` +
+                           `Kindly Plan Balance containers urgently, same is LOT and very urgent shipment customer has already requested to move in LOT .<br><br>` +
+                           `<b>Customer Name :</b> <span style="color:#0070c0; font-weight:bold;">${currentShipper}</span><br>` +
+                           `<b>Disch_Vsl_Name :</b> <span style="color:#0070c0; font-weight:bold;">${vesselListStr} / Dated : ${handoverListStr} / ${lineListStr}</span><br>` +
+                           `<b>smtp no :</b> <span style="color:#0070c0; font-weight:bold;">${smtpNoStringCombined}</span><br><br>` +
+                           lotHtmlBlocks.join("<br>") + `<br><br>` +
+                           `Thanks and Regards<br>` +
+                           `Customer Service Desk<br>` +
+                           `Hind Terminals Pvt Ltd<br>` +
+                           `ICD Kilaraipur</div>`;
             }
 
-            const mailtoUrl = `mailto:${to}?cc=${cc}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
-            window.location.href = mailtoUrl;
+            // Generate .eml content with X-Unsent header so Outlook opens it as an editable draft
+            const emlContent = [
+                'X-Unsent: 1',
+                `To: ${to}`,
+                `Cc: ${cc}`,
+                `Subject: ${subject}`,
+                'MIME-Version: 1.0',
+                'Content-Type: text/html; charset=utf-8',
+                '',
+                '<!DOCTYPE html>',
+                '<html>',
+                '<head><meta charset="utf-8"></head>',
+                '<body>',
+                htmlText,
+                '</body>',
+                '</html>'
+            ].join('\r\n');
 
-            if (typeof showTopToast === 'function') {
-                showTopToast("Outlook email template opened successfully!", "bg-teal-700", 4500);
+            try {
+                const blob = new Blob([emlContent], { type: 'message/rfc822' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                // Clean subject for filename
+                const safeSubject = subject.replace(/[^a-zA-Z0-9\s-_]/g, '').substring(0, 50).trim();
+                a.download = `${safeSubject}.eml`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                if (typeof showTopToast === 'function') {
+                    showTopToast("Outlook Draft downloaded! Click the downloaded file to open directly.", "bg-teal-700", 6500);
+                }
+            } catch (err) {
+                console.error("EML generation failed, falling back to mailto link:", err);
+                const mailtoUrl = `mailto:${to}?cc=${cc}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(plainText)}`;
+                window.location.href = mailtoUrl;
             }
         });
     });
