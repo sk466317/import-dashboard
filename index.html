@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -749,11 +750,11 @@ table {
                 REFRESH
             </button>
             <div id="upload-section" class="flex items-center shrink-0">
-                <label class="topbar-action bg-slate-900 hover:bg-black text-white cursor-pointer">
-                    <i data-lucide="plus" class="w-3 h-3"></i>
-                    UPLOAD
-                    <input type="file" id="fileInput" class="hidden" accept=".xlsx, .xls">
-                </label>
+                <button id="sendManualTelegramMsgBtn" class="topbar-action bg-cyan-700 hover:bg-cyan-800 text-white cursor-pointer flex items-center gap-1">
+                    <i data-lucide="send" class="w-3.5 h-3.5"></i>
+                    T-MSG
+                </button>
+                <input type="file" id="fileInput" class="hidden">
             </div>
             <button id="backupDataBtn" class="topbar-action bg-teal-700 hover:bg-teal-800 text-white">
                 <i data-lucide="download" class="w-3 h-3"></i>
@@ -1033,6 +1034,16 @@ async function checkAndSendTelegramHandover(updatedContainers) {
     if (!rawSheets.shipper || rawSheets.shipper.length <= 1) return;
     if (!rawSheets.smtp || rawSheets.smtp.length <= 1) return;
 
+    // Load sent handover list from localStorage to prevent duplicate messages
+    let sentHandovers = [];
+    try {
+        sentHandovers = JSON.parse(localStorage.getItem('telegram_sent_handovers')) || [];
+    } catch(e) {
+        sentHandovers = [];
+    }
+    const sentSet = new Set(sentHandovers);
+    const newSent = [];
+
     const smtpHeaders = rawSheets.smtp[0] || [];
     const sContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
     const sBlIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 9;
@@ -1056,10 +1067,16 @@ async function checkAndSendTelegramHandover(updatedContainers) {
         return count;
     };
 
-    const blGroups = {};
+    // Separate and group
+    const ssrGroups = {}; // SSR groups by BL
+    const hkrGroups = {}; // HKR groups by Shipper
 
     updatedContainers.forEach(cont => {
         const cleanCont = String(cont).trim().toUpperCase();
+        
+        // Skip if already notified
+        if (sentSet.has(cleanCont)) return;
+
         const shipRow = rawSheets.shipper.slice(1).find(s => String(s[shipContIdx] || '').trim().toUpperCase() === cleanCont);
         if (!shipRow) return;
 
@@ -1074,38 +1091,379 @@ async function checkAndSendTelegramHandover(updatedContainers) {
         const handoverDate = String(smtpRow[sHandoverIdx] || smtpRow[17] || '').trim();
         const line = String(smtpRow[sLineIdx] || '').trim();
 
-        if (blNo) {
+        if (!blNo) return;
+
+        if (isSsr) {
             const key = `${blNo}||${customerName}`;
-            if (!blGroups[key]) {
-                blGroups[key] = {
+            if (!ssrGroups[key]) {
+                ssrGroups[key] = {
                     customerName,
                     vesselName,
                     handoverDate,
                     blNo,
                     line,
-                    isSsr,
                     containers: []
                 };
             }
-            blGroups[key].containers.push(cleanCont);
+            ssrGroups[key].containers.push(cleanCont);
+        } else {
+            if (!hkrGroups[customerName]) {
+                hkrGroups[customerName] = {};
+            }
+            if (!hkrGroups[customerName][blNo]) {
+                hkrGroups[customerName][blNo] = {
+                    line,
+                    vesselName,
+                    handoverDate,
+                    containers: []
+                };
+            }
+            hkrGroups[customerName][blNo].containers.push(cleanCont);
+        }
+        newSent.push(cleanCont);
+    });
+
+    if (newSent.length === 0) return;
+
+    // 1. Send SSR Handover alerts (BL-wise)
+    for (const key of Object.keys(ssrGroups)) {
+        const group = ssrGroups[key];
+        const totalContainers = countContainersForBl(group.blNo);
+        const message = `Dear Sir, \nPlease Note Below SSR Request Containers are Handover today,\n\n${group.customerName}\n${group.vesselName} / ${group.handoverDate}\n${group.blNo} (${group.line}) (${totalContainers})\n\nKindly Email to plan on SSR. \nThanks & Regards`;
+        await sendCustomTelegramMessage(message);
+    }
+
+    // 2. Send HKR Handover alerts (Shipper-wise)
+    for (const shipperName of Object.keys(hkrGroups)) {
+        const bls = hkrGroups[shipperName];
+        let message = `Dear Sir, \nPlease Note Below Urgent Request Containers are Handover today,\n\n${shipperName}\n`;
+        
+        for (const blNo of Object.keys(bls)) {
+            const totalContainers = countContainersForBl(blNo);
+            const info = bls[blNo];
+            message += `${blNo} (${info.line}) (${totalContainers})\n`;
+        }
+        
+        message += `\nThanks & Regards`;
+        await sendCustomTelegramMessage(message);
+    }
+
+    // Persist sent handover container IDs in localStorage
+    newSent.forEach(c => sentSet.add(c));
+    localStorage.setItem('telegram_sent_handovers', JSON.stringify(Array.from(sentSet)));
+}
+
+async function checkAndSendTelegramRailout() {
+    if (!rawSheets.website || rawSheets.website.length <= 1) return;
+    if (!rawSheets.shipper || rawSheets.shipper.length <= 1) return;
+    if (!rawSheets.smtp || rawSheets.smtp.length <= 1) return;
+
+    // Load sent railout list from localStorage to prevent duplicate triggers
+    let sentRailouts = [];
+    try {
+        sentRailouts = JSON.parse(localStorage.getItem('telegram_sent_railouts')) || [];
+    } catch(e) {
+        sentRailouts = [];
+    }
+    const sentSet = new Set(sentRailouts);
+    const newSent = [];
+
+    // Find headers and indices
+    const shipHeaders = rawSheets.shipper[0] || [];
+    const shipContIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 0;
+    const shipBlIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 2;
+    const shipConsIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) : 3;
+
+    const countSizesForBl = (bl) => {
+        const cleanBl = String(bl).trim().toUpperCase();
+        let size20 = 0;
+        let size40 = 0;
+        rawSheets.shipper.slice(1).forEach(r => {
+            if (String(r[shipBlIdx] || '').trim().toUpperCase() === cleanBl) {
+                const sz = String(r[shipContIdx + 1] || '').trim(); // Size
+                if (sz.includes('40')) {
+                    size40++;
+                } else {
+                    size20++;
+                }
+            }
+        });
+        const total = size20 + size40;
+        if (size20 > 0 && size40 > 0) return `${total}x20/40`;
+        if (size40 > 0) return `${total}x40`;
+        return `${total}x20`;
+    };
+
+    // 1. Identify which B/Ls have newly railed containers
+    const newlyRailedBls = new Set();
+    const newlyRailedConts = [];
+
+    rawSheets.website.slice(1).forEach(webRow => {
+        const contNo = String(webRow[3] || '').trim().toUpperCase();
+        if (!contNo) return;
+
+        // If already sent, skip
+        if (sentSet.has(contNo)) return;
+
+        // Check if railed out
+        const railDateRaw = webRow[8];
+        const railDateStr = String(railDateRaw || '').trim();
+        const isRailed = railDateStr && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(railDateStr.toUpperCase());
+        if (!isRailed) return;
+
+        // Find match in regular HKR shippers list (tag is NOT SSR)
+        const shipRow = rawSheets.shipper.slice(1).find(s => 
+            String(s[shipContIdx] || '').trim().toUpperCase() === contNo && s[4] !== 'SSR'
+        );
+        if (!shipRow) return;
+
+        const blNo = String(shipRow[shipBlIdx] || '').trim().toUpperCase();
+        newlyRailedBls.add(blNo);
+        newlyRailedConts.push(contNo);
+    });
+
+    if (newlyRailedBls.size === 0) return;
+
+    // 2. Group the updated B/Ls by Shipper so we send one message per shipper
+    const shipperGroups = {};
+
+    newlyRailedBls.forEach(blNo => {
+        // Find shipper name for this BL
+        const shipRow = rawSheets.shipper.slice(1).find(s => 
+            String(s[shipBlIdx] || '').trim().toUpperCase() === blNo
+        );
+        if (!shipRow) return;
+
+        const shipperName = String(shipRow[shipConsIdx] || '').trim().toUpperCase();
+        if (!shipperGroups[shipperName]) {
+            shipperGroups[shipperName] = [];
+        }
+        if (!shipperGroups[shipperName].includes(blNo)) {
+            shipperGroups[shipperName].push(blNo);
         }
     });
 
-    for (const key of Object.keys(blGroups)) {
-        const group = blGroups[key];
-        const totalContainers = countContainersForBl(group.blNo);
-        
-        let message = "";
-        if (group.isSsr) {
-            message = `Dear Sir, \nPlease Note Below SSR Request Containers are Handover today,\n\n${group.customerName}\n${group.vesselName} / ${group.handoverDate}\n${group.blNo} (${group.line}) (${totalContainers})\n\nKindly Email to plan on SSR. \nThanks & Regards`;
-        } else {
-            message = `Dear Sir, \nPlease Note Below Urgent Request Containers are Handover today,\n\n${group.customerName}\n${group.vesselName} / ${group.handoverDate}\n${group.blNo} (${group.line}) (${totalContainers})\n\nThanks & Regards`;
-        }
-        
+    // 3. For each shipper, construct the message showing the complete BL statuses
+    for (const shipperName of Object.keys(shipperGroups)) {
+        const blList = shipperGroups[shipperName];
+        let message = `Dear Sir,\nPlease note below containers railout:-\n${shipperName}\n`;
+
+        blList.forEach(blNo => {
+            const sizeDesc = countSizesForBl(blNo);
+            message += `-----------\n`;
+            message += `BL: ${blNo} | ${sizeDesc}\n`;
+            message += `-----------\n`;
+
+            // Get all containers under this BL
+            const allConts = [];
+            rawSheets.shipper.slice(1).forEach(r => {
+                if (String(r[shipBlIdx] || '').trim().toUpperCase() === blNo) {
+                    const c = String(r[shipContIdx] || '').trim().toUpperCase();
+                    if (c) allConts.push(c);
+                }
+            });
+
+            // Group railed containers by Rake/Date, and collect pending ones
+            const railedGroups = {};
+            const pendingList = [];
+
+            allConts.forEach(c => {
+                const webRow = rawSheets.website.slice(1).find(w => 
+                    String(w[3] || '').trim().toUpperCase() === c
+                );
+                
+                let isRailed = false;
+                let rakeNo = '';
+                let railingDate = '';
+
+                if (webRow) {
+                    const railDateRaw = webRow[8];
+                    const railDateStr = String(railDateRaw || '').trim();
+                    isRailed = railDateStr && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(railDateStr.toUpperCase());
+                    if (isRailed) {
+                        rakeNo = String(webRow[4] || '').trim();
+                        railingDate = railDateStr;
+                    }
+                }
+
+                if (isRailed) {
+                    const cleanDate = formatToDDMMYYYY(railingDate);
+                    const moveKey = `${rakeNo}||${cleanDate}`;
+                    if (!railedGroups[moveKey]) {
+                        railedGroups[moveKey] = [];
+                    }
+                    railedGroups[moveKey].push(c);
+                } else {
+                    pendingList.push(c);
+                }
+            });
+
+            // Append Railed groups to message
+            for (const moveKey of Object.keys(railedGroups)) {
+                const [rakeNo, cleanDate] = moveKey.split('||');
+                message += `🚆${rakeNo} | ${cleanDate}\n`;
+                railedGroups[moveKey].forEach(c => {
+                    message += `✅${c}\n`;
+                });
+            }
+
+            // Append Pending list to message
+            if (pendingList.length > 0) {
+                message += `🚆Not Railout (${pendingList.length})\n`;
+                pendingList.forEach(c => {
+                    message += `⚠️${c}\n`;
+                });
+            }
+        });
+
+        message += `-----------\n\nThanks & Regards,`;
         await sendCustomTelegramMessage(message);
     }
+
+    // Persist all newly railed container IDs to localStorage
+    newlyRailedConts.forEach(c => sentSet.add(c));
+    localStorage.setItem('telegram_sent_railouts', JSON.stringify(Array.from(sentSet)));
 }
+
 window.checkAndSendTelegramHandover = checkAndSendTelegramHandover;
+window.checkAndSendTelegramRailout = checkAndSendTelegramRailout;
+
+async function sendManualTelegramForShipper(shipperName) {
+    if (!shipperName) {
+        alert("Please select a customer/shipper from the sidebar first!");
+        return;
+    }
+    if (!rawSheets.website || rawSheets.website.length <= 1) {
+        alert("Website sheet is empty!");
+        return;
+    }
+    if (!rawSheets.shipper || rawSheets.shipper.length <= 1) {
+        alert("Shipper sheet is empty!");
+        return;
+    }
+
+    const shipHeaders = rawSheets.shipper[0] || [];
+    const shipContIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 0;
+    const shipBlIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 2;
+    const shipConsIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) : 3;
+
+    const countSizesForBl = (bl) => {
+        const cleanBl = String(bl).trim().toUpperCase();
+        let size20 = 0;
+        let size40 = 0;
+        rawSheets.shipper.slice(1).forEach(r => {
+            if (String(r[shipBlIdx] || '').trim().toUpperCase() === cleanBl) {
+                const sz = String(r[shipContIdx + 1] || '').trim(); // Size
+                if (sz.includes('40')) {
+                    size40++;
+                } else {
+                    size20++;
+                }
+            }
+        });
+        const total = size20 + size40;
+        if (size20 > 0 && size40 > 0) return `${total}x20/40`;
+        if (size40 > 0) return `${total}x40`;
+        return `${total}x20`;
+    };
+
+    // Find all B/Ls for this shipper
+    const blSet = new Set();
+    rawSheets.shipper.slice(1).forEach(r => {
+        const sName = String(r[shipConsIdx] || '').trim().toUpperCase();
+        if (sName === shipperName.toUpperCase()) {
+            const bl = String(r[shipBlIdx] || '').trim().toUpperCase();
+            if (bl) blSet.add(bl);
+        }
+    });
+
+    if (blSet.size === 0) {
+        alert(`No B/L data found for shipper: ${shipperName}`);
+        return;
+    }
+
+    let message = `Dear Sir,\nPlease note below containers railout:-\n${shipperName.toUpperCase()}\n`;
+
+    blSet.forEach(blNo => {
+        const sizeDesc = countSizesForBl(blNo);
+        message += `-----------\n`;
+        message += `BL: ${blNo} | ${sizeDesc}\n`;
+        message += `-----------\n`;
+
+        // Get all containers under this BL
+        const allConts = [];
+        rawSheets.shipper.slice(1).forEach(r => {
+            if (String(r[shipBlIdx] || '').trim().toUpperCase() === blNo) {
+                const c = String(r[shipContIdx] || '').trim().toUpperCase();
+                if (c) allConts.push(c);
+            }
+        });
+
+        // Group railed containers by Rake/Date, and collect pending ones
+        const railedGroups = {};
+        const pendingList = [];
+
+        allConts.forEach(c => {
+            const webRow = rawSheets.website.slice(1).find(w => 
+                String(w[3] || '').trim().toUpperCase() === c
+            );
+            
+            let isRailed = false;
+            let rakeNo = '';
+            let railingDate = '';
+
+            if (webRow) {
+                const railDateRaw = webRow[8];
+                const railDateStr = String(railDateRaw || '').trim();
+                isRailed = railDateStr && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(railDateStr.toUpperCase());
+                if (isRailed) {
+                    rakeNo = String(webRow[4] || '').trim();
+                    railingDate = railDateStr;
+                }
+            }
+
+            if (isRailed) {
+                const cleanDate = formatToDDMMYYYY(railingDate);
+                const moveKey = `${rakeNo}||${cleanDate}`;
+                if (!railedGroups[moveKey]) {
+                    railedGroups[moveKey] = [];
+                }
+                railedGroups[moveKey].push(c);
+            } else {
+                pendingList.push(c);
+            }
+        });
+
+        // Append Railed groups to message
+        for (const moveKey of Object.keys(railedGroups)) {
+            const [rakeNo, cleanDate] = moveKey.split('||');
+            message += `🚆${rakeNo} | ${cleanDate}\n`;
+            railedGroups[moveKey].forEach(c => {
+                message += `✅${c}\n`;
+            });
+        }
+
+        // Append Pending list to message
+        if (pendingList.length > 0) {
+            message += `🚆Not Railout (${pendingList.length})\n`;
+            pendingList.forEach(c => {
+                message += `⚠️${c}\n`;
+            });
+        }
+    });
+
+    message += `-----------\n\nThanks & Regards,`;
+    await sendCustomTelegramMessage(message);
+    alert(`Telegram Message Sent successfully for ${shipperName}!`);
+}
+
+document.getElementById('sendManualTelegramMsgBtn').addEventListener('click', () => {
+    if (!selectedShipper || selectedShipper === 'Active Shipper') {
+        alert("Please select a customer/shipper from the sidebar first!");
+        return;
+    }
+    sendManualTelegramForShipper(selectedShipper);
+});
 
 // ==========================================
 // SEARCH LOGIC with SUGGESTIONS - WITH VESSEL FILTERING
@@ -4671,6 +5029,10 @@ window.updateSelectedVessels = () => {
                 });
             }
             initDashboard();
+
+            if (typeof checkAndSendTelegramRailout === 'function') {
+                checkAndSendTelegramRailout();
+            }
         }
 
         function initDashboard() {
