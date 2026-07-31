@@ -1027,8 +1027,27 @@ async function sendCustomTelegramMessage(messageText) {
         console.error("API Error:", error);
     }
 }
+function captureSmtpState() {
+    const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
+    const sContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
+    const sBlIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 9;
 
-async function checkAndSendTelegramHandover(updatedContainers) {
+    const existingSmtpConts = new Set();
+    const existingSmtpBls = new Set();
+
+    if (rawSheets.smtp && rawSheets.smtp.length > 1) {
+        rawSheets.smtp.slice(1).forEach(row => {
+            const cont = String(row[sContIdx] || '').trim().toUpperCase();
+            if (cont) existingSmtpConts.add(cont);
+            const bl = String(row[sBlIdx] || '').trim().toUpperCase();
+            if (bl && bl !== '-') existingSmtpBls.add(bl);
+        });
+    }
+
+    return { existingSmtpConts, existingSmtpBls };
+}
+
+async function checkAndSendTelegramHandover(updatedContainers, smtpState) {
     if (!updatedContainers || updatedContainers.length === 0) return;
     if (!rawSheets.shipper || rawSheets.shipper.length <= 1) return;
     if (!rawSheets.smtp || rawSheets.smtp.length <= 1) return;
@@ -1065,6 +1084,9 @@ async function checkAndSendTelegramHandover(updatedContainers) {
         });
         return count;
     };
+
+    const existingSmtpConts = (smtpState && smtpState.existingSmtpConts) || new Set();
+    const existingSmtpBls = (smtpState && smtpState.existingSmtpBls) || new Set();
 
     // Separate and group
     const ssrGroups = {}; // SSR groups by BL
@@ -1137,21 +1159,55 @@ async function checkAndSendTelegramHandover(updatedContainers) {
         const bls = hkrGroups[shipperName];
         let message = `Dear Sir, \nPlease Note Below Urgent Request Containers are Handover today,\n\n${shipperName}\n`;
         
+        let hasAnyBlToSend = false;
         for (const blNo of Object.keys(bls)) {
-            const totalContainers = countContainersForBl(blNo);
-            const info = bls[blNo];
-            message += `${blNo} (${info.line}) (${totalContainers})\n`;
+            let totalContainers = 0;
+            let pendingCountBefore = 0;
+            let pendingCountAfter = 0;
+
+            rawSheets.shipper.slice(1).forEach(r => {
+                if (String(r[shipBlIdx] || '').trim().toUpperCase() === blNo.toUpperCase() && r[4] !== 'SSR') {
+                    totalContainers++;
+                    const c = String(r[shipContIdx] || '').trim().toUpperCase();
+                    if (c) {
+                        const isCurrentlyInSmtp = rawSheets.smtp.some(s => 
+                            String(s[sContIdx] || '').trim().toUpperCase() === c
+                        );
+                        const wasInSmtpBefore = existingSmtpConts.has(c);
+
+                        if (!wasInSmtpBefore) {
+                            pendingCountBefore++;
+                        }
+                        if (!isCurrentlyInSmtp) {
+                            pendingCountAfter++;
+                        }
+                    }
+                }
+            });
+
+            const isBlAvailableBefore = existingSmtpBls.has(blNo.toUpperCase());
+            const changedToZero = (pendingCountBefore > 0 && pendingCountAfter === 0);
+
+            // Default fallback: if no smtpState was passed (e.g. manual T-MSG button), we just allow sending it.
+            const shouldSend = (!smtpState || !isBlAvailableBefore || changedToZero);
+
+            if (shouldSend) {
+                const info = bls[blNo];
+                message += `${blNo} (${info.line}) (${totalContainers})\n`;
+                hasAnyBlToSend = true;
+            }
         }
         
         message += `\nThanks & Regards`;
-        await sendCustomTelegramMessage(message);
+        if (hasAnyBlToSend) {
+            await sendCustomTelegramMessage(message);
+        }
     }
 
     // Persist sent handover container IDs in localStorage
     newSent.forEach(c => sentSet.add(c));
     localStorage.setItem('telegram_sent_handovers', JSON.stringify(Array.from(sentSet)));
 }
-
 async function checkAndSendTelegramRailout() {
     if (!rawSheets.website || rawSheets.website.length <= 1) return;
     if (!rawSheets.shipper || rawSheets.shipper.length <= 1) return;
@@ -6312,6 +6368,7 @@ window.deleteHkrRow = async (index) => {
 
         saveLocalChangesBtn.addEventListener('click', () => {
             if (!currentSheetInView) return;
+            const smtpState = captureSmtpState();
             const cells = document.querySelectorAll('#editableTable .editable-cell');
             let ssrMismatches = [];
             let editedRows = new Set();
@@ -6354,7 +6411,7 @@ window.deleteHkrRow = async (index) => {
             setTimeout(() => { saveLocalChangesBtn.innerHTML = 'Save Changes'; }, 2000);
             
             if (updatedContainers.length > 0) {
-                checkAndSendTelegramHandover(updatedContainers);
+                checkAndSendTelegramHandover(updatedContainers, smtpState);
             }
         });
 
@@ -7463,6 +7520,7 @@ if (smtpExcelInput) {
         
         const reader = new FileReader();
         reader.onload = (evt) => {
+            const smtpState = captureSmtpState();
             const bstr = evt.target.result;
             const wb = XLSX.read(bstr, { type: 'binary' });
             let ws = null;
@@ -7654,7 +7712,7 @@ if (smtpExcelInput) {
             
             alert(`✓ SMTP Processing Complete!\nAdded: ${addedCount}\nUpdated: ${updatedCount}\nSynced to Website: ${transferCount}`);
             if (updatedContainers.length > 0) {
-                checkAndSendTelegramHandover(updatedContainers);
+                checkAndSendTelegramHandover(updatedContainers, smtpState);
             }
         };
         reader.readAsBinaryString(file);
