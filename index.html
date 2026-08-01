@@ -1328,40 +1328,48 @@ async function checkAndSendTelegramRailout() {
     for (const shipperKey of Object.keys(shipperGroups)) {
         const [shipperName, isSsrStr] = shipperKey.split('||');
         const isSsr = (isSsrStr === 'true');
-        const blList = shipperGroups[shipperKey];
+        const getLatestDateForBl = (blNo) => {
+            const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
+            const sBlIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 9;
+            const sTpIdx = smtpHeaders.findIndex(h => /TP.*SUBMITTING/i.test(String(h)) || /HANDOVER/i.test(String(h))) !== -1 ? smtpHeaders.findIndex(h => /TP.*SUBMITTING/i.test(String(h)) || /HANDOVER/i.test(String(h))) : 18;
 
-        const activeBlList = blList.filter(blNo => {
-            const allConts = [];
-            rawSheets.shipper.slice(1).forEach(r => {
-                if (String(r[shipBlIdx] || '').trim().toUpperCase() === blNo) {
-                    const c = String(r[shipContIdx] || '').trim().toUpperCase();
-                    const rSsr = r[4] === 'SSR';
-                    if (c && rSsr === isSsr) allConts.push(c);
+            let latestTime = 0;
+            rawSheets.smtp.slice(1).forEach(row => {
+                if (String(row[sBlIdx] || '').trim().toUpperCase() === blNo) {
+                    const dtVal = row[sTpIdx];
+                    if (dtVal) {
+                        const t = typeof getSmtpReportDateTime === 'function' ? getSmtpReportDateTime(dtVal) : 0;
+                        if (t > latestTime) {
+                            latestTime = t;
+                        }
+                    }
                 }
             });
+            return latestTime;
+        };
 
-            let pendingCount = 0;
-            allConts.forEach(c => {
-                const webRow = rawSheets.website.slice(1).find(w => 
-                    String(w[3] || '').trim().toUpperCase() === c
-                );
-                let isRailed = false;
-                if (webRow) {
-                    const railDateRaw = webRow[8];
-                    const railDateStr = String(railDateRaw || '').trim();
-                    isRailed = railDateStr && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(railDateStr.toUpperCase());
+        const allBlsOfShipper = new Set();
+        rawSheets.shipper.slice(1).forEach(r => {
+            const name = String(r[shipConsIdx] || '').trim().toUpperCase();
+            const rSsr = r[4] === 'SSR';
+            if (name === shipperName && rSsr === isSsr) {
+                const bl = String(r[shipBlIdx] || '').trim().toUpperCase();
+                if (bl && bl !== '-') {
+                    allBlsOfShipper.add(bl);
                 }
-                if (!isRailed) {
-                    pendingCount++;
-                }
-            });
-
-            return pendingCount > 0 || (pendingCount === 0 && allConts.some(c => newlyRailedConts.includes(c)));
+            }
         });
 
+        const activeBlList = Array.from(allBlsOfShipper);
         if (activeBlList.length === 0) {
             continue;
         }
+
+        activeBlList.sort((a, b) => {
+            const timeA = getLatestDateForBl(a);
+            const timeB = getLatestDateForBl(b);
+            return timeB - timeA;
+        });
         
         let message = "";
         if (isSsr) {
@@ -1450,6 +1458,90 @@ async function checkAndSendTelegramRailout() {
 
 window.checkAndSendTelegramHandover = checkAndSendTelegramHandover;
 window.checkAndSendTelegramRailout = checkAndSendTelegramRailout;
+
+async function sendRunningTrainsTelegramReport() {
+    if (!rawSheets.website || rawSheets.website.length <= 1) return;
+
+    let trainGroups = {};
+
+    rawSheets.website.slice(1).forEach(row => {
+        const remark = String(row[9] || '').toUpperCase();
+        if (remark.includes("RAILOUT FROM") && !remark.includes("ARRIVED")) {
+            const trainNo = String(row[4] || "").trim() || "N/A";
+            const railDateRaw = row[8];
+            const railDate = formatToDDMMYYYY_HHMM(railDateRaw) || String(railDateRaw || "N/A").trim() || "N/A";
+            const currentLocation = String(row[9] || '').trim();
+            const trainKey = buildRunningTrainKey(trainNo, railDate);
+
+            if (!trainGroups[trainKey]) {
+                trainGroups[trainKey] = { trainNo, railDate, currentLocation };
+            } else if (!trainGroups[trainKey].currentLocation && currentLocation) {
+                trainGroups[trainKey].currentLocation = currentLocation;
+            }
+        }
+    });
+
+    const sortedTrains = Object.values(trainGroups).sort((a, b) => {
+        const parseDate = (dStr) => {
+            const parts = dStr.split(/[-.\/\s:]+/).filter(Boolean);
+            if (parts.length >= 3) {
+                let d = parseInt(parts[0], 10);
+                let m = parseInt(parts[1], 10) - 1;
+                let y = parseInt(parts[2], 10);
+                if (y < 100) y += 2000;
+                let hh = parts.length > 3 ? parseInt(parts[3], 10) || 0 : 0;
+                let mm = parts.length > 4 ? parseInt(parts[4], 10) || 0 : 0;
+                return new Date(y, m, d, hh, mm).getTime();
+            }
+            return 0;
+        };
+        return parseDate(b.railDate) - parseDate(a.railDate);
+    });
+
+    if (sortedTrains.length === 0) return;
+
+    const todayStr = formatToDDMMYYYY(new Date());
+    let message = `Live Running Trains Report :Updated (${todayStr})\n`;
+
+    sortedTrains.forEach(train => {
+        message += `--------\n`;
+        message += `${train.trainNo}/Date ${train.railDate}\n`;
+        message += `${train.currentLocation}\n`;
+    });
+
+    await sendCustomTelegramMessage(message);
+}
+
+window.sendRunningTrainsTelegramReport = sendRunningTrainsTelegramReport;
+
+async function sendArrivalTelegramReport(rake, formattedDate, blList) {
+    const rakeSelect = document.getElementById('rakeSelect');
+    const selected = rakeSelect ? rakeSelect.selectedOptions[0] : null;
+    const railoutDateStr = selected ? (selected.dataset.raildate || '') : '';
+
+    const getShipperName = (blNo) => {
+        if (!rawSheets.shipper || rawSheets.shipper.length <= 1) return "OTHER SHIPPERS";
+        const match = rawSheets.shipper.find(r => String(r[2] || '').trim().toUpperCase() === String(blNo).trim().toUpperCase());
+        return (match && match[3]) ? String(match[3]).trim().toUpperCase() : "OTHER SHIPPERS";
+    };
+
+    const shipperNames = blList.map(bl => getShipperName(bl));
+
+    let message = `Arrival Report :\n`;
+    message += `--------\n`;
+    message += `${rake}/Date ${railoutDateStr}\n`;
+    message += `TRAIN ARRIVED ON ${formattedDate} & UNLOADING DONE ${formattedDate}\n`;
+    message += `--------\n`;
+    message += `Shipper Name:-\n`;
+    shipperNames.forEach(name => {
+        message += `${name}\n`;
+    });
+    message += `--------\n`;
+
+    await sendCustomTelegramMessage(message);
+}
+
+window.sendArrivalTelegramReport = sendArrivalTelegramReport;
 
 async function sendManualTelegramForShipper(shipperName) {
     if (!shipperName) {
@@ -3673,6 +3765,10 @@ csvUploadInput.addEventListener('change', () => {
             </div>`;
         document.body.appendChild(box);
         setTimeout(() => box.remove(), 8000);
+
+        if (typeof sendRunningTrainsTelegramReport === 'function') {
+            sendRunningTrainsTelegramReport();
+        }
     })
     .catch(error => {
         console.error('Upload error:', error);
@@ -5441,10 +5537,6 @@ window.updateSelectedVessels = () => {
                 });
             }
             initDashboard();
-
-            if (typeof checkAndSendTelegramRailout === 'function') {
-                checkAndSendTelegramRailout();
-            }
         }
 
         function initDashboard() {
@@ -5788,6 +5880,7 @@ async function quickSaveHkrData() {
     const formattedDate = `${day}-${month}-${year} ${hours}:${minutes}`;
 
     let updateCount = 0;
+    const updatedBls = new Set();
     rawSheets.website.slice(1).forEach((row) => {
         const currentRemark = String(row[9] || '').toUpperCase();
         // Ensure we match Rake and ensure it was previously Railed Out
@@ -5795,6 +5888,9 @@ async function quickSaveHkrData() {
             // Append Arrival info or replace remark
             row[9] = buildWebsiteArrivalRemark(formattedDate);
             updateCount++;
+
+            const blNo = String(row[2] || '').trim().toUpperCase();
+            if (blNo) updatedBls.add(blNo);
         }
     });
 
@@ -5810,6 +5906,11 @@ async function quickSaveHkrData() {
         document.body.appendChild(box);
         setTimeout(() => box.remove(), 4000);
         
+        // Trigger Telegram Arrival Report
+        if (typeof sendArrivalTelegramReport === 'function') {
+            sendArrivalTelegramReport(rake, formattedDate, Array.from(updatedBls));
+        }
+
         // Clear the input
         arrivedDateInput.value = '';
     } else {
@@ -6551,6 +6652,9 @@ window.deleteHkrRow = async (index) => {
             document.body.appendChild(box);
             setTimeout(() => box.remove(), 3000);
             saveToCloud(); processCloudData();
+            if (typeof checkAndSendTelegramRailout === 'function') {
+                checkAndSendTelegramRailout();
+            }
         };
 	
         // === UPDATE DOUBLE STACK SUMMARY (FULLY FIXED - WORKS WITH HEADER "STACK" & TIME) ===
@@ -6648,6 +6752,9 @@ window.deleteHkrRow = async (index) => {
             window.viewSheetData('website');
             saveToCloud();
             processCloudData();
+            if (typeof checkAndSendTelegramRailout === 'function') {
+                checkAndSendTelegramRailout();
+            }
 
             const box = document.createElement('div');
             box.innerHTML = `
@@ -6783,6 +6890,9 @@ if (bulkWebsiteExcelInput) {
                 window.viewSheetData('website');
                 saveToCloud();
                 processCloudData();
+                if (typeof checkAndSendTelegramRailout === 'function') {
+                    checkAndSendTelegramRailout();
+                }
 
                 const box = document.createElement('div');
                 box.innerHTML = `
@@ -7091,6 +7201,9 @@ function applySingleStackUpdates(updates) {
     // Save to Cloud
     saveToCloud(); 
     processCloudData();
+    if (typeof checkAndSendTelegramRailout === 'function') {
+        checkAndSendTelegramRailout();
+    }
 
     // Success Notification (High Z-Index)
     const box = document.createElement('div');
