@@ -1543,6 +1543,290 @@ async function sendArrivalTelegramReport(rake, formattedDate, blList) {
 
 window.sendArrivalTelegramReport = sendArrivalTelegramReport;
 
+function openCrossCheckUploadModal(rake, railoutDate, arrivalDate, systemContainers) {
+    const modalId = 'crossCheckUploadModal';
+    // Remove existing modal if any
+    const existing = document.getElementById(modalId);
+    if (existing) existing.remove();
+
+    const modalHtml = `
+        <div id="${modalId}" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-200" style="z-index: 200000;">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-300 flex flex-col max-h-[90vh]">
+                <div class="bg-slate-800 text-white p-4 flex justify-between items-center shrink-0">
+                    <h3 class="font-bold uppercase text-xs tracking-wide flex items-center gap-2">
+                        <i data-lucide="upload-cloud" class="w-4 h-4 text-sky-400"></i> Upload Container Numbers to Cross Check
+                    </h3>
+                    <button id="closeCrossCheckUploadModal" class="text-slate-400 hover:text-white transition-colors">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                <div class="p-5 flex-1 overflow-y-auto space-y-4 text-center">
+                    <div class="text-[11px] uppercase font-bold text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-200 text-left">
+                        <div><span class="text-slate-400">Rake No:</span> <span class="text-blue-700 font-black">${rake}</span></div>
+                        <div><span class="text-slate-400">Railout Date:</span> <span class="text-blue-700 font-black">${railoutDate}</span></div>
+                        <div><span class="text-slate-400">Arrival Date:</span> <span class="text-blue-700 font-black">${arrivalDate}</span></div>
+                    </div>
+                    
+                    <div id="crossCheckDropZone" class="border-2 border-dashed border-slate-300 hover:border-sky-500 rounded-xl p-8 transition-colors cursor-pointer bg-slate-50 flex flex-col items-center justify-center gap-2">
+                        <i data-lucide="file-spreadsheet" class="w-10 h-10 text-slate-400"></i>
+                        <span class="text-[11px] font-bold text-slate-700 uppercase">Drag & Drop Excel File here or click to Browse</span>
+                        <input type="file" id="crossCheckFileInput" class="hidden" accept=".xlsx, .xls">
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-100 border-t border-slate-200 flex justify-end gap-3 shrink-0">
+                    <button id="cancelCrossCheckUpload" class="px-4 py-2 bg-white border border-slate-300 text-slate-600 rounded-lg text-[10px] font-bold uppercase hover:bg-slate-50 transition-colors shadow-sm">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    const wrapper = document.createElement('div');
+    wrapper.id = 'crossCheckUploadWrapper';
+    wrapper.innerHTML = modalHtml;
+    document.body.appendChild(wrapper);
+    lucide.createIcons();
+
+    const fileInput = document.getElementById('crossCheckFileInput');
+    const dropZone = document.getElementById('crossCheckDropZone');
+
+    const handleFile = (file) => {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const ws = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+                if (jsonData.length === 0) {
+                    alert("Excel file has no rows.");
+                    return;
+                }
+
+                const headerRow = jsonData[0] || [];
+                let contIdx = headerRow.findIndex(h => String(h).toUpperCase().includes('CONT'));
+                let startRow = 1;
+
+                if (contIdx === -1) {
+                    contIdx = 0;
+                    const firstCell = String(headerRow[0] || '').trim();
+                    if (/^[A-Z]{4}\d{7}$/i.test(firstCell)) {
+                        startRow = 0;
+                    }
+                } else {
+                    const firstCell = String(headerRow[contIdx] || '').trim();
+                    if (/^[A-Z]{4}\d{7}$/i.test(firstCell)) {
+                        startRow = 0;
+                    }
+                }
+
+                const excelContainers = [];
+                jsonData.slice(startRow).forEach(row => {
+                    const cNo = String(row[contIdx] || '').trim().toUpperCase();
+                    if (cNo && cNo.length >= 4) {
+                        excelContainers.push(cNo);
+                    }
+                });
+
+                if (excelContainers.length === 0) {
+                    alert("No container numbers found in the uploaded file.");
+                    return;
+                }
+
+                wrapper.remove();
+                showCrossCheckResultsModal(rake, railoutDate, arrivalDate, systemContainers, excelContainers);
+
+            } catch (err) {
+                console.error(err);
+                alert("Error reading Excel file: " + err.message);
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
+    fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+    dropZone.addEventListener('click', () => fileInput.click());
+    
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('border-sky-500', 'bg-sky-50/50');
+    });
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('border-sky-500', 'bg-sky-50/50');
+    });
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('border-sky-500', 'bg-sky-50/50');
+        handleFile(e.dataTransfer.files[0]);
+    });
+
+    const closeAll = () => wrapper.remove();
+    document.getElementById('closeCrossCheckUploadModal').onclick = closeAll;
+    document.getElementById('cancelCrossCheckUpload').onclick = closeAll;
+}
+
+function showCrossCheckResultsModal(rake, railoutDate, arrivalDate, systemContainers, excelContainers) {
+    const modalId = 'crossCheckResultsModal';
+    const existing = document.getElementById(modalId);
+    if (existing) existing.remove();
+
+    const sysSet = new Set(systemContainers.map(s => s.containerNo));
+    const excSet = new Set(excelContainers);
+
+    const matchedList = [];
+    const unmatchedSystem = [];
+    const unmatchedExcel = [];
+    
+    systemContainers.forEach(s => {
+        if (excSet.has(s.containerNo)) {
+            matchedList.push({ sys: s.containerNo, exc: s.containerNo, status: 'Matched', rowIndex: s.rowIndex, blNo: s.blNo });
+        } else {
+            unmatchedSystem.push(s.containerNo);
+        }
+    });
+
+    excelContainers.forEach(e => {
+        if (!sysSet.has(e)) {
+            unmatchedExcel.push(e);
+        }
+    });
+
+    unmatchedSystem.sort();
+    unmatchedExcel.sort();
+
+    const unmatchedRows = [];
+    const maxUnmatchedLen = Math.max(unmatchedSystem.length, unmatchedExcel.length);
+    for (let i = 0; i < maxUnmatchedLen; i++) {
+        unmatchedRows.push({
+            sys: unmatchedSystem[i] || '-',
+            exc: unmatchedExcel[i] || '-',
+            status: 'Not Matched'
+        });
+    }
+
+    const totalMatched = matchedList.length;
+    const totalNotMatched = unmatchedSystem.length;
+
+    const rowsHtml = unmatchedRows.length > 0
+        ? unmatchedRows.map(m => {
+            return `
+                <div class="flex items-center justify-between text-[10px] px-3 py-1.5 border-b last:border-b-0 border-slate-200 text-rose-700 bg-rose-50/50 border-rose-100 font-bold">
+                    <span class="w-[35%] overflow-hidden text-ellipsis whitespace-nowrap text-left">${m.sys}</span>
+                    <span class="w-[10%] text-center text-slate-400 font-black">:</span>
+                    <span class="w-[35%] overflow-hidden text-ellipsis whitespace-nowrap text-left">${m.exc}</span>
+                    <span class="w-[10%] text-center font-black">:</span>
+                    <span class="w-[15%] text-right font-black uppercase">${m.status}</span>
+                </div>
+            `;
+        }).join('')
+        : `<div class="p-6 text-center text-emerald-600 font-bold uppercase text-[11px]">✓ All containers matched successfully!</div>`;
+
+    const modalHtml = `
+        <div id="${modalId}" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-200" style="z-index: 200000;">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-300 flex flex-col max-h-[90vh]">
+                <div class="bg-slate-800 text-white p-4 flex justify-between items-center shrink-0">
+                    <h3 class="font-bold uppercase text-[11px] tracking-wide flex items-center gap-2">
+                        <i data-lucide="file-check" class="w-4 h-4 text-emerald-400"></i> Cross Check Comparison Results
+                    </h3>
+                    <button id="closeCrossCheckResultsModal" class="text-slate-400 hover:text-white transition-colors">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                
+                <div class="p-5 flex-1 overflow-y-auto space-y-3 min-h-0 flex flex-col">
+                    <div class="text-[11px] uppercase font-bold text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-200 shrink-0 space-y-1">
+                        <div>
+                            <span class="text-slate-400">Rake No :</span> <span class="text-blue-700 font-black">${rake}</span> 
+                            <span class="text-slate-400 ml-2">Dated :</span> <span class="text-blue-700 font-black">${railoutDate}</span> ,
+                            <span class="text-slate-400">Total Containers</span> <span class="text-blue-700 font-black">${systemContainers.length}</span>,
+                        </div>
+                        <div>
+                            <span class="text-slate-400">Arrival :</span> <span class="text-blue-700 font-black">${arrivalDate}</span>
+                        </div>
+                    </div>
+
+                    <div class="text-[10px] font-black uppercase text-slate-500 tracking-wide border-b border-slate-200 pb-1 flex justify-between shrink-0">
+                        <span>CONTAINER_NO</span>
+                        <span>Matching (Matched, Not Matched)</span>
+                    </div>
+
+                    <div class="text-[10px] font-black uppercase bg-slate-100 px-3 py-1.5 border border-slate-200 rounded shrink-0">
+                        Total Containers: Matched : <span class="text-emerald-700 font-black text-xs">${totalMatched}</span> , Not Matched : <span class="text-rose-700 font-black text-xs">${totalNotMatched}</span>
+                    </div>
+
+                    <div class="border border-slate-200 rounded-lg overflow-hidden flex-1 overflow-y-auto custom-scrollbar bg-white shadow-inner">
+                        ${rowsHtml}
+                    </div>
+                </div>
+
+                <div class="p-4 bg-slate-100 border-t border-slate-200 flex justify-end gap-3 shrink-0">
+                    <button id="closeCrossCheckResults" class="px-4 py-2 bg-white border border-slate-300 text-slate-600 rounded-lg text-[10px] font-bold uppercase hover:bg-slate-50 transition-colors shadow-sm">
+                        Close (not Save)
+                    </button>
+                    <button id="saveCrossCheckUpdate" class="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold uppercase transition-all shadow-md flex items-center gap-2">
+                        <i data-lucide="save" class="w-3.5 h-3.5"></i> Save (Update Arrived)
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    const wrapper = document.createElement('div');
+    wrapper.id = 'crossCheckResultsWrapper';
+    wrapper.innerHTML = modalHtml;
+    document.body.appendChild(wrapper);
+    lucide.createIcons();
+
+    const closeAll = () => wrapper.remove();
+    document.getElementById('closeCrossCheckResultsModal').onclick = closeAll;
+    document.getElementById('closeCrossCheckResults').onclick = closeAll;
+
+    document.getElementById('saveCrossCheckUpdate').onclick = () => {
+        if (totalNotMatched > 0) {
+            const proceed = confirm(`Warning: ${totalNotMatched} containers are NOT Matched and will NOT be saved. Do you want to proceed?`);
+            if (!proceed) return;
+        }
+
+        let updateCount = 0;
+        const updatedBls = new Set();
+
+        matchedList.forEach(m => {
+            if (m.rowIndex !== undefined) {
+                rawSheets.website[m.rowIndex][9] = buildWebsiteArrivalRemark(arrivalDate);
+                updateCount++;
+                if (m.blNo) updatedBls.add(m.blNo);
+            }
+        });
+
+        if (updateCount > 0) {
+            window.viewSheetData('website');
+            saveToCloud();
+            processCloudData();
+
+            const box = document.createElement('div');
+            box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[100000] animate-bounce">
+                Arrived Status Updated for ${updateCount} Containers!
+            </div>`;
+            document.body.appendChild(box);
+            setTimeout(() => box.remove(), 4000);
+
+            if (typeof sendArrivalTelegramReport === 'function') {
+                sendArrivalTelegramReport(rake, arrivalDate, Array.from(updatedBls));
+            }
+
+            const arrivedDateInput = document.getElementById('arrivedDateInput');
+            if (arrivedDateInput) arrivedDateInput.value = '';
+        } else {
+            alert("No matched containers to update.");
+        }
+
+        closeAll();
+    };
+}
+
 async function sendManualTelegramForShipper(shipperName) {
     if (!shipperName) {
         alert("Please select a customer/shipper from the sidebar first!");
@@ -5869,6 +6153,9 @@ async function quickSaveHkrData() {
         return;
     }
 
+    const selectedOption = rakeSelect.selectedOptions[0];
+    const railoutDate = selectedOption ? (selectedOption.dataset.raildate || '') : '';
+
     // Convert datetime-local (YYYY-MM-DDTHH:mm) to DD-MM-YYYY HH:mm format
     const dateObj = new Date(arrivedDate);
     const day = String(dateObj.getDate()).padStart(2, '0');
@@ -5876,46 +6163,27 @@ async function quickSaveHkrData() {
     const year = dateObj.getFullYear();
     const hours = String(dateObj.getHours()).padStart(2, '0');
     const minutes = String(dateObj.getMinutes()).padStart(2, '0');
-    
     const formattedDate = `${day}-${month}-${year} ${hours}:${minutes}`;
 
-    let updateCount = 0;
-    const updatedBls = new Set();
-    rawSheets.website.slice(1).forEach((row) => {
+    // Get website containers for this Rake having remark RAILOUT FROM
+    const systemContainers = [];
+    rawSheets.website.slice(1).forEach((row, index) => {
         const currentRemark = String(row[9] || '').toUpperCase();
-        // Ensure we match Rake and ensure it was previously Railed Out
         if (String(row[4]).trim() === rake && currentRemark.includes("RAILOUT FROM")) {
-            // Append Arrival info or replace remark
-            row[9] = buildWebsiteArrivalRemark(formattedDate);
-            updateCount++;
-
-            const blNo = String(row[2] || '').trim().toUpperCase();
-            if (blNo) updatedBls.add(blNo);
+            systemContainers.push({
+                containerNo: String(row[3] || '').trim().toUpperCase(),
+                blNo: String(row[2] || '').trim().toUpperCase(),
+                rowIndex: index + 1
+            });
         }
     });
 
-    if (updateCount > 0) {
-        window.viewSheetData('website');
-        saveToCloud();
-        processCloudData();
-
-        const box = document.createElement('div');
-        box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[10px] z-[10000] animate-bounce">
-            Arrived Status Updated for ${updateCount} Containers!
-        </div>`;
-        document.body.appendChild(box);
-        setTimeout(() => box.remove(), 4000);
-        
-        // Trigger Telegram Arrival Report
-        if (typeof sendArrivalTelegramReport === 'function') {
-            sendArrivalTelegramReport(rake, formattedDate, Array.from(updatedBls));
-        }
-
-        // Clear the input
-        arrivedDateInput.value = '';
-    } else {
+    if (systemContainers.length === 0) {
         alert("No containers with 'RAILOUT FROM' status found for this Rake.");
+        return;
     }
+
+    openCrossCheckUploadModal(rake, railoutDate, formattedDate, systemContainers);
 });
 // Helper: Extract FNR from formatted RAKE_NO string, e.g., "TWHT06(26010324165)" → "26010324165"
 const extractFnrFromRake = (rakeString) => {
