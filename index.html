@@ -1208,7 +1208,7 @@ async function checkAndSendTelegramHandover(updatedContainers, smtpState) {
     newSent.forEach(c => sentSet.add(c));
     localStorage.setItem('telegram_sent_handovers', JSON.stringify(Array.from(sentSet)));
 }
-async function checkAndSendTelegramRailout() {
+async function checkAndSendTelegramRailout(updatedContainerNumbers) {
     if (!rawSheets.website || rawSheets.website.length <= 1) return;
     if (!rawSheets.shipper || rawSheets.shipper.length <= 1) return;
     if (!rawSheets.smtp || rawSheets.smtp.length <= 1) return;
@@ -1221,27 +1221,13 @@ async function checkAndSendTelegramRailout() {
         sentRailoutsVal = null;
     }
 
-    if (sentRailoutsVal === null) {
-        const initialSent = [];
-        rawSheets.website.slice(1).forEach(webRow => {
-            const contNo = String(webRow[3] || '').trim().toUpperCase();
-            if (!contNo) return;
-            const railDateRaw = webRow[8];
-            const railDateStr = String(railDateRaw || '').trim();
-            const isRailed = railDateStr && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(railDateStr.toUpperCase());
-            if (isRailed) {
-                initialSent.push(contNo);
-            }
-        });
-        localStorage.setItem('telegram_sent_railouts', JSON.stringify(initialSent));
-        return;
-    }
-
     let sentRailouts = [];
-    try {
-        sentRailouts = JSON.parse(sentRailoutsVal) || [];
-    } catch(e) {
-        sentRailouts = [];
+    if (sentRailoutsVal !== null) {
+        try {
+            sentRailouts = JSON.parse(sentRailoutsVal) || [];
+        } catch(e) {
+            sentRailouts = [];
+        }
     }
     const sentSet = new Set(sentRailouts);
     const newSent = [];
@@ -1272,6 +1258,25 @@ async function checkAndSendTelegramRailout() {
         return `${total}x20`;
     };
 
+    const isFirstInit = (sentRailoutsVal === null);
+    if (isFirstInit) {
+        const cleanUpdated = (updatedContainerNumbers && Array.isArray(updatedContainerNumbers))
+            ? new Set(updatedContainerNumbers.map(c => String(c).trim().toUpperCase()))
+            : new Set();
+
+        rawSheets.website.slice(1).forEach(webRow => {
+            const c = String(webRow[3] || '').trim().toUpperCase();
+            if (!c) return;
+            if (cleanUpdated.has(c)) return;
+
+            const rDate = String(webRow[8] || '').trim();
+            const isR = rDate && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(rDate.toUpperCase());
+            if (isR) {
+                sentSet.add(c);
+            }
+        });
+    }
+
     // 1. Identify which B/Ls have newly railed containers
     const newlyRailedBls = new Set();
     const newlyRailedConts = [];
@@ -1279,6 +1284,11 @@ async function checkAndSendTelegramRailout() {
     rawSheets.website.slice(1).forEach(webRow => {
         const contNo = String(webRow[3] || '').trim().toUpperCase();
         if (!contNo) return;
+
+        if (updatedContainerNumbers && Array.isArray(updatedContainerNumbers)) {
+            const cleanUpdated = updatedContainerNumbers.map(c => String(c).trim().toUpperCase());
+            if (!cleanUpdated.includes(contNo)) return;
+        }
 
         // If already sent, skip
         if (sentSet.has(contNo)) return;
@@ -1300,7 +1310,12 @@ async function checkAndSendTelegramRailout() {
         newlyRailedConts.push(contNo);
     });
 
-    if (newlyRailedBls.size === 0) return;
+    if (newlyRailedBls.size === 0) {
+        if (isFirstInit) {
+            localStorage.setItem('telegram_sent_railouts', JSON.stringify(Array.from(sentSet)));
+        }
+        return;
+    }
 
     // 2. Group the updated B/Ls by ShipperKey (shipperName||isSsr) so we send separate messages
     const shipperGroups = {};
@@ -6879,13 +6894,14 @@ window.deleteHkrRow = async (index) => {
 
         const executeExcelUpdate = (rakeNo, railDateVal, jsonData) => {
             let matchCount = 0;
+            const updatedConts = [];
             jsonData.slice(10).forEach(exRow => {
-                const contNo = String(exRow[2] || '').trim(); 
+                const contNo = String(exRow[2] || '').trim().toUpperCase(); 
                 const rawExcelDate = railDateVal || exRow[33]; 
                 const railDateFormatted = formatToDDMMYY_HHMM(rawExcelDate); 
                 
                 if (contNo && rawSheets.website) {
-                    const webMatchIndex = rawSheets.website.findIndex(w => String(w[3] || '').trim() === contNo);
+                    const webMatchIndex = rawSheets.website.findIndex(w => String(w[3] || '').trim().toUpperCase() === contNo);
                     if (webMatchIndex !== -1) {
                         let dateObj = null;
                         const numVal = parseFloat(rawExcelDate);
@@ -6911,6 +6927,7 @@ window.deleteHkrRow = async (index) => {
                         rawSheets.website[webMatchIndex][8] = railDateFormatted;
                         rawSheets.website[webMatchIndex][9] = buildWebsiteRailoutRemark(railDateFormatted);
                         matchCount++;
+                        updatedConts.push(contNo);
                     }
                 }
             });
@@ -6921,7 +6938,7 @@ window.deleteHkrRow = async (index) => {
             setTimeout(() => box.remove(), 3000);
             saveToCloud(); processCloudData();
             if (typeof checkAndSendTelegramRailout === 'function') {
-                checkAndSendTelegramRailout();
+                checkAndSendTelegramRailout(updatedConts);
             }
         };
 	
@@ -7020,8 +7037,9 @@ window.deleteHkrRow = async (index) => {
             window.viewSheetData('website');
             saveToCloud();
             processCloudData();
+            const updatedConts = containers.map(c => String(c.containerNo).trim().toUpperCase()).filter(Boolean);
             if (typeof checkAndSendTelegramRailout === 'function') {
-                checkAndSendTelegramRailout();
+                checkAndSendTelegramRailout(updatedConts);
             }
 
             const box = document.createElement('div');
@@ -7097,6 +7115,7 @@ if (bulkWebsiteExcelInput) {
                 let notFoundCount = 0;
                 let invalidCount = 0;
                 let skippedBlankCount = 0;
+                const updatedConts = [];
 
                 jsonData.slice(1).forEach(exRow => {
                     const contNo = String(exRow[contIdx] || '').trim().toUpperCase();
@@ -7143,6 +7162,7 @@ if (bulkWebsiteExcelInput) {
                     rawSheets.website[rowIndex][8] = railoutFormatted;
                     rawSheets.website[rowIndex][9] = finalRemark;
                     updatedCount++;
+                    updatedConts.push(contNo);
                 });
 
                 if (updatedCount === 0) {
@@ -7159,7 +7179,7 @@ if (bulkWebsiteExcelInput) {
                 saveToCloud();
                 processCloudData();
                 if (typeof checkAndSendTelegramRailout === 'function') {
-                    checkAndSendTelegramRailout();
+                    checkAndSendTelegramRailout(updatedConts);
                 }
 
                 const box = document.createElement('div');
@@ -7469,8 +7489,9 @@ function applySingleStackUpdates(updates) {
     // Save to Cloud
     saveToCloud(); 
     processCloudData();
+    const updatedConts = updates.map(u => String(rawSheets.website[u.index][3] || '').trim().toUpperCase()).filter(Boolean);
     if (typeof checkAndSendTelegramRailout === 'function') {
-        checkAndSendTelegramRailout();
+        checkAndSendTelegramRailout(updatedConts);
     }
 
     // Success Notification (High Z-Index)
