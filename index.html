@@ -449,6 +449,9 @@ table {
                             <i data-lucide="badge-minus" class="w-3.5 h-3.5"></i>
                             DELETE BY BL_NO.
                         </button>
+                        <button onclick="document.getElementById('saveLocalChangesBtn').click()" class="bg-blue-700 hover:bg-blue-800 text-white px-4 py-1.5 rounded-lg font-bold text-[10px] uppercase shadow-md transition-all shrink-0">
+                            Save Changes
+                        </button>
                     </div>
                     <!-- SMTP Tab Context Tools -->
                     <div id="smtpUpdateSection" class="hidden items-center gap-3 bg-white p-2 rounded-xl border border-slate-300 shadow-sm flex-wrap">
@@ -4405,7 +4408,7 @@ function findHeaderIndex(headers, matchers, fallback = -1) {
 
 const EMPTY_VIEW_HEADERS = {
     hkr: ['Vessel Name', 'ETA DTTM', 'Container No', 'Size', 'Destination', 'Line Code', 'Assigned Remark', 'Uploaded At'],
-    shipper: ['CONT_Nos.', 'Size', 'BL_No.', 'Consignee'],
+    shipper: ['CONT_Nos.', 'Size', 'BL_No.', 'Consignee', 'TAG', 'Email IDs'],
     smtp: ['Status', 'CONT_Nos.', 'Size', 'Disch_Vsl_Name', 'BL_No.', 'SMTP No.', 'Handover Date', 'Remarks', 'Line', 'Consignee', 'Train / Via'],
     website: ['UID', 'SR_NO', 'BILL_NO', 'CONTAINER_NO', 'RAKE_NO', 'STACK', 'SOURCE', 'DESTINATION', 'RAILING_DATE', 'REMARKS']
 };
@@ -4487,12 +4490,31 @@ function ensureSheetHeaders(sheetName, uploadedHeaderRow = null) {
     if (!Array.isArray(rawSheets[sheetName])) rawSheets[sheetName] = [];
 
     const currentHeader = rawSheets[sheetName][0];
-    if (hasRowValues(currentHeader)) return currentHeader;
+    if (hasRowValues(currentHeader)) {
+        if (sheetName === 'shipper') {
+            if (currentHeader.length < 5 || currentHeader[4] !== 'TAG') {
+                currentHeader[4] = 'TAG';
+            }
+            if (currentHeader.length < 6 || currentHeader[5] !== 'Email IDs') {
+                currentHeader[5] = 'Email IDs';
+            }
+        }
+        return currentHeader;
+    }
 
     const fallbackHeaders = DEFAULT_SOURCE_HEADERS[sheetName] || [];
-    const nextHeader = hasRowValues(uploadedHeaderRow) ? cloneRow(uploadedHeaderRow) : cloneRow(fallbackHeaders);
+    let nextHeader = hasRowValues(uploadedHeaderRow) ? cloneRow(uploadedHeaderRow) : cloneRow(fallbackHeaders);
 
     if (!nextHeader.length) return [];
+
+    if (sheetName === 'shipper') {
+        if (nextHeader.length < 5) {
+            nextHeader[4] = 'TAG';
+        }
+        if (nextHeader.length < 6) {
+            nextHeader[5] = 'Email IDs';
+        }
+    }
 
     if (rawSheets[sheetName].length === 0) {
         rawSheets[sheetName].push(nextHeader);
@@ -4513,7 +4535,36 @@ function normalizeRawSheets() {
     if (!Array.isArray(rawSheets.website)) rawSheets.website = [];
     if (!Array.isArray(rawSheets.hkrHmrFiltered)) rawSheets.hkrHmrFiltered = [];
 
+    if (!rawSheets.shipperEmails || typeof rawSheets.shipperEmails !== 'object') {
+        rawSheets.shipperEmails = {};
+    }
+
+    ensureSheetHeaders('shipper');
+    ensureSheetHeaders('smtp');
     ensureSheetHeaders('website');
+
+    if (rawSheets.shipper.length > 0) {
+        const header = rawSheets.shipper[0];
+        if (header.length < 5 || header[4] !== 'TAG') {
+            header[4] = 'TAG';
+        }
+        if (header.length < 6 || header[5] !== 'Email IDs') {
+            header[5] = 'Email IDs';
+        }
+
+        // Sync email IDs from shipperEmails to shipper rows if empty
+        const shipConsIdx = header.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 
+                            ? header.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) 
+                            : 3;
+        rawSheets.shipper.slice(1).forEach(row => {
+            const shipperName = String(row[shipConsIdx] || '').trim().toUpperCase();
+            if (shipperName && rawSheets.shipperEmails[shipperName]) {
+                if (!String(row[5] || '').trim()) {
+                    row[5] = rawSheets.shipperEmails[shipperName];
+                }
+            }
+        });
+    }
 }
 
 function renderEmptySheetPreview(sheetName, headers, message) {
@@ -6612,7 +6663,7 @@ window.deleteHkrRow = async (index) => {
 
     let maxCols = Math.max(...data.map(r => r?.length || 0)); 
     if (sheetName === 'shipper') {
-        maxCols = Math.max(5, maxCols);
+        maxCols = Math.max(6, maxCols);
     }
     
     // Trash icon SVG format mein
@@ -6757,20 +6808,54 @@ window.deleteHkrRow = async (index) => {
             let ssrMismatches = [];
             let editedRows = new Set();
             
-            cells.forEach(cell => {
-                const r = parseInt(cell.getAttribute('data-row'));
-                const c = parseInt(cell.getAttribute('data-col'));
-                if (!rawSheets[currentSheetInView][r]) rawSheets[currentSheetInView][r] = [];
+            if (currentSheetInView === 'shipper') {
+                const shipHeaders = rawSheets.shipper[0] || [];
+                const shipConsIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 
+                                    ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) 
+                                    : 3;
                 
-                const oldVal = rawSheets[currentSheetInView][r][c];
-                const newVal = cell.innerText.trim();
-                if (oldVal !== newVal) {
-                    rawSheets[currentSheetInView][r][c] = newVal;
-                    if (currentSheetInView === 'smtp') {
-                        editedRows.add(r);
+                cells.forEach(cell => {
+                    const r = parseInt(cell.getAttribute('data-row'));
+                    const c = parseInt(cell.getAttribute('data-col'));
+                    if (!rawSheets.shipper[r]) rawSheets.shipper[r] = [];
+                    
+                    const oldVal = rawSheets.shipper[r][c];
+                    const newVal = cell.innerText.trim();
+                    if (oldVal !== newVal) {
+                        rawSheets.shipper[r][c] = newVal;
+                        if (c === 5) {
+                            const shipperName = String(rawSheets.shipper[r][shipConsIdx] || '').trim().toUpperCase();
+                            if (shipperName) {
+                                if (!rawSheets.shipperEmails) rawSheets.shipperEmails = {};
+                                rawSheets.shipperEmails[shipperName] = newVal;
+                            }
+                        }
                     }
-                }
-            });
+                });
+
+                // Run a second pass to synchronize all rows of the same shipper with the new email ID
+                rawSheets.shipper.slice(1).forEach(row => {
+                    const shipperName = String(row[shipConsIdx] || '').trim().toUpperCase();
+                    if (shipperName && rawSheets.shipperEmails[shipperName]) {
+                        row[5] = rawSheets.shipperEmails[shipperName];
+                    }
+                });
+            } else {
+                cells.forEach(cell => {
+                    const r = parseInt(cell.getAttribute('data-row'));
+                    const c = parseInt(cell.getAttribute('data-col'));
+                    if (!rawSheets[currentSheetInView][r]) rawSheets[currentSheetInView][r] = [];
+                    
+                    const oldVal = rawSheets[currentSheetInView][r][c];
+                    const newVal = cell.innerText.trim();
+                    if (oldVal !== newVal) {
+                        rawSheets[currentSheetInView][r][c] = newVal;
+                        if (currentSheetInView === 'smtp') {
+                            editedRows.add(r);
+                        }
+                    }
+                });
+            }
 
             let updatedContainers = [];
             if (currentSheetInView === 'smtp' && editedRows.size > 0) {
@@ -10567,6 +10652,8 @@ function openShipperModal(ssr = false) {
     // Saare fields reset karein
     document.getElementById('manualBlInput').value = ''; 
     document.getElementById('manualShipperNameInput').value = '';
+    const emailInput = document.getElementById('manualEmailInput');
+    if (emailInput) emailInput.value = '';
     document.getElementById('manualSingleCont').value = '';
     document.getElementById('blMatchStatus').innerText = '';
     document.getElementById('containerPreviewArea').classList.add('hidden');
@@ -10882,6 +10969,27 @@ document.getElementById('manualShipperNameInput').addEventListener('input', (e) 
     const shipperVal = e.target.value.trim().toUpperCase();
     if (!shipperVal) return;
 
+    // Auto-populate Email if found in shipperEmails or rawSheets.shipper
+    let foundEmail = "";
+    if (rawSheets.shipperEmails && rawSheets.shipperEmails[shipperVal]) {
+        foundEmail = rawSheets.shipperEmails[shipperVal];
+    } else if (rawSheets.shipper && rawSheets.shipper.length > 1) {
+        const shipHeaders = rawSheets.shipper[0] || [];
+        const shipConsIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 
+                            ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) 
+                            : 3;
+        const emailRow = rawSheets.shipper.slice(1).find(r => 
+            String(r[shipConsIdx] || '').trim().toUpperCase() === shipperVal && String(r[5] || '').trim() !== ''
+        );
+        if (emailRow) {
+            foundEmail = String(emailRow[5] || '').trim();
+        }
+    }
+    const emailInput = document.getElementById('manualEmailInput');
+    if (foundEmail && emailInput) {
+        emailInput.value = foundEmail;
+    }
+
     const uniqueShippers = getUniqueSmtpShippers();
     if (uniqueShippers.includes(shipperVal)) {
         const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
@@ -10936,13 +11044,34 @@ document.getElementById('saveManualShipperBtn').addEventListener('click', async 
         return;
     }
 
+    const emailInput = document.getElementById('manualEmailInput');
+    const emailId = emailInput ? emailInput.value.trim() : '';
+
+    if (shipperName && emailId) {
+        if (!rawSheets.shipperEmails) rawSheets.shipperEmails = {};
+        rawSheets.shipperEmails[shipperName] = emailId;
+
+        // Sync to all existing rows for this shipper in rawSheets.shipper
+        if (rawSheets.shipper && rawSheets.shipper.length > 1) {
+            const shipHeaders = rawSheets.shipper[0] || [];
+            const shipConsIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 
+                                ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) 
+                                : 3;
+            rawSheets.shipper.slice(1).forEach(row => {
+                if (String(row[shipConsIdx] || '').trim().toUpperCase() === shipperName) {
+                    row[5] = emailId;
+                }
+            });
+        }
+    }
+
     let addedCount = 0;
     matchedContainers.forEach(m => {
         if (!rawSheets.shipper.some(s => String(s[0]).trim() === m.cont)) {
             if (isSsrMode) {
-                rawSheets.shipper.push([m.cont, m.size, m.bl, shipperName, 'SSR']);
+                rawSheets.shipper.push([m.cont, m.size, m.bl, shipperName, 'SSR', emailId]);
             } else {
-                rawSheets.shipper.push([m.cont, m.size, m.bl, shipperName]);
+                rawSheets.shipper.push([m.cont, m.size, m.bl, shipperName, '', emailId]);
             }
             addedCount++;
         }
@@ -12144,6 +12273,10 @@ initAuth();
                 <input type="text" id="manualBlInput" placeholder="Enter B/L Number..." class="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-teal-500 uppercase" autocomplete="off">
                 <div id="blMatchStatus" class="mt-1 text-[9px] font-bold uppercase"></div>
                 <div id="manualBlSuggestions" class="absolute left-0 right-0 bg-white border border-slate-300 rounded-lg max-h-40 overflow-y-auto hidden z-[100002] shadow-lg custom-scrollbar"></div>
+            </div>
+            <div class="relative">
+                <label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">Email IDs</label>
+                <input type="text" id="manualEmailInput" placeholder="Enter Email IDs (comma-separated)..." class="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-teal-500" autocomplete="off">
             </div>
 <div id="manualInputFields" class="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
     <p class="text-[9px] font-black text-blue-600 uppercase mb-2">Manual Container Entry</p>
