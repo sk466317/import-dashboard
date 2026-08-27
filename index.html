@@ -1057,6 +1057,25 @@ async function sendCustomTelegramMessage(messageText) {
         console.error("API Error:", error);
     }
 }
+
+function isDestinationArrivedRemark(remark) {
+    const r = String(remark || '').toUpperCase().trim();
+    if (!r) return false;
+    if (r.includes("GATE OUT") || r.includes("GATEOUT")) return true;
+    if (r.includes("UNLOADING DONE")) return true;
+    if (r.includes("TRAIN ARRIVED")) return true;
+    if (r.includes("ARRIVED AT KILARAIPUR") || r.includes("ARRIVED KILARAIPUR") || r.includes("ARRIVED AT ICD") || r.includes("ARRIVED ICD")) return true;
+    // Intermediate running train / station status (e.g. ARRIVED AT JODHPUR JN, DEPARTED FROM, CURRENT LOCATION, ETA, BAL KMS, etc.)
+    if (r.includes("BAL KMS") || r.includes("ETA:") || r.includes("ARRIVED AT") || r.includes("DEPARTED FROM") || r.includes("CURRENT LOCATION") || r.includes("TO ICD")) {
+        return false;
+    }
+    if (r.includes("ARRIVED ON") || r.includes("ARRIVED")) {
+        return true;
+    }
+    return false;
+}
+window.isDestinationArrivedRemark = isDestinationArrivedRemark;
+
 function captureSmtpState() {
     const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
     const sContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
@@ -1510,11 +1529,11 @@ async function sendRunningTrainsTelegramReport() {
     let trainGroups = {};
 
     rawSheets.website.slice(1).forEach(row => {
-        const remark = String(row[9] || '').toUpperCase();
+        const remark = String(row[9] || '');
         const railDateRaw = row[8];
         const isRailed = railDateRaw && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(String(railDateRaw).trim().toUpperCase());
-        const isNotArrived = !remark.includes("ARRIVED") && !remark.includes("GATE OUT") && !remark.includes("GATEOUT");
-        if ((remark.includes("RAILOUT FROM") || isRailed) && isNotArrived) {
+        const isNotArrived = !isDestinationArrivedRemark(remark);
+        if ((remark.toUpperCase().includes("RAILOUT FROM") || isRailed) && isNotArrived) {
             const trainNo = String(row[4] || "").trim() || "N/A";
             const railDate = formatToDDMMYYYY_HHMM(railDateRaw) || String(railDateRaw || "N/A").trim() || "N/A";
             const currentLocation = String(row[9] || '').trim();
@@ -5299,7 +5318,7 @@ function renderDetailedBreakdown(groups) {
         railedGroups.forEach(bl => {
             let detailsToShow = bl.railedDetails;
             if (isInTransitFilterActive) {
-                detailsToShow = detailsToShow.filter(d => !/ARRIVED|UNLOADING DONE/i.test(d.remark));
+                detailsToShow = detailsToShow.filter(d => !isDestinationArrivedRemark(d.remark));
             }
             if (detailsToShow.length > 0) {
                 let blTotal = 0;
@@ -6267,11 +6286,11 @@ async function quickSaveHkrData() {
     rawSheets.website.slice(1).forEach(row => {
         const formattedRake = String(row[4] || '').trim();
         const railDateRaw = row[8];
-        const remark = String(row[9] || '').toUpperCase();
+        const remark = String(row[9] || '');
         const isRailed = railDateRaw && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(String(railDateRaw).trim().toUpperCase());
-        const isNotArrived = !remark.includes("ARRIVED") && !remark.includes("GATE OUT") && !remark.includes("GATEOUT");
+        const isNotArrived = !isDestinationArrivedRemark(remark);
 
-        if (formattedRake && formattedRake !== "-" && (remark.includes("RAILOUT FROM") || isRailed) && isNotArrived) {
+        if (formattedRake && formattedRake !== "-" && (remark.toUpperCase().includes("RAILOUT FROM") || isRailed) && isNotArrived) {
             const formattedDate = formatToDDMMYYYY_HHMM(railDateRaw) || String(railDateRaw || '').trim();
             if (formattedDate) {
                 if (!uniqueRakes.has(formattedRake) || formattedDate > uniqueRakes.get(formattedRake)) {
@@ -6302,8 +6321,8 @@ async function quickSaveHkrData() {
                 const matchingRow = rawSheets.website.find(row => {
                     const rowRake = String(row[4] || '').trim();
                     const rowDate = formatToDDMMYYYY_HHMM(row[8]) || String(row[8] || '').trim();
-                    const remark = String(row[9] || '').toUpperCase();
-                    const isNotArrived = !remark.includes("ARRIVED") && !remark.includes("GATE OUT");
+                    const remark = String(row[9] || '');
+                    const isNotArrived = !isDestinationArrivedRemark(remark);
                     return rowRake === rakeVal && (rawVal ? rowDate === rawVal : true) && isNotArrived;
                 });
                 customRemarksInput.value = matchingRow ? (matchingRow[9] || '') : '';
@@ -6347,9 +6366,9 @@ async function quickSaveHkrData() {
     // Get website containers for this Rake that are active / in transit
     const systemContainers = [];
     rawSheets.website.slice(1).forEach((row, index) => {
-        const currentRemark = String(row[9] || '').toUpperCase();
+        const remark = String(row[9] || '');
         const rowDate = formatToDDMMYYYY_HHMM(row[8]) || String(row[8] || '').trim();
-        const isNotArrived = !currentRemark.includes("ARRIVED") && !currentRemark.includes("GATE OUT");
+        const isNotArrived = !isDestinationArrivedRemark(remark);
         const isDateMatch = !railoutDate || rowDate === railoutDate;
         if (String(row[4]).trim() === rake && isDateMatch && isNotArrived) {
             systemContainers.push({
@@ -6367,7 +6386,7 @@ async function quickSaveHkrData() {
 
     openCrossCheckUploadModal(rake, railoutDate, formattedDate, systemContainers);
 });
-// Helper: Extract FNR from formatted RAKE_NO string, e.g., "TWHT06(26010324165)" â†’ "26010324165"
+// Helper: Extract FNR from formatted RAKE_NO string, e.g., "TWHT06(26010324165)" → "26010324165"
 const extractFnrFromRake = (rakeString) => {
     if (!rakeString) return null;
     const match = rakeString.match(/\(([\d]{11})\)/);
@@ -6425,13 +6444,12 @@ document.getElementById('linkFnrBtn').addEventListener('click', () => {
         const rowFormattedDate = formatToDDMMYYYY_HHMM(rowRawDate) || String(rowRawDate || '').trim();
         
         // C. Remarks Check
-        const rowRemark = String(row[9] || '').toUpperCase();
+        const remark = String(row[9] || '');
 
         // --- CONDITIONS ---
         const isRakeMatch = (rowBaseRake === baseRake);
         const isDateMatch = (rowFormattedDate === selectedRailDate);
-        // CRITICAL FIX: Agar "ARRIVED" ya "GATE OUT" word hai to update mat karo
-        const isNotArrived = !rowRemark.includes("ARRIVED") && !rowRemark.includes("GATE OUT"); 
+        const isNotArrived = !isDestinationArrivedRemark(remark); 
 
         if (isRakeMatch && isDateMatch && isNotArrived) {
             row[4] = newFormattedRake;
@@ -6510,13 +6528,13 @@ document.getElementById('updateCustomRemarksBtn').addEventListener('click', () =
         const rowFormattedDate = formatToDDMMYYYY_HHMM(rowRawDate) || String(rowRawDate || '').trim();
         
         // Current Remark nikalo check karne ke liye
-        const currentRemark = String(row[9] || '').toUpperCase();
+        const remark = String(row[9] || '');
 
         // STRICT CHECK: 
         // 1. Rake Name Match
         // 2. Date Match
-        // 3. Not Arrived
-        const isNotArrived = !currentRemark.includes("ARRIVED") && !currentRemark.includes("GATE OUT");
+        // 3. Not Arrived at Destination
+        const isNotArrived = !isDestinationArrivedRemark(remark);
         if (rowBaseRake === baseRake && 
             rowFormattedDate === selectedRailDate && 
             isNotArrived) {
@@ -8936,12 +8954,11 @@ function saveRunningTrainCurrentLocation() {
     rawSheets.website.slice(1).forEach(row => {
         const rowBase = normalizeRunningTrainNo(row[4]);
         const rowDate = formatToDDMMYYYY_HHMM(row[8]) || String(row[8] || '').trim();
-        const currentRemark = String(row[9] || '').toUpperCase();
+        const remark = String(row[9] || '');
 
         if (rowBase === trainBase &&
             rowDate === trainData.railDate &&
-            !currentRemark.includes("ARRIVED") &&
-            !currentRemark.includes("GATE OUT")) {
+            !isDestinationArrivedRemark(remark)) {
             row[9] = newRemark;
             updateCount++;
         }
@@ -9014,12 +9031,12 @@ document.getElementById('runningTrainsBtn').addEventListener('click', () => {
     let trainGroups = {};
 
     rawSheets.website.slice(1).forEach(row => {
-        const remark = String(row[9] || '').toUpperCase();
+        const remark = String(row[9] || '');
         const railDateRaw = row[8];
         const isRailed = railDateRaw && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(String(railDateRaw).trim().toUpperCase());
-        const isNotArrived = !remark.includes("ARRIVED") && !remark.includes("GATE OUT") && !remark.includes("GATEOUT");
+        const isNotArrived = !isDestinationArrivedRemark(remark);
 
-        if ((remark.includes("RAILOUT FROM") || isRailed) && isNotArrived) {
+        if ((remark.toUpperCase().includes("RAILOUT FROM") || isRailed) && isNotArrived) {
             const trainNo = String(row[4] || "N/A").trim() || "N/A";
             const railDate = formatToDDMMYYYY_HHMM(row[8]) || String(row[8] || "N/A").trim() || "N/A";
             const sortTime = getRunningTrainSortTime(row[8] || railDate);
@@ -12323,91 +12340,26 @@ window.openSsrInvoiceModal = function(event, shipperName) {
 // MSC TRACKING SYSTEM INTEGRATION
 // ==========================================
 window.openMscTrackModal = function(prefillBl) {
-    prefillBl = prefillBl || '';
-    const modal = document.getElementById('mscTrackModal');
-    if (!modal) return;
-    
-    const input = document.getElementById('mscTrackingNumberInput');
-    if (input) {
-        input.value = prefillBl || '';
-    }
-    
-    // Populate suggestions from current loaded data
-    const suggestionsContainer = document.getElementById('mscQuickSuggestions');
-    const chipsBox = document.getElementById('mscSuggestionChips');
-    if (suggestionsContainer && chipsBox) {
-        chipsBox.innerHTML = '';
-        const foundBls = new Set();
-        
-        const currentRawSheets = window.rawSheets || (typeof rawSheets !== 'undefined' ? rawSheets : null);
-        // Search in SMTP data
-        if (currentRawSheets && currentRawSheets.smtp && currentRawSheets.smtp.length > 1) {
-            currentRawSheets.smtp.slice(1).forEach(row => {
-                const bl = String(row[1] || row[2] || '').trim().toUpperCase();
-                if (bl && (bl.startsWith('MEDU') || bl.startsWith('MSCU') || bl.length >= 8)) {
-                    foundBls.add(bl);
-                }
-            });
-        }
-        
-        // Search in HKR data
-        if (currentRawSheets && currentRawSheets.hkrHmrFiltered && currentRawSheets.hkrHmrFiltered.length > 0) {
-            currentRawSheets.hkrHmrFiltered.forEach(row => {
-                const bl = String(row.bl_no || row.ctr_no || '').trim().toUpperCase();
-                if (bl) foundBls.add(bl);
-            });
-        }
-        
-        const blArray = Array.from(foundBls).slice(0, 10);
-        if (blArray.length > 0) {
-            suggestionsContainer.classList.remove('hidden');
-            blArray.forEach(bl => {
-                const chip = document.createElement('button');
-                chip.type = 'button';
-                chip.className = 'px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded font-mono text-[9px] font-black transition-all cursor-pointer';
-                chip.innerText = bl;
-                chip.onclick = function() {
-                    if (input) input.value = bl;
-                };
-                chipsBox.appendChild(chip);
-            });
-        } else {
-            suggestionsContainer.classList.add('hidden');
-        }
-    }
-    
-    modal.classList.remove('hidden');
-    if (window.lucide) lucide.createIcons();
-    setTimeout(() => {
-        if (input) input.focus();
-    }, 100);
+    prefillBl = (prefillBl || '').trim().toUpperCase();
+    // Direct open Container Tracking Portal (2nd window)
+    window.openMscTrackingDetails(prefillBl, '0');
 };
 
 window.submitMscTrack = function(directToMscWeb = false) {
-    const input = document.getElementById('mscTrackingNumberInput');
+    const input = document.getElementById('mscTrackingNumberInput') || document.getElementById('mscModalSearch');
     const trackVal = input ? input.value.trim().toUpperCase() : '';
     
-    if (!trackVal) {
-        alert("Please enter a Container, Bill of Lading, or Booking Number!");
-        if (input) input.focus();
-        return;
-    }
-    
-    const isBooking = document.getElementById('mscRadioBooking') && document.getElementById('mscRadioBooking').checked;
-    const mode = isBooking ? '1' : '0';
-    
-    // Close modal
+    // Close old modal if present
     const modal = document.getElementById('mscTrackModal');
     if (modal) modal.classList.add('hidden');
     
     if (directToMscWeb) {
-        // Direct MSC Official Tracking Webpage
         window.open('https://www.msc.com/en/track-a-shipment', '_blank');
         return;
     }
     
     // Open Dedicated MSC Tracking Window with Rich Layout
-    window.openMscTrackingDetails(trackVal, mode);
+    window.openMscTrackingDetails(trackVal, '0');
 };
 
 window.renderMscTrackingModal = function(state) {
@@ -12434,7 +12386,7 @@ window.renderMscTrackingModal = function(state) {
         </div>`;
 
     const infoGrid = [
-        mkInfo('Bill of Lading', `<span style="color:#d97706;">${trackingNumber}</span> <span style="color:#64748b;font-size:9.5px;font-weight:700;">(${countText})</span>`),
+        mkInfo('Bill of Lading', `<span style="color:#d97706;">${trackingNumber || '-'}</span> <span style="color:#64748b;font-size:9.5px;font-weight:700;">(${countText})</span>`),
         mkInfo('Shipped From', state.foundShippedFrom || '-'),
         mkInfo('Port of Load', state.foundPol || state.foundShippedFrom || '-'),
         mkInfo('Port of Discharge', state.foundPod || '-'),
@@ -12443,6 +12395,30 @@ window.renderMscTrackingModal = function(state) {
         mkInfo('Price Calc. Date*', state.priceDate || '-')
     ].join('');
 
+    // Suggestions chips from loaded data
+    const foundBls = new Set();
+    const currentRawSheets = window.rawSheets || (typeof rawSheets !== 'undefined' ? rawSheets : null);
+    if (currentRawSheets && currentRawSheets.smtp && currentRawSheets.smtp.length > 1) {
+        currentRawSheets.smtp.slice(1).forEach(row => {
+            const bl = String(row[1] || row[2] || '').trim().toUpperCase();
+            if (bl && (bl.startsWith('MEDU') || bl.startsWith('MSCU') || bl.length >= 8)) {
+                foundBls.add(bl);
+            }
+        });
+    }
+    if (currentRawSheets && currentRawSheets.hkrHmrFiltered && currentRawSheets.hkrHmrFiltered.length > 0) {
+        currentRawSheets.hkrHmrFiltered.forEach(row => {
+            const bl = String(row.bl_no || row.ctr_no || '').trim().toUpperCase();
+            if (bl) foundBls.add(bl);
+        });
+    }
+    const blArray = Array.from(foundBls).slice(0, 8);
+    let chipsHtml = '';
+    if (blArray.length > 0) {
+        const chips = blArray.map(bl => `<button type="button" onclick="window.openMscTrackingDetails('${bl}')" style="padding:3px 8px;background:#ffffff;color:#92400e;border:1px solid #fcd34d;border-radius:4px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:9.5px;font-weight:900;cursor:pointer;transition:all;" onmouseover="this.style.background='#fef3c7'" onmouseout="this.style.background='#ffffff'">${bl}</button>`).join(' ');
+        chipsHtml = `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:2px;"><span style="font-size:9px;font-weight:800;color:#64748b;text-transform:uppercase;">Recent in Data:</span> ${chips}</div>`;
+    }
+
     let tableRowsHtml = '';
     if (hasRealContainers) {
         tableRowsHtml = containers.map((c, idx) => {
@@ -12450,7 +12426,7 @@ window.renderMscTrackingModal = function(state) {
             return `
             <tr style="background:${bg};color:#1e293b;font-size:11px;font-weight:800;text-align:center;border-bottom:1px solid #e2e8f0;">
                 <td style="padding:9px 10px;border:1px solid #e2e8f0;color:#64748b;">${idx + 1}</td>
-                <td style="padding:9px 10px;border:1px solid #e2e8f0;color:#b45309;font-weight:900;">${trackingNumber}</td>
+                <td style="padding:9px 10px;border:1px solid #e2e8f0;color:#b45309;font-weight:900;">${trackingNumber || '-'}</td>
                 <td style="padding:9px 10px;border:1px solid #e2e8f0;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-weight:900;color:#0f172a;letter-spacing:0.5px;">${c.contNo}</td>
                 <td style="padding:9px 10px;border:1px solid #e2e8f0;"><span style="background:#e0f2fe;color:#0369a1;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:900;">${c.size || '40'}"</span></td>
                 <td style="padding:9px 10px;border:1px solid #e2e8f0;text-align:left;color:#334155;">${c.latestMove || state.foundPod || '-'}</td>
@@ -12460,23 +12436,15 @@ window.renderMscTrackingModal = function(state) {
     } else {
         tableRowsHtml = `
         <tr>
-            <td colspan="6" style="padding:32px 16px;text-align:center;background:#fffbeb;border:1px solid #fde68a;">
-                <div style="font-size:13px;font-weight:900;color:#92400e;margin-bottom:6px;">Window Empty — No containers saved for B/L: ${trackingNumber}</div>
-                <div style="font-size:11px;color:#b45309;margin-bottom:14px;">Open MSC tracking page, copy container details (or press Ctrl+A, Ctrl+C), click "Paste Containers", then click "💾 Save Data".</div>
-                <div style="display:flex;justify-content:center;gap:10px;">
-                    <a href="https://www.msc.com/en/track-a-shipment" target="_blank" style="display:inline-flex;align-items:center;gap:5px;background:#f59e0b;color:#0f172a;padding:7px 16px;border-radius:6px;font-size:11px;font-weight:900;text-decoration:none;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-                        Open MSC Website &rarr;
-                    </a>
-                    <button onclick="window.mscModalPasteOpen()" style="display:inline-flex;align-items:center;gap:5px;background:#2563eb;color:#ffffff;padding:7px 16px;border:none;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-                        + Paste Containers / Text
-                    </button>
-                </div>
+            <td colspan="6" style="padding:28px 16px;text-align:center;background:#fffbeb;border:1px solid #fde68a;">
+                <div style="font-size:13px;font-weight:900;color:#92400e;margin-bottom:4px;">No containers currently loaded for B/L: ${trackingNumber || '(None)'}</div>
+                <div style="font-size:11px;color:#b45309;">Paste text from MSC tracking page into the box above and click "Extract to Table (Preview)".</div>
             </td>
         </tr>`;
     }
 
     mscModal.innerHTML = `
-    <div style="background:#ffffff;border-radius:12px;box-shadow:0 25px 60px -15px rgba(0,0,0,0.5);width:100%;max-width:920px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid #cbd5e1;">
+    <div style="background:#ffffff;border-radius:12px;box-shadow:0 25px 60px -15px rgba(0,0,0,0.5);width:100%;max-width:940px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid #cbd5e1;">
         <!-- Header -->
         <div style="background:#0f172a;color:#ffffff;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #f59e0b;flex-shrink:0;gap:10px;flex-wrap:wrap;">
             <div style="display:flex;align-items:center;gap:10px;">
@@ -12488,17 +12456,8 @@ window.renderMscTrackingModal = function(state) {
             </div>
             
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                <div style="position:relative;display:flex;align-items:center;">
-                    <input id="mscModalSearch" type="text" value="${trackingNumber}" placeholder="Search B/L No..."
-                        style="padding:5px 28px 5px 10px;background:#1e293b;color:#ffffff;border:1px solid #475569;border-radius:6px;font-size:11px;font-weight:800;outline:none;text-transform:uppercase;width:150px;"
-                        onkeydown="if(event.key==='Enter'){window.openMscTrackingDetails(this.value);}">
-                    <span onclick="window.openMscTrackingDetails(document.getElementById('mscModalSearch').value)" style="position:absolute;right:8px;color:#fbbf24;cursor:pointer;font-weight:900;font-size:11px;">GO</span>
-                </div>
                 <button onclick="window.mscModalSaveData()" id="mscModalSaveBtn" style="padding:5px 12px;background:#16a34a;color:#ffffff;border:none;border-radius:6px;font-size:10.5px;font-weight:900;cursor:pointer;display:inline-flex;align-items:center;gap:4px;box-shadow:0 1px 3px rgba(22,163,74,0.3);">
                     💾 Save Data
-                </button>
-                <button onclick="window.mscModalPasteOpen()" style="padding:5px 10px;background:#2563eb;color:#ffffff;border:none;border-radius:6px;font-size:10px;font-weight:900;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
-                    + Paste MSC
                 </button>
                 <button onclick="window.mscModalDownloadExcel()" style="padding:5px 10px;background:#0d9488;color:#ffffff;border:none;border-radius:6px;font-size:10px;font-weight:900;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
                     Excel (.xlsx)
@@ -12509,9 +12468,6 @@ window.renderMscTrackingModal = function(state) {
                 <button onclick="window.mscModalClearCache()" style="padding:5px 10px;background:#64748b;color:#ffffff;border:none;border-radius:6px;font-size:10px;font-weight:900;cursor:pointer;display:inline-flex;align-items:center;gap:4px;" title="Clear and open empty window">
                     Clear / New
                 </button>
-                <a href="https://www.msc.com/en/track-a-shipment" target="_blank" style="padding:5px 10px;background:#334155;color:#fcd34d;border:none;border-radius:6px;font-size:10px;font-weight:900;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:4px;">
-                    MSC Site
-                </a>
                 <button onclick="document.getElementById('mscTrackDetailsModal').style.display='none'" style="padding:5px 10px;background:#dc2626;color:#ffffff;border:none;border-radius:6px;font-size:10px;font-weight:900;cursor:pointer;">
                     Close [X]
                 </button>
@@ -12523,19 +12479,65 @@ window.renderMscTrackingModal = function(state) {
             <!-- Breadcrumb & Badge -->
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
                 <span style="font-size:10px;color:#64748b;font-weight:700;">
-                    Home / Track a shipment / <span style="color:#d97706;font-weight:900;">${trackingNumber}</span>
+                    Home / Track a shipment / <span style="color:#d97706;font-weight:900;">${trackingNumber || 'New Search'}</span>
                 </span>
                 <span id="mscModalStatusBadge" style="background:${isSavedRecord ? '#dcfce7' : (hasRealContainers ? '#fef3c7' : '#f1f5f9')};color:${isSavedRecord ? '#15803d' : (hasRealContainers ? '#b45309' : '#64748b')};border:1px solid ${isSavedRecord ? '#86efac' : (hasRealContainers ? '#fde68a' : '#cbd5e1')};padding:3px 10px;border-radius:999px;font-size:9.5px;font-weight:900;text-transform:uppercase;">
-                    ${isSavedRecord ? '✅ Saved Record' : (hasRealContainers ? `⚠️ Unsaved Preview (${countText})` : '⚪ Empty Window')}
+                    ${isSavedRecord ? '✅ Saved Record' : (hasRealContainers ? `⚠️ Unsaved Preview (${countText})` : '⚪ Ready for Search / Paste')}
                 </span>
             </div>
 
-            <!-- BL Title -->
+            <!-- Center Gray Box: Search & Open MSC Website -->
+            <div style="background:#e2e8f0;border:1px solid #cbd5e1;border-radius:10px;padding:16px 20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;box-shadow:inset 0 1px 2px rgba(0,0,0,0.04);">
+                <div style="font-size:10px;font-weight:900;color:#475569;text-transform:uppercase;letter-spacing:0.5px;">Search B/L or Container Number</div>
+                
+                <!-- Bada Search Box in Center -->
+                <div style="display:flex;align-items:center;gap:8px;width:100%;max-width:540px;">
+                    <div style="position:relative;flex:1;">
+                        <input id="mscModalSearch" type="text" value="${trackingNumber}" placeholder="Enter B/L or Container No. (e.g. MEDU1234567)..."
+                            style="width:100%;padding:10px 38px 10px 14px;background:#ffffff;color:#0f172a;border:2px solid #94a3b8;border-radius:8px;font-size:13.5px;font-weight:900;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;outline:none;text-transform:uppercase;box-sizing:border-box;box-shadow:0 1px 3px rgba(0,0,0,0.08);"
+                            onkeydown="if(event.key==='Enter'){window.openMscTrackingDetails(this.value);}">
+                        <span onclick="document.getElementById('mscModalSearch').value='';document.getElementById('mscModalSearch').focus();" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#94a3b8;cursor:pointer;font-weight:900;font-size:13px;" title="Clear">✕</span>
+                    </div>
+                    <button onclick="window.openMscTrackingDetails(document.getElementById('mscModalSearch').value)" 
+                        style="padding:10px 22px;background:#f59e0b;color:#0f172a;border:none;border-radius:8px;font-size:12px;font-weight:900;cursor:pointer;box-shadow:0 2px 4px rgba(245,158,11,0.35);text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap;">
+                        🔍 Search
+                    </button>
+                </div>
+
+                <!-- Open MSC Website Button in Center directly below Search Box -->
+                <a href="https://www.msc.com/en/track-a-shipment" target="_blank" 
+                    style="display:inline-flex;align-items:center;gap:6px;background:#0f172a;color:#fcd34d;padding:8px 22px;border-radius:6px;font-size:11.5px;font-weight:900;text-decoration:none;box-shadow:0 2px 4px rgba(0,0,0,0.25);transition:all 0.2s;"
+                    onmouseover="this.style.background='#1e293b'" onmouseout="this.style.background='#0f172a'">
+                    🌐 Open MSC Website &rarr;
+                </a>
+
+                ${chipsHtml}
+            </div>
+
+            <!-- Paste / Input Tool Area (Already Open by default) -->
+            <div id="mscInnerPasteArea" style="display:block;background:#ffffff;border:2px solid #2563eb;border-radius:8px;padding:12px 14px;box-shadow:0 4px 12px rgba(37,99,235,0.08);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:4px;">
+                    <span style="font-size:11.5px;font-weight:900;color:#1e3a8a;text-transform:uppercase;display:flex;align-items:center;gap:5px;">
+                        📋 Paste Containers / MSC Tracking Page Text:
+                    </span>
+                    <span style="font-size:9.5px;color:#64748b;font-weight:700;">Copy text from MSC site (Ctrl+A, Ctrl+C), paste here, click "Extract to Table"</span>
+                </div>
+                <textarea id="mscInnerPasteText" rows="4" placeholder="Paste MSC tracking page text or container numbers here (Ctrl+V)..." style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11.5px;box-sizing:border-box;resize:vertical;outline:none;background:#f8fafc;font-weight:600;"></textarea>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+                    <button onclick="document.getElementById('mscInnerPasteText').value=''" style="padding:5px 12px;background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;">Clear Box</button>
+                    <button onclick="window.mscModalParsePaste()" style="padding:6px 20px;background:#2563eb;color:#ffffff;border:none;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer;box-shadow:0 2px 4px rgba(37,99,235,0.3);text-transform:uppercase;">
+                        Extract to Table (Preview) &rarr;
+                    </button>
+                </div>
+            </div>
+
+            <!-- BL Title & Info Grid (if tracking info exists) -->
+            ${trackingNumber || hasRealContainers ? `
             <div style="border-bottom:2px solid #e2e8f0;padding-bottom:8px;display:flex;justify-content:space-between;align-items:flex-end;">
                 <div>
                     <div style="font-size:9px;font-weight:900;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Tracking Result for</div>
                     <h2 style="font-size:18px;font-weight:900;color:#0f172a;text-transform:uppercase;margin:2px 0 0 0;">
-                        BILL OF LADING: <span style="color:#d97706;letter-spacing:0.5px;">${trackingNumber}</span>
+                        BILL OF LADING: <span style="color:#d97706;letter-spacing:0.5px;">${trackingNumber || '-'}</span>
                     </h2>
                 </div>
                 <div style="font-size:11px;font-weight:900;color:#475569;background:#e2e8f0;padding:4px 10px;border-radius:6px;">
@@ -12543,23 +12545,9 @@ window.renderMscTrackingModal = function(state) {
                 </div>
             </div>
 
-            <!-- Info Grid -->
             <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(130px, 1fr));gap:8px;">
                 ${infoGrid}
-            </div>
-
-            <!-- Paste / Input Tool Area -->
-            <div id="mscInnerPasteArea" style="display:none;background:#ffffff;border:2px solid #2563eb;border-radius:8px;padding:12px;box-shadow:0 4px 12px rgba(37,99,235,0.08);">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                    <span style="font-size:11px;font-weight:900;color:#1e3a8a;text-transform:uppercase;">Paste MSC Tracking Page Text / Containers:</span>
-                    <span style="font-size:9.5px;color:#64748b;font-weight:700;">Extracts containers in preview mode. Click "Save Data" after pasting.</span>
-                </div>
-                <textarea id="mscInnerPasteText" rows="4" placeholder="Paste MSC page text or container numbers here (Ctrl+V)..." style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;box-sizing:border-box;resize:vertical;outline:none;background:#f8fafc;"></textarea>
-                <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
-                    <button onclick="document.getElementById('mscInnerPasteArea').style.display='none'" style="padding:5px 14px;background:#e2e8f0;color:#334155;border:none;border-radius:6px;font-size:10px;font-weight:900;cursor:pointer;">Cancel</button>
-                    <button onclick="window.mscModalParsePaste()" style="padding:5px 16px;background:#2563eb;color:#ffffff;border:none;border-radius:6px;font-size:10px;font-weight:900;cursor:pointer;box-shadow:0 1px 3px rgba(37,99,235,0.3);">Extract to Table (Preview)</button>
-                </div>
-            </div>
+            </div>` : ''}
 
             <!-- Containers Table Section -->
             <div>
@@ -12570,9 +12558,6 @@ window.renderMscTrackingModal = function(state) {
                     <div style="display:flex;gap:10px;align-items:center;">
                         <button onclick="window.mscModalSaveData()" style="font-size:10px;font-weight:900;color:#ffffff;background:#16a34a;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.1);">
                             💾 Save Data
-                        </button>
-                        <button onclick="window.mscModalPasteOpen()" style="font-size:9.5px;font-weight:900;color:#2563eb;background:none;border:none;cursor:pointer;text-decoration:underline;">
-                            + Paste Containers
                         </button>
                         <button onclick="window.mscModalDownloadExcel()" style="font-size:9.5px;font-weight:900;color:#0d9488;background:none;border:none;cursor:pointer;text-decoration:underline;">
                             Export to Excel (.xlsx)
@@ -12607,22 +12592,26 @@ window.renderMscTrackingModal = function(state) {
 
     mscModal.style.display = 'flex';
     window._mscModalState = state;
+    setTimeout(() => {
+        const searchInp = document.getElementById('mscModalSearch');
+        const pasteTa = document.getElementById('mscInnerPasteText');
+        if (!trackingNumber && searchInp) searchInp.focus();
+        else if (pasteTa) pasteTa.focus();
+    }, 100);
 };
 
 window.openMscTrackingDetails = function(trackingNumber, mode) {
     mode = mode || '0';
     trackingNumber = (trackingNumber || '').trim().toUpperCase();
-    if (!trackingNumber) {
-        alert('Please enter a Bill of Lading (B/L) or Container Number.');
-        return;
-    }
     
     // Only load data if EXPLICITLY saved by user with Save button
     let savedData = null;
-    try {
-        const stored = localStorage.getItem('msc_user_saved_' + trackingNumber);
-        if (stored) savedData = JSON.parse(stored);
-    } catch(e) {}
+    if (trackingNumber) {
+        try {
+            const stored = localStorage.getItem('msc_user_saved_' + trackingNumber);
+            if (stored) savedData = JSON.parse(stored);
+        } catch(e) {}
+    }
 
     const initialState = {
         trackingNumber: trackingNumber,
