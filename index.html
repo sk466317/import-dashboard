@@ -1257,6 +1257,7 @@ async function checkAndSendTelegramHandover(updatedContainers, smtpState) {
     newSent.forEach(c => sentSet.add(c));
     localStorage.setItem('telegram_sent_handovers', JSON.stringify(Array.from(sentSet)));
 }
+
 async function checkAndSendTelegramRailout(updatedContainerNumbers) {
     if (!rawSheets.website || rawSheets.website.length <= 1) return;
     if (!rawSheets.shipper || rawSheets.shipper.length <= 1) return;
@@ -1286,6 +1287,9 @@ async function checkAndSendTelegramRailout(updatedContainerNumbers) {
     const shipContIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 0;
     const shipBlIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 2;
     const shipConsIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) : 3;
+
+    const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
+    const smtpContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
 
     const countSizesForBl = (bl) => {
         const cleanBl = String(bl).trim().toUpperCase();
@@ -1388,12 +1392,11 @@ async function checkAndSendTelegramRailout(updatedContainerNumbers) {
         }
     });
 
-    // 3. For each shipperKey, construct the message showing the complete BL statuses
+    // 3. For each shipperKey, construct the message showing ONLY active BL statuses
     for (const shipperKey of Object.keys(shipperGroups)) {
         const [shipperName, isSsrStr] = shipperKey.split('||');
         const isSsr = (isSsrStr === 'true');
         const getLatestDateForBl = (blNo) => {
-            const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
             const sBlIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 9;
             const sTpIdx = smtpHeaders.findIndex(h => /TP.*SUBMITTING/i.test(String(h)) || /HANDOVER/i.test(String(h))) !== -1 ? smtpHeaders.findIndex(h => /TP.*SUBMITTING/i.test(String(h)) || /HANDOVER/i.test(String(h))) : 18;
 
@@ -1412,6 +1415,67 @@ async function checkAndSendTelegramRailout(updatedContainerNumbers) {
             return latestTime;
         };
 
+        const isBlActive = (blNo) => {
+            const cleanBl = String(blNo || '').trim().toUpperCase();
+            if (!cleanBl || cleanBl === '-') return false;
+
+            const conts = [];
+            rawSheets.shipper.slice(1).forEach(r => {
+                if (String(r[shipBlIdx] || '').trim().toUpperCase() === cleanBl) {
+                    const c = String(r[shipContIdx] || '').trim().toUpperCase();
+                    const rSsr = r[4] === 'SSR';
+                    if (c && rSsr === isSsr) conts.push(c);
+                }
+            });
+
+            if (conts.length === 0) return false;
+
+            // Active if at least ONE container is NOT arrived at destination (Pending or In Transit)
+            let hasPendingOrTransit = false;
+            for (const c of conts) {
+                const webRow = rawSheets.website.slice(1).find(w => 
+                    String(w[3] || '').trim().toUpperCase() === c
+                );
+                if (!webRow) {
+                    hasPendingOrTransit = true;
+                    break;
+                }
+                const railDateRaw = webRow[8];
+                const railDateStr = String(railDateRaw || '').trim();
+                const isRailed = railDateStr && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(railDateStr.toUpperCase());
+                if (!isRailed) {
+                    hasPendingOrTransit = true;
+                    break;
+                }
+                const remark = String(webRow[9] || '').trim();
+                if (!isDestinationArrivedRemark(remark)) {
+                    hasPendingOrTransit = true;
+                    break;
+                }
+            }
+            return hasPendingOrTransit;
+        };
+
+        const countRailedForBl = (blNo) => {
+            let count = 0;
+            rawSheets.shipper.slice(1).forEach(r => {
+                if (String(r[shipBlIdx] || '').trim().toUpperCase() === blNo) {
+                    const c = String(r[shipContIdx] || '').trim().toUpperCase();
+                    const rSsr = r[4] === 'SSR';
+                    if (c && rSsr === isSsr) {
+                        const webRow = rawSheets.website.slice(1).find(w => String(w[3] || '').trim().toUpperCase() === c);
+                        if (webRow) {
+                            const rDate = String(webRow[8] || '').trim();
+                            if (rDate && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(rDate.toUpperCase())) {
+                                count++;
+                            }
+                        }
+                    }
+                }
+            });
+            return count;
+        };
+
         const allBlsOfShipper = new Set();
         rawSheets.shipper.slice(1).forEach(r => {
             const name = String(r[shipConsIdx] || '').trim().toUpperCase();
@@ -1424,12 +1488,19 @@ async function checkAndSendTelegramRailout(updatedContainerNumbers) {
             }
         });
 
-        const activeBlList = Array.from(allBlsOfShipper);
+        // Filter ONLY Active BLs
+        const activeBlList = Array.from(allBlsOfShipper).filter(bl => isBlActive(bl));
         if (activeBlList.length === 0) {
             continue;
         }
 
+        // Sort: B/Ls with railed containers first, then by latest handover / TP submitting date
         activeBlList.sort((a, b) => {
+            const railedA = countRailedForBl(a);
+            const railedB = countRailedForBl(b);
+            if (railedA !== railedB) {
+                return railedB - railedA;
+            }
             const timeA = getLatestDateForBl(a);
             const timeB = getLatestDateForBl(b);
             return timeB - timeA;
@@ -1442,11 +1513,12 @@ async function checkAndSendTelegramRailout(updatedContainerNumbers) {
             message = `Dear Sir,\nPlease note below containers railout:-\n${shipperName}\n`;
         }
 
+        const ICON_TRAIN = '\u{1F686}'; // 🚆
+        const ICON_CHECK = '\u{2705}';   // ✅
+        const ICON_ALERT = '\u{26A0}\u{FE0F}'; // ⚠️
+
         activeBlList.forEach(blNo => {
             const sizeDesc = countSizesForBl(blNo);
-            message += `-----------\n`;
-            message += `BL: ${blNo} | ${sizeDesc}\n`;
-            message += `-----------\n`;
 
             // Get all containers under this BL
             const allConts = [];
@@ -1458,9 +1530,10 @@ async function checkAndSendTelegramRailout(updatedContainerNumbers) {
                 }
             });
 
-            // Group railed containers by Rake/Date, and collect pending ones
+            // Group railed containers by Rake/Date, and separate pending vs not handover
             const railedGroups = {};
             const pendingList = [];
+            const notHandoverList = [];
 
             allConts.forEach(c => {
                 const webRow = rawSheets.website.slice(1).find(w => 
@@ -1489,25 +1562,50 @@ async function checkAndSendTelegramRailout(updatedContainerNumbers) {
                     }
                     railedGroups[moveKey].push(c);
                 } else {
-                    pendingList.push(c);
+                    const inSmtp = rawSheets.smtp.slice(1).some(s => 
+                        String(s[smtpContIdx] || '').trim().toUpperCase() === c
+                    );
+                    if (inSmtp) {
+                        pendingList.push(c);
+                    } else {
+                        notHandoverList.push(c);
+                    }
                 }
             });
 
-            // Append Railed groups to message
-            for (const moveKey of Object.keys(railedGroups)) {
-                const [rakeNo, cleanDate] = moveKey.split('||');
-                message += `ðŸš†${rakeNo} | ${cleanDate}\n`;
-                railedGroups[moveKey].forEach(c => {
-                    message += `âœ…${c}\n`;
-                });
-            }
+            if (Object.keys(railedGroups).length === 0 && pendingList.length === 0 && notHandoverList.length > 0) {
+                message += `-----------\n`;
+                message += `BL: ${blNo} | ${sizeDesc}\n`;
+                message += `NOT HANDOVER\n`;
+            } else {
+                message += `-----------\n`;
+                message += `BL: ${blNo} | ${sizeDesc}\n`;
+                message += `-----------\n`;
 
-            // Append Pending list to message
-            if (pendingList.length > 0) {
-                message += `ðŸš†Not Railout (${pendingList.length})\n`;
-                pendingList.forEach(c => {
-                    message += `âš ï¸${c}\n`;
-                });
+                // Append Railed groups to message
+                for (const moveKey of Object.keys(railedGroups)) {
+                    const [rakeNo, cleanDate] = moveKey.split('||');
+                    message += `${ICON_TRAIN}${rakeNo} | ${cleanDate}\n`;
+                    railedGroups[moveKey].forEach(c => {
+                        message += `${ICON_CHECK}${c}\n`;
+                    });
+                }
+
+                // Append Not Railout list to message
+                if (pendingList.length > 0) {
+                    message += `${ICON_TRAIN}Not Railout (${pendingList.length})\n`;
+                    pendingList.forEach(c => {
+                        message += `${ICON_ALERT}${c}\n`;
+                    });
+                }
+
+                // Append Not Handover list to message
+                if (notHandoverList.length > 0) {
+                    message += `${ICON_TRAIN}Not Handover (${notHandoverList.length})\n`;
+                    notHandoverList.forEach(c => {
+                        message += `${ICON_ALERT}${c}\n`;
+                    });
+                }
             }
         });
 
@@ -1919,6 +2017,9 @@ async function sendManualTelegramForShipper(shipperName) {
     const shipBlIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 2;
     const shipConsIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) : 3;
 
+    const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
+    const smtpContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
+
     const countSizesForBl = (bl) => {
         const cleanBl = String(bl).trim().toUpperCase();
         let size20 = 0;
@@ -1980,11 +2081,12 @@ async function sendManualTelegramForShipper(shipperName) {
             message = `Dear Sir,\nPlease note below containers railout:-\n${shipperName.toUpperCase()}\n`;
         }
 
+        const ICON_TRAIN = '\u{1F686}'; // 🚆
+        const ICON_CHECK = '\u{2705}';   // ✅
+        const ICON_ALERT = '\u{26A0}\u{FE0F}'; // ⚠️
+
         bls.forEach(blNo => {
             const sizeDesc = countSizesForBl(blNo);
-            message += `-----------\n`;
-            message += `BL: ${blNo} | ${sizeDesc}\n`;
-            message += `-----------\n`;
 
             // Get all containers under this BL
             const allConts = [];
@@ -1996,9 +2098,10 @@ async function sendManualTelegramForShipper(shipperName) {
                 }
             });
 
-            // Group railed containers by Rake/Date, and collect pending ones
+            // Group railed containers by Rake/Date, and separate pending vs not handover
             const railedGroups = {};
             const pendingList = [];
+            const notHandoverList = [];
 
             allConts.forEach(c => {
                 const webRow = rawSheets.website.slice(1).find(w => 
@@ -2027,25 +2130,50 @@ async function sendManualTelegramForShipper(shipperName) {
                     }
                     railedGroups[moveKey].push(c);
                 } else {
-                    pendingList.push(c);
+                    const inSmtp = rawSheets.smtp.slice(1).some(s => 
+                        String(s[smtpContIdx] || '').trim().toUpperCase() === c
+                    );
+                    if (inSmtp) {
+                        pendingList.push(c);
+                    } else {
+                        notHandoverList.push(c);
+                    }
                 }
             });
 
-            // Append Railed groups to message
-            for (const moveKey of Object.keys(railedGroups)) {
-                const [rakeNo, cleanDate] = moveKey.split('||');
-                message += `ðŸš†${rakeNo} | ${cleanDate}\n`;
-                railedGroups[moveKey].forEach(c => {
-                    message += `âœ…${c}\n`;
-                });
-            }
+            if (Object.keys(railedGroups).length === 0 && pendingList.length === 0 && notHandoverList.length > 0) {
+                message += `-----------\n`;
+                message += `BL: ${blNo} | ${sizeDesc}\n`;
+                message += `NOT HANDOVER\n`;
+            } else {
+                message += `-----------\n`;
+                message += `BL: ${blNo} | ${sizeDesc}\n`;
+                message += `-----------\n`;
 
-            // Append Pending list to message
-            if (pendingList.length > 0) {
-                message += `ðŸš†Not Railout (${pendingList.length})\n`;
-                pendingList.forEach(c => {
-                    message += `âš ï¸${c}\n`;
-                });
+                // Append Railed groups to message
+                for (const moveKey of Object.keys(railedGroups)) {
+                    const [rakeNo, cleanDate] = moveKey.split('||');
+                    message += `${ICON_TRAIN}${rakeNo} | ${cleanDate}\n`;
+                    railedGroups[moveKey].forEach(c => {
+                        message += `${ICON_CHECK}${c}\n`;
+                    });
+                }
+
+                // Append Not Railout list to message
+                if (pendingList.length > 0) {
+                    message += `${ICON_TRAIN}Not Railout (${pendingList.length})\n`;
+                    pendingList.forEach(c => {
+                        message += `${ICON_ALERT}${c}\n`;
+                    });
+                }
+
+                // Append Not Handover list to message
+                if (notHandoverList.length > 0) {
+                    message += `${ICON_TRAIN}Not Handover (${notHandoverList.length})\n`;
+                    notHandoverList.forEach(c => {
+                        message += `${ICON_ALERT}${c}\n`;
+                    });
+                }
             }
         });
 
@@ -3560,25 +3688,28 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
             // Process each train group
             Object.values(trainGroups).forEach(train => {
                 const remark = train.remark.toUpperCase();
+                const ICON_TRAIN = '\u{1F686}'; // 🚆
+                const ICON_CHECK = '\u{2705}';   // ✅
+                const ICON_ETA = '\u{1F539}';     // 🔹
                 
-                message += `ðŸš†${train.train} | ${train.date}\n`;
+                message += `${ICON_TRAIN}${train.train} | ${train.date}\n`;
                 
                 if (remark.includes('ARRIVED')) {
                     const arrivedMatch = remark.match(/ARRIVED ON\s+(\d{2}-\d{2}-\d{4})/);
                     const arrivedDate = arrivedMatch ? arrivedMatch[1] : '';
-                    message += `âœ…*Arrived* : ${arrivedDate}\n`;
+                    message += `${ICON_CHECK}*Arrived* : ${arrivedDate}\n`;
                     
                     train.containers.forEach(cont => {
-                        message += `âœ…${cont}\n`;
+                        message += `${ICON_CHECK}${cont}\n`;
                         containerCount++;
                     });
                 } else if (remark.includes('ETA')) {
                     const etaMatch = remark.match(/ETA\s+(\d{2}-\d{2}-\d{4})/);
                     const etaDate = etaMatch ? etaMatch[1] : '';
-                    message += `ðŸ”°*ETA* : ${etaDate}\n`;
+                    message += `${ICON_ETA}*ETA* : ${etaDate}\n`;
                     
                     train.containers.forEach(cont => {
-                        message += `ðŸ”°${cont}\n`;
+                        message += `${ICON_ETA}${cont}\n`;
                         containerCount++;
                     });
                 }
@@ -3603,20 +3734,23 @@ document.getElementById('sendRailedWhatsappBtn').addEventListener('click', () =>
                 }
             });
             
-            // Add normal pending with âš ï¸ emoji
+            const ICON_ALERT = '\u{26A0}\u{FE0F}';
+            const ICON_SCAN = '\u{1F534}';
+
+            // Add normal pending with warning emoji
             if (normalPending.length > 0) {
-                message += `âš ï¸*Pending*\n`;
+                message += `${ICON_ALERT}*Pending*\n`;
                 normalPending.forEach(cont => {
-                    message += `âš ï¸${cont}\n`;
+                    message += `${ICON_ALERT}${cont}\n`;
                     containerCount++;
                 });
             }
             
-            // Add scanning pending with ðŸ”´ emoji
+            // Add scanning pending with scanning emoji
             if (scanningPending.length > 0) {
-                message += `ðŸ”´*Under Scanning*\n`;
+                message += `${ICON_SCAN}*Under Scanning*\n`;
                 scanningPending.forEach(cont => {
-                    message += `ðŸ”´${cont}\n`;
+                    message += `${ICON_SCAN}${cont}\n`;
                     containerCount++;
                 });
             }
