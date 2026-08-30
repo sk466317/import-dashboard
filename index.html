@@ -2003,77 +2003,109 @@ async function sendManualTelegramForShipper(shipperName) {
         return;
     }
 
-    if (!rawSheets.website || rawSheets.website.length <= 1) {
-        alert("Website sheet is empty!");
-        return;
-    }
-    if (!rawSheets.shipper || rawSheets.shipper.length <= 1) {
-        alert("Shipper sheet is empty!");
-        return;
-    }
+    // 1. Get selected B/L groups from current report groups on screen
+    let selectedGroups = (typeof currentShipperAllGroups !== 'undefined' && Array.isArray(currentShipperAllGroups))
+        ? currentShipperAllGroups.filter(g => selectedKeys.includes(normalizeBLKey(g.blNo)))
+        : [];
 
-    const shipHeaders = rawSheets.shipper[0] || [];
+    const shipHeaders = (rawSheets.shipper && rawSheets.shipper[0]) || [];
     const shipContIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 0;
     const shipBlIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 2;
     const shipConsIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) : 3;
 
     const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
     const smtpContIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 2;
+    const smtpBlIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 9;
+    const smtpConsIdx = smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 ? smtpHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) : 24;
 
-    const countSizesForBl = (bl) => {
-        const cleanBl = String(bl).trim().toUpperCase();
+    // Fallback: If selectedGroups is empty, gather from rawSheets.shipper or rawSheets.smtp
+    if (selectedGroups.length === 0) {
+        const foundBls = new Set();
+        if (rawSheets.shipper && rawSheets.shipper.length > 1) {
+            rawSheets.shipper.slice(1).forEach(r => {
+                const sName = String(r[shipConsIdx] || '').trim().toUpperCase();
+                if (sName === shipperName.toUpperCase()) {
+                    const bl = String(r[shipBlIdx] || '').trim().toUpperCase();
+                    if (bl && selectedKeys.includes(normalizeBLKey(bl))) {
+                        foundBls.add(bl);
+                    }
+                }
+            });
+        }
+        if (rawSheets.smtp && rawSheets.smtp.length > 1) {
+            rawSheets.smtp.slice(1).forEach(r => {
+                const sName = String(r[smtpConsIdx] || '').trim().toUpperCase();
+                if (sName === shipperName.toUpperCase()) {
+                    const bl = String(r[smtpBlIdx] || '').trim().toUpperCase();
+                    if (bl && selectedKeys.includes(normalizeBLKey(bl))) {
+                        foundBls.add(bl);
+                    }
+                }
+            });
+        }
+        selectedGroups = Array.from(foundBls).map(blNo => ({ blNo }));
+    }
+
+    if (selectedGroups.length === 0) {
+        alert(`None of the selected B/L checkboxes belong to customer: ${shipperName}`);
+        return;
+    }
+
+    const countSizesForBl = (blNo, groupObj) => {
+        if (groupObj && groupObj.stats && groupObj.stats.total > 0) {
+            const { total, s20, s40 } = groupObj.stats;
+            if (s20 > 0 && s40 > 0) return `${total}x20/40`;
+            if (s40 > 0) return `${total}x40`;
+            return `${total}x20`;
+        }
+        const cleanBl = String(blNo).trim().toUpperCase();
         let size20 = 0;
         let size40 = 0;
-        rawSheets.shipper.slice(1).forEach(r => {
-            if (String(r[shipBlIdx] || '').trim().toUpperCase() === cleanBl) {
-                const sz = String(r[shipContIdx + 1] || '').trim(); // Size
-                if (sz.includes('40')) {
-                    size40++;
-                } else {
-                    size20++;
+        if (rawSheets.shipper && rawSheets.shipper.length > 1) {
+            rawSheets.shipper.slice(1).forEach(r => {
+                if (String(r[shipBlIdx] || '').trim().toUpperCase() === cleanBl) {
+                    const sz = String(r[shipContIdx + 1] || '').trim();
+                    if (sz.includes('40')) size40++;
+                    else size20++;
                 }
-            }
-        });
+            });
+        }
+        if (size20 === 0 && size40 === 0 && rawSheets.smtp && rawSheets.smtp.length > 1) {
+            const sizeColIdx = smtpHeaders.findIndex(h => /SIZE/i.test(String(h))) !== -1 ? smtpHeaders.findIndex(h => /SIZE/i.test(String(h))) : 3;
+            rawSheets.smtp.slice(1).forEach(r => {
+                if (String(r[smtpBlIdx] || '').trim().toUpperCase() === cleanBl) {
+                    const sz = String(r[sizeColIdx] || '').trim();
+                    if (sz.includes('40')) size40++;
+                    else size20++;
+                }
+            });
+        }
         const total = size20 + size40;
         if (size20 > 0 && size40 > 0) return `${total}x20/40`;
         if (size40 > 0) return `${total}x40`;
         return `${total}x20`;
     };
 
-    // Filter B/Ls for this shipper that are selected in selectedReportBLs
-    const blList = [];
-    rawSheets.shipper.slice(1).forEach(r => {
-        const sName = String(r[shipConsIdx] || '').trim().toUpperCase();
-        if (sName === shipperName.toUpperCase()) {
-            const bl = String(r[shipBlIdx] || '').trim().toUpperCase();
-            if (bl && selectedKeys.includes(normalizeBLKey(bl)) && !blList.includes(bl)) {
-                blList.push(bl);
+    // Separate selected groups into SSR and HKR/Regular
+    const ssrGroups = [];
+    const regularGroups = [];
+
+    selectedGroups.forEach(g => {
+        const blNo = g.blNo;
+        let isSsr = false;
+        if (rawSheets.shipper && rawSheets.shipper.length > 1) {
+            const shipRow = rawSheets.shipper.slice(1).find(s => 
+                String(s[shipBlIdx] || '').trim().toUpperCase() === blNo.toUpperCase()
+            );
+            if (shipRow && shipRow[4] === 'SSR') {
+                isSsr = true;
             }
         }
+        if (isSsr) ssrGroups.push(g);
+        else regularGroups.push(g);
     });
 
-    if (blList.length === 0) {
-        alert(`None of the selected B/L checkboxes belong to customer: ${shipperName}`);
-        return;
-    }
-
-    // Separate B/Ls into SSR and HKR groups
-    const ssrBls = [];
-    const hkrBls = [];
-
-    blList.forEach(blNo => {
-        const shipRow = rawSheets.shipper.slice(1).find(s => 
-            String(s[shipBlIdx] || '').trim().toUpperCase() === blNo
-        );
-        const isSsr = shipRow && shipRow[4] === 'SSR';
-        if (isSsr) {
-            ssrBls.push(blNo);
-        } else {
-            hkrBls.push(blNo);
-        }
-    });
-
-    const sendGroupMessage = async (bls, isSsr) => {
+    const sendGroupMessage = async (groups, isSsr) => {
         let message = "";
         if (isSsr) {
             message = `Dear Sir,\nPlease note below railout on SSR Request :-\n${shipperName.toUpperCase()}\n`;
@@ -2085,18 +2117,33 @@ async function sendManualTelegramForShipper(shipperName) {
         const ICON_CHECK = '\u{2705}';   // ✅
         const ICON_ALERT = '\u{26A0}\u{FE0F}'; // ⚠️
 
-        bls.forEach(blNo => {
-            const sizeDesc = countSizesForBl(blNo);
+        groups.forEach(groupObj => {
+            const blNo = groupObj.blNo;
+            const sizeDesc = countSizesForBl(blNo, groupObj);
 
-            // Get all containers under this BL
+            // Get all containers under this BL from shipper sheet or smtp sheet
             const allConts = [];
-            rawSheets.shipper.slice(1).forEach(r => {
-                if (String(r[shipBlIdx] || '').trim().toUpperCase() === blNo) {
-                    const c = String(r[shipContIdx] || '').trim().toUpperCase();
-                    const rSsr = r[4] === 'SSR';
-                    if (c && rSsr === isSsr) allConts.push(c);
-                }
-            });
+            if (rawSheets.shipper && rawSheets.shipper.length > 1) {
+                rawSheets.shipper.slice(1).forEach(r => {
+                    if (String(r[shipBlIdx] || '').trim().toUpperCase() === blNo.toUpperCase()) {
+                        const c = String(r[shipContIdx] || '').trim().toUpperCase();
+                        const rSsr = r[4] === 'SSR';
+                        if (c && rSsr === isSsr && !allConts.includes(c)) {
+                            allConts.push(c);
+                        }
+                    }
+                });
+            }
+            if (allConts.length === 0 && rawSheets.smtp && rawSheets.smtp.length > 1) {
+                rawSheets.smtp.slice(1).forEach(r => {
+                    if (String(r[smtpBlIdx] || '').trim().toUpperCase() === blNo.toUpperCase()) {
+                        const c = String(r[smtpContIdx] || '').trim().toUpperCase();
+                        if (c && !allConts.includes(c)) {
+                            allConts.push(c);
+                        }
+                    }
+                });
+            }
 
             // Group railed containers by Rake/Date, and separate pending vs not handover
             const railedGroups = {};
@@ -2104,9 +2151,9 @@ async function sendManualTelegramForShipper(shipperName) {
             const notHandoverList = [];
 
             allConts.forEach(c => {
-                const webRow = rawSheets.website.slice(1).find(w => 
-                    String(w[3] || '').trim().toUpperCase() === c
-                );
+                const webRow = (rawSheets.website && rawSheets.website.length > 1)
+                    ? rawSheets.website.slice(1).find(w => String(w[3] || '').trim().toUpperCase() === c)
+                    : null;
                 
                 let isRailed = false;
                 let rakeNo = '';
@@ -2130,7 +2177,7 @@ async function sendManualTelegramForShipper(shipperName) {
                     }
                     railedGroups[moveKey].push(c);
                 } else {
-                    const inSmtp = rawSheets.smtp.slice(1).some(s => 
+                    const inSmtp = (rawSheets.smtp && rawSheets.smtp.length > 1) && rawSheets.smtp.slice(1).some(s => 
                         String(s[smtpContIdx] || '').trim().toUpperCase() === c
                     );
                     if (inSmtp) {
@@ -2181,11 +2228,11 @@ async function sendManualTelegramForShipper(shipperName) {
         await sendCustomTelegramMessage(message);
     };
 
-    if (ssrBls.length > 0) {
-        await sendGroupMessage(ssrBls, true);
+    if (ssrGroups.length > 0) {
+        await sendGroupMessage(ssrGroups, true);
     }
-    if (hkrBls.length > 0) {
-        await sendGroupMessage(hkrBls, false);
+    if (regularGroups.length > 0) {
+        await sendGroupMessage(regularGroups, false);
     }
 
     alert(`Telegram Message(s) Sent successfully for ${shipperName}!`);
@@ -6206,7 +6253,7 @@ async function loadDataFromPublicRest(force = false) {
         rawSheets = JSON.parse(fullStr);
         lastUpdated = newUpdated || lastUpdated;
         normalizeRawSheets();
-        await mergeFutureFibresEmails();
+        // await mergeFutureFibresEmails();
         processCloudData();
         cloudIndicator.className = "w-2 h-2 rounded-full bg-amber-500";
         cloudLabel.innerText = "Online (Public Read)";
@@ -6316,7 +6363,7 @@ async function loadData(force = false) {
                     rawSheets = JSON.parse(fullStr);
                     lastUpdated = newUpdated;
                     normalizeRawSheets();
-                    await mergeFutureFibresEmails();
+                    // await mergeFutureFibresEmails();
                     processCloudData();
                 }
                 cloudLabel.innerText = "Online";
@@ -6343,33 +6390,7 @@ function setupCloudListener() {
             const data = snap.data();
             if (!lastUpdated || data.updatedAt > lastUpdated) {
                 lastUpdated = data.updatedAt;
-                loadData(true);  // à¤¡à¥‡à¤Ÿà¤¾ à¤‘à¤Ÿà¥‹ à¤°à¤¿à¤«à¥à¤°à¥‡à¤¶ à¤¹à¥‹ à¤œà¤¾à¤à¤—à¤¾
-            }
-        }
-    });
-
-    // Real-time listener for Future Fibres email updates
-    const ffEmailRef = doc(db, 'artifacts', appId, 'public', 'data', 'ff_emails', 'mapping');
-    onSnapshot(ffEmailRef, (snap) => {
-        if (snap.exists() && rawSheets && rawSheets.shipper && rawSheets.shipper.length > 1) {
-            try {
-                const emailMap = JSON.parse(snap.data().emails || '{}');
-                const headers = rawSheets.shipper[0] || [];
-                const contIdx = headers.findIndex(h => /CONT/i.test(String(h))) !== -1
-                    ? headers.findIndex(h => /CONT/i.test(String(h)))
-                    : 0;
-                rawSheets.shipper.slice(1).forEach(row => {
-                    const contNo = String(row[contIdx] || '').trim().toUpperCase();
-                    if (contNo && emailMap[contNo]) {
-                        row[5] = emailMap[contNo];
-                    }
-                });
-                // Refresh view if shipper tab is open
-                if (currentSheetInView === 'shipper') {
-                    window.viewSheetData('shipper');
-                }
-            } catch (e) {
-                console.error("FF email snapshot merge error:", e);
+                loadData(true);
             }
         }
     });
@@ -6961,10 +6982,7 @@ window.deleteHkrRow = async (index) => {
             }
 
             for (let colIndex = 0; colIndex < maxCols; colIndex++) {
-                if (sheetName === 'smtp') {
-                    const allowed = [1,2,3,5,9,13,18,22,23,24,26];
-                    if (!allowed.includes(colIndex)) continue;
-                }
+                /* show all columns */
                 let content = row[colIndex] ?? '';
                 if (isHeader && sheetName === 'shipper' && colIndex === 4 && !content) {
                     content = 'TAG';
