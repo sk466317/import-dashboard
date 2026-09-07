@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -740,6 +741,11 @@ table {
         class="topbar-action bg-purple-600 hover:bg-purple-700 text-white">
     <i data-lucide="eye" class="w-3.5 h-3.5"></i>
     FORECAST & PENDENCY
+</button>
+<button id="tagReportBtn" 
+        class="topbar-action bg-emerald-700 hover:bg-emerald-800 text-white">
+    <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+    REPORT
 </button>
             <button id="runningTrainsBtn" class="topbar-action bg-amber-500 hover:bg-amber-600 text-white">
     <i data-lucide="train" class="w-3.5 h-3.5"></i>
@@ -3034,7 +3040,7 @@ document.getElementById('deleteHtplUid103Btn').addEventListener('click', () => {
         const box = document.createElement('div');
         box.innerHTML = `
             <div class="fixed top-10 left-1/2 -translate-x-1/2 bg-amber-600 text-white px-8 py-4 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[100000] animate-bounce">
-                âš ï¸ Deleted All Website Data!<br>
+                âš ï¸ Deleted All Website Data!<br>
                 You Can Also Verify on HTPL site.
             </div>`;
         document.body.appendChild(box);
@@ -3314,7 +3320,7 @@ function generateLotPlainTextTable(currentShipper, selectedGroup) {
             } else {
                 pendingCount++;
                 if (sizeNum === '40') pending40++; else pending20++;
-                const rowText = `âš ï¸ ${contNo} | ${sizeNum} | Pending | SMTP No : ${smtpNo} | Disch_Vsl_Name : ${vessel} / Dated : ${tpDate} / ${line}`;
+                const rowText = `âš ï¸ ${contNo} | ${sizeNum} | Pending | SMTP No : ${smtpNo} | Disch_Vsl_Name : ${vessel} / Dated : ${tpDate} / ${line}`;
                 pendingRows.push(rowText);
                 htmlPendingRows.push(`<b>${rowText}</b>`);
             }
@@ -3334,8 +3340,8 @@ function generateLotPlainTextTable(currentShipper, selectedGroup) {
         pendingSummary = "0";
     }
 
-    const headerText = `BL_No.: ${selectedGroup.blNo} | ${totalCount} containers | âœ”ï¸Railout ${railedCount} | âš ï¸Pending ${pendingSummary}`;
-    const htmlHeader = `ðŸ“’ BL_No.: ${selectedGroup.blNo} | ${totalCount} containers | âœ”ï¸Railout ${railedCount} | âš ï¸<span style="color:#ff0000; font-weight:bold;">Pending ${pendingSummary}</span>`;
+    const headerText = `BL_No.: ${selectedGroup.blNo} | ${totalCount} containers | âœ”ï¸Railout ${railedCount} | âš ï¸Pending ${pendingSummary}`;
+    const htmlHeader = `ðŸ“’ BL_No.: ${selectedGroup.blNo} | ${totalCount} containers | âœ”ï¸Railout ${railedCount} | âš ï¸<span style="color:#ff0000; font-weight:bold;">Pending ${pendingSummary}</span>`;
 
     const tableText = pendingRows.length > 0 ? pendingRows.join('\n') + '\n\n' : 'No pending containers.\n\n';
     const htmlText = htmlPendingRows.length > 0 ? htmlPendingRows.join('<br>') + '<br><br>' : 'No pending containers.<br><br>';
@@ -6708,7 +6714,7 @@ document.getElementById('updateCustomRemarksBtn').addEventListener('click', () =
         const box = document.createElement('div');
         box.innerHTML = `<div class="fixed top-10 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold uppercase text-[11px] z-[10000] animate-bounce text-center border-2 border-white">
             âœ“ Remarks Updated Locally (${updateCount} containers)<br>
-            <span class="text-yellow-300 font-black text-[12px] mt-1 block">âš ï¸ Don't Forget to Save Data!</span>
+            <span class="text-yellow-300 font-black text-[12px] mt-1 block">âš ï¸ Don't Forget to Save Data!</span>
             Click on "Save Changes" Button Below.
         </div>`;
         document.body.appendChild(box);
@@ -11245,7 +11251,7 @@ document.getElementById('manualBlInput').addEventListener('input', (e) => {
         refreshPreviewUI();
     } else {
         status.className = "mt-1 text-[9px] font-bold uppercase text-amber-500";
-        status.innerText = "âš ï¸ No pending containers found in SMTP. Add manually below.";
+        status.innerText = "âš ï¸ No pending containers found in SMTP. Add manually below.";
     }
 });
 
@@ -13209,6 +13215,605 @@ window.mscModalCopyReport = function() {
     }).catch(() => alert('Report copied to clipboard!'));
 };
 
+
+// ==========================================================================
+// TAG WISE REPORT & EXCEL EXPORT
+// ==========================================================================
+let currentTagReportData = null;
+
+function getTagTatDays(tpDateStr, railingDateStr) {
+    if (!tpDateStr || !railingDateStr) return '-';
+    const rUpper = String(railingDateStr).trim().toUpperCase();
+    if (!rUpper || rUpper === 'PENDING' || rUpper === '-' || rUpper === 'N/A') return '-';
+
+    const d1Clean = String(tpDateStr).trim().replace(/\./g, '-');
+    const d2Clean = String(railingDateStr).trim().replace(/\./g, '-');
+
+    const p1 = d1Clean.split('-');
+    const p2 = d2Clean.split('-');
+
+    if (p1.length !== 3 || p2.length !== 3) return '-';
+
+    const d1 = new Date(parseInt(p1[2], 10), parseInt(p1[1], 10) - 1, parseInt(p1[0], 10));
+    const d2 = new Date(parseInt(p2[2], 10), parseInt(p2[1], 10) - 1, parseInt(p2[0], 10));
+
+    if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return '-';
+
+    const diffTime = d2.getTime() - d1.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) return '-';
+    if (diffDays === 1) return '1 Day';
+    return `${diffDays} Days`;
+}
+
+function openTagReportModal() {
+    const modal = document.getElementById('tagReportModal');
+    if (!modal) return;
+
+    const tagSelect = document.getElementById('tagReportSelect');
+    if (!tagSelect) return;
+
+    tagSelect.innerHTML = '<option value="">-- Select Tag --</option>';
+
+    const rs = window.rawSheets || (typeof rawSheets !== 'undefined' ? rawSheets : {});
+    const shipperRows = Array.isArray(rs.shipper) ? rs.shipper : [];
+    if (shipperRows.length <= 1) {
+        alert("Shipper sheet data is empty. Please upload or update Shipper data first.");
+        return;
+    }
+
+    const shipHeaders = shipperRows[0] || [];
+    const shipTagIdx = shipHeaders.findIndex(h => /TAG/i.test(String(h || '').trim())) !== -1 
+        ? shipHeaders.findIndex(h => /TAG/i.test(String(h || '').trim())) 
+        : 4;
+
+    const uniqueTags = new Set();
+    shipperRows.slice(1).forEach(row => {
+        const tag = String(row[shipTagIdx] || '').trim();
+        if (tag && tag !== '-' && tag.toUpperCase() !== 'N/A') {
+            uniqueTags.add(tag);
+        }
+    });
+
+    if (uniqueTags.size === 0) {
+        const opt = document.createElement('option');
+        opt.value = "";
+        opt.textContent = "-- No Tags Found in Shipper Sheet --";
+        tagSelect.appendChild(opt);
+    } else {
+        Array.from(uniqueTags).sort().forEach(tag => {
+            const opt = document.createElement('option');
+            opt.value = tag;
+            opt.textContent = tag;
+            tagSelect.appendChild(opt);
+        });
+
+        const todayTag = Array.from(uniqueTags).find(t => t.toUpperCase() === 'TODAY');
+        if (todayTag) {
+            tagSelect.value = todayTag;
+        } else if (uniqueTags.size > 0) {
+            tagSelect.selectedIndex = 1;
+        }
+    }
+
+    modal.classList.remove('hidden');
+    if (window.lucide) window.lucide.createIcons();
+
+    if (tagSelect.value) {
+        generateTagReport(tagSelect.value);
+    } else {
+        document.getElementById('tagReportPlaceholder').classList.remove('hidden');
+        document.getElementById('tagReportView').classList.add('hidden');
+    }
+}
+
+function generateTagReport(selectedTag) {
+    if (!selectedTag) {
+        alert("Please select a Tag first.");
+        return;
+    }
+
+    const rs = window.rawSheets || (typeof rawSheets !== 'undefined' ? rawSheets : {});
+    const shipperRows = Array.isArray(rs.shipper) ? rs.shipper : [];
+    const smtpRows = Array.isArray(rs.smtp) ? rs.smtp : [];
+    const websiteRows = Array.isArray(rs.website) ? rs.website : [];
+
+    const shipHeaders = shipperRows[0] || [];
+    const smtpHeaders = smtpRows[0] || [];
+    const webHeaders = websiteRows[0] || [];
+
+    const shipContIdx = shipHeaders.findIndex(h => /^CONT/i.test(String(h || '').trim())) !== -1 ? shipHeaders.findIndex(h => /^CONT/i.test(String(h || '').trim())) : 0;
+    const shipSizeIdx = shipHeaders.findIndex(h => /^SIZE/i.test(String(h || '').trim())) !== -1 ? shipHeaders.findIndex(h => /^SIZE/i.test(String(h || '').trim())) : 1;
+    const shipBlIdx = shipHeaders.findIndex(h => /^BL/i.test(String(h || '').trim())) !== -1 ? shipHeaders.findIndex(h => /^BL/i.test(String(h || '').trim())) : 2;
+    const shipConsIdx = shipHeaders.findIndex(h => /CONSIGNEE|SHIPPER/i.test(String(h || '').trim())) !== -1 ? shipHeaders.findIndex(h => /CONSIGNEE|SHIPPER/i.test(String(h || '').trim())) : 3;
+    const shipTagIdx = shipHeaders.findIndex(h => /TAG/i.test(String(h || '').trim())) !== -1 ? shipHeaders.findIndex(h => /TAG/i.test(String(h || '').trim())) : 4;
+
+    const sContIdx = smtpHeaders.findIndex(h => /^CONT/i.test(String(h || '').trim())) !== -1 ? smtpHeaders.findIndex(h => /^CONT/i.test(String(h || '').trim())) : 2;
+    const sBlIdx = smtpHeaders.findIndex(h => /^BL/i.test(String(h || '').trim())) !== -1 ? smtpHeaders.findIndex(h => /^BL/i.test(String(h || '').trim())) : 9;
+    const sSizeIdx = smtpHeaders.findIndex(h => /^SIZE/i.test(String(h || '').trim())) !== -1 ? smtpHeaders.findIndex(h => /^SIZE/i.test(String(h || '').trim())) : 2;
+    
+    const sTpIdx = smtpHeaders.findIndex(h => /TP.*SUBMITTING/i.test(String(h || '').trim())) !== -1 
+        ? smtpHeaders.findIndex(h => /TP.*SUBMITTING/i.test(String(h || '').trim())) 
+        : (smtpHeaders.findIndex(h => /TP.*NOTING|HANDOVER/i.test(String(h || '').trim())) !== -1 ? smtpHeaders.findIndex(h => /TP.*NOTING|HANDOVER/i.test(String(h || '').trim())) : 18);
+    const sConsIdx = smtpHeaders.findIndex(h => /CONSIGNEE|SHIPPER/i.test(String(h || '').trim())) !== -1 ? smtpHeaders.findIndex(h => /CONSIGNEE|SHIPPER/i.test(String(h || '').trim())) : 24;
+
+    const wBlIdx = typeof findHeaderIndex === 'function' ? findHeaderIndex(webHeaders, [/BILL/i, /^BL/i], 2) : 2;
+    const wContIdx = typeof findHeaderIndex === 'function' ? findHeaderIndex(webHeaders, [/CONTAINER/i, /^CONT/i], 3) : 3;
+    const wRailIdx = typeof findHeaderIndex === 'function' ? findHeaderIndex(webHeaders, [/RAILING/i, /RAIL.*DATE/i, /RAILOUT/i], 8) : 8;
+    const wRemarksIdx = typeof findHeaderIndex === 'function' ? findHeaderIndex(webHeaders, [/REMARK/i], 9) : 9;
+
+    const targetTag = selectedTag.trim().toUpperCase();
+    const matchedShipperRows = shipperRows.slice(1).filter(r => String(r[shipTagIdx] || '').trim().toUpperCase() === targetTag);
+
+    if (matchedShipperRows.length === 0) {
+        alert(`No records found for Tag: "${selectedTag}" in Shipper sheet.`);
+        return;
+    }
+
+    const smtpByCont = new Map();
+    const smtpByBl = new Map();
+    smtpRows.slice(1).forEach(row => {
+        const c = String(row[sContIdx] || '').trim().toUpperCase();
+        const b = String(row[sBlIdx] || '').trim().toUpperCase();
+        if (c && !smtpByCont.has(c)) smtpByCont.set(c, row);
+        if (b && !smtpByBl.has(b)) smtpByBl.set(b, row);
+    });
+
+    const webByCont = new Map();
+    websiteRows.slice(1).forEach(row => {
+        const c = String(row[wContIdx] || '').trim().toUpperCase();
+        if (c && !webByCont.has(c)) webByCont.set(c, row);
+    });
+
+    function toDotDate(val) {
+        if (!val || val === '-') return '-';
+        const d = typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(val) : String(val);
+        if (!d) return '-';
+        return d.replace(/-/g, '.');
+    }
+
+    function toDashDate(val) {
+        if (!val || val === '-') return '-';
+        const d = typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(val) : String(val);
+        return d || '-';
+    }
+
+    const containerDetailsList = [];
+
+    matchedShipperRows.forEach(sRow => {
+        const contNo = String(sRow[shipContIdx] || '').trim().toUpperCase();
+        const blNo = String(sRow[shipBlIdx] || '').trim().toUpperCase();
+        let consignee = String(sRow[shipConsIdx] || '').trim().toUpperCase();
+        let size = String(sRow[shipSizeIdx] || '').trim();
+
+        const smtpRow = smtpByCont.get(contNo) || smtpByBl.get(blNo);
+        if (!consignee && smtpRow) {
+            consignee = String(smtpRow[sConsIdx] || '').trim().toUpperCase();
+        }
+        if (!size && smtpRow) {
+            size = String(smtpRow[sSizeIdx] || '').trim();
+        }
+        if (!size) size = '40';
+
+        let tpDateRaw = smtpRow ? (smtpRow[sTpIdx] || smtpRow[18] || smtpRow[17] || '') : '';
+        let tpDateDot = toDotDate(tpDateRaw);
+        let tpDateDash = toDashDate(tpDateRaw);
+
+        const webRow = webByCont.get(contNo);
+        let railingDate = 'Pending';
+        let remarks = '';
+
+        if (webRow) {
+            const rawRail = String(webRow[wRailIdx] || '').trim();
+            const rawRemark = String(webRow[wRemarksIdx] || '').trim();
+            const isPending = !rawRail || ['-', 'NOT RAILOUT', 'PENDING', 'N/A'].includes(rawRail.toUpperCase());
+
+            if (isPending) {
+                railingDate = 'Pending';
+                remarks = rawRemark || (tpDateDash !== '-' ? `CONTAINER HANDOVER TO HTPL ON ${tpDateDash}` : 'CONTAINER HANDOVER TO HTPL');
+            } else {
+                railingDate = toDashDate(rawRail);
+                remarks = rawRemark;
+            }
+        } else {
+            railingDate = 'Pending';
+            remarks = (tpDateDash !== '-') ? `CONTAINER HANDOVER TO HTPL ON ${tpDateDash}` : 'CONTAINER HANDOVER TO HTPL';
+        }
+
+        containerDetailsList.push({
+            consignee: consignee || 'UNKNOWN',
+            contNo,
+            size,
+            blNo,
+            tpDateDot,
+            tpDateDash,
+            railingDate,
+            remarks
+        });
+    });
+
+    const blGroups = {};
+    containerDetailsList.forEach(item => {
+        const key = item.blNo || item.contNo;
+        if (!blGroups[key]) {
+            blGroups[key] = {
+                consignee: item.consignee,
+                blNo: item.blNo,
+                tpDateDot: item.tpDateDot,
+                tpDateDash: item.tpDateDash,
+                containers: []
+            };
+        }
+        blGroups[key].containers.push(item);
+        if (blGroups[key].tpDateDot === '-' && item.tpDateDot !== '-') {
+            blGroups[key].tpDateDot = item.tpDateDot;
+            blGroups[key].tpDateDash = item.tpDateDash;
+        }
+    });
+
+    const summaryList = Object.values(blGroups).map(group => {
+        let railoutCount = 0;
+        let pendingCount = 0;
+        const railedDates = new Set();
+
+        group.containers.forEach(c => {
+            if (c.railingDate === 'Pending' || c.railingDate === '-') {
+                pendingCount++;
+            } else {
+                railoutCount++;
+                railedDates.add(c.railingDate);
+            }
+        });
+
+        const grandTotal = railoutCount + pendingCount;
+        let railingDateDisplay = 'Pending';
+        let tat = '-';
+
+        if (railoutCount > 0) {
+            railingDateDisplay = Array.from(railedDates).join(', ');
+            const firstRailedDate = Array.from(railedDates)[0];
+            tat = getTagTatDays(group.tpDateDash, firstRailedDate);
+        }
+
+        return {
+            consignee: group.consignee,
+            blNo: group.blNo,
+            tpDate: group.tpDateDot,
+            railingDate: railingDateDisplay,
+            tat: tat,
+            railout: railoutCount,
+            pending: pendingCount,
+            grandTotal: grandTotal,
+            containers: group.containers
+        };
+    });
+
+    summaryList.sort((a, b) => {
+        const cComp = a.consignee.localeCompare(b.consignee);
+        if (cComp !== 0) return cComp;
+        return a.blNo.localeCompare(b.blNo);
+    });
+
+    containerDetailsList.sort((a, b) => {
+        const cComp = a.consignee.localeCompare(b.consignee);
+        if (cComp !== 0) return cComp;
+        const bComp = a.blNo.localeCompare(b.blNo);
+        if (bComp !== 0) return bComp;
+        return a.contNo.localeCompare(b.contNo);
+    });
+
+    let totalRailout = 0;
+    let totalPending = 0;
+    let totalGrand = 0;
+    summaryList.forEach(s => {
+        totalRailout += s.railout;
+        totalPending += s.pending;
+        totalGrand += s.grandTotal;
+    });
+
+    currentTagReportData = {
+        tagName: selectedTag,
+        summaryList,
+        containerDetailsList,
+        totalRailout,
+        totalPending,
+        totalGrand
+    };
+
+    renderTagReportHtml(currentTagReportData);
+}
+
+function renderTagReportHtml(data) {
+    document.getElementById('tagReportPlaceholder').classList.add('hidden');
+    const view = document.getElementById('tagReportView');
+    view.classList.remove('hidden');
+
+    document.getElementById('tagReportTitle').textContent = `Tag : ${data.tagName}`;
+
+    const tbody1 = document.getElementById('tagSummaryTableBody');
+    tbody1.innerHTML = data.summaryList.map(item => `
+        <tr class="hover:bg-slate-50 transition-colors">
+            <td class="border border-black px-2 py-1 text-left font-bold uppercase text-slate-800">${escapeHtml(item.consignee)}</td>
+            <td class="border border-black px-2 py-1 text-center font-bold text-slate-900">${escapeHtml(item.blNo)}</td>
+            <td class="border border-black px-2 py-1 text-center font-semibold whitespace-nowrap">${escapeHtml(item.tpDate)}</td>
+            <td class="border border-black px-2 py-1 text-center font-semibold whitespace-nowrap ${item.railingDate === 'Pending' ? 'text-amber-700' : 'text-slate-900'}">${escapeHtml(item.railingDate)}</td>
+            <td class="border border-black px-2 py-1 text-center font-semibold">${escapeHtml(item.tat)}</td>
+            <td class="border border-black px-2 py-1 text-center font-bold text-emerald-800">${item.railout > 0 ? item.railout : ''}</td>
+            <td class="border border-black px-2 py-1 text-center font-bold text-blue-700">${item.pending > 0 ? item.pending : ''}</td>
+            <td class="border border-black px-2 py-1 text-center font-bold text-slate-900">${item.grandTotal}</td>
+        </tr>
+    `).join('');
+
+    const tfoot1 = document.getElementById('tagSummaryTableFoot');
+    tfoot1.innerHTML = `
+        <tr class="bg-[#BDD7EE] font-black border-t-2 border-black text-slate-900">
+            <td class="border border-black px-2 py-1 text-left uppercase">Grand Total</td>
+            <td class="border border-black px-2 py-1"></td>
+            <td class="border border-black px-2 py-1"></td>
+            <td class="border border-black px-2 py-1"></td>
+            <td class="border border-black px-2 py-1"></td>
+            <td class="border border-black px-2 py-1 text-center">${data.totalRailout}</td>
+            <td class="border border-black px-2 py-1 text-center text-blue-900">${data.totalPending}</td>
+            <td class="border border-black px-2 py-1 text-center">${data.totalGrand}</td>
+        </tr>
+    `;
+
+    const tbody2 = document.getElementById('tagDetailsTableBody');
+    tbody2.innerHTML = data.containerDetailsList.map(c => `
+        <tr class="hover:bg-slate-50 transition-colors">
+            <td class="border border-black px-2 py-1 text-left font-bold uppercase text-slate-800">${escapeHtml(c.consignee)}</td>
+            <td class="border border-black px-2 py-1 text-left font-mono font-bold text-slate-900">${escapeHtml(c.contNo)}</td>
+            <td class="border border-black px-2 py-1 text-center font-semibold">${escapeHtml(c.size)}</td>
+            <td class="border border-black px-2 py-1 text-left font-bold text-slate-900">${escapeHtml(c.blNo)}</td>
+            <td class="border border-black px-2 py-1 text-center font-semibold whitespace-nowrap">${escapeHtml(c.tpDateDot)}</td>
+            <td class="border border-black px-2 py-1 text-center font-semibold whitespace-nowrap ${c.railingDate === 'Pending' ? 'text-amber-700' : 'text-slate-900'}">${escapeHtml(c.railingDate)}</td>
+            <td class="border border-black px-2 py-1 text-left text-[11px] text-slate-700 font-medium">${escapeHtml(c.remarks)}</td>
+        </tr>
+    `).join('');
+
+    const statsSummary = document.getElementById('tagReportStatsSummary');
+    if (statsSummary) {
+        statsSummary.textContent = `Total BLs: ${data.summaryList.length} | Total Containers: ${data.totalGrand} (Railout: ${data.totalRailout}, Pending: ${data.totalPending})`;
+    }
+
+    if (window.lucide) window.lucide.createIcons();
+}
+
+async function downloadTagReportExcel() {
+    if (!currentTagReportData) {
+        alert("Please select a Tag and generate report first.");
+        return;
+    }
+
+    if (typeof ExcelJS === 'undefined') {
+        alert("ExcelJS library is loading. Please try again in a few seconds.");
+        return;
+    }
+
+    const { tagName, summaryList, containerDetailsList, totalRailout, totalPending, totalGrand } = currentTagReportData;
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "Hind Terminals";
+    workbook.created = new Date();
+
+    const cleanSheetName = `Tag_${String(tagName).replace(/[\\/*?:[\]]/g, '_').slice(0, 25)}`;
+    const ws = workbook.addWorksheet(cleanSheetName, {
+        views: [{ showGridLines: true }]
+    });
+
+    const thinBorder = {
+        top: { style: 'thin', color: { argb: 'FF000000' } },
+        left: { style: 'thin', color: { argb: 'FF000000' } },
+        bottom: { style: 'thin', color: { argb: 'FF000000' } },
+        right: { style: 'thin', color: { argb: 'FF000000' } }
+    };
+
+    const headerFill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFBDD7EE' }
+    };
+
+    // Row 2: Tag : <TagName>
+    const tagRow = ws.getRow(2);
+    tagRow.getCell(1).value = `Tag : ${tagName}`;
+    tagRow.getCell(1).font = { name: 'Arial', size: 11, bold: true };
+
+    // Row 4 & 5: Table 1 Headers
+    const r4 = ws.getRow(4);
+    r4.getCell(1).value = "Consignee";
+    r4.getCell(2).value = "BL_No.";
+    r4.getCell(3).value = "TP_Submitting_Dt.";
+    r4.getCell(4).value = "RAILING_DATE";
+    r4.getCell(5).value = "TAT";
+    r4.getCell(6).value = "Status";
+
+    const r5 = ws.getRow(5);
+    r5.getCell(6).value = "Railout";
+    r5.getCell(7).value = "Pending";
+    r5.getCell(8).value = "Grand Total";
+
+    ws.mergeCells('A4:A5');
+    ws.mergeCells('B4:B5');
+    ws.mergeCells('C4:C5');
+    ws.mergeCells('D4:D5');
+    ws.mergeCells('E4:E5');
+    ws.mergeCells('F4:H4');
+
+    for (let r = 4; r <= 5; r++) {
+        const row = ws.getRow(r);
+        for (let c = 1; c <= 8; c++) {
+            const cell = row.getCell(c);
+            cell.fill = headerFill;
+            cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF000000' } };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            cell.border = thinBorder;
+        }
+    }
+
+    let curRow = 6;
+    summaryList.forEach(item => {
+        const row = ws.getRow(curRow);
+        row.getCell(1).value = item.consignee;
+        row.getCell(2).value = item.blNo;
+        row.getCell(3).value = item.tpDate;
+        row.getCell(4).value = item.railingDate;
+        row.getCell(5).value = item.tat;
+        row.getCell(6).value = item.railout > 0 ? item.railout : '';
+        row.getCell(7).value = item.pending > 0 ? item.pending : '';
+        row.getCell(8).value = item.grandTotal;
+
+        for (let c = 1; c <= 8; c++) {
+            const cell = row.getCell(c);
+            cell.font = { name: 'Arial', size: 9 };
+            cell.border = thinBorder;
+            if (c === 1 || c === 2) {
+                cell.alignment = { vertical: 'middle', horizontal: 'left' };
+            } else {
+                cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            }
+            if (c === 7 && item.pending > 0) {
+                cell.font = { name: 'Arial', size: 9, color: { argb: 'FF0070C0' } };
+            }
+        }
+        curRow++;
+    });
+
+    const gtRow = ws.getRow(curRow);
+    gtRow.getCell(1).value = "Grand Total";
+    gtRow.getCell(6).value = totalRailout;
+    gtRow.getCell(7).value = totalPending;
+    gtRow.getCell(8).value = totalGrand;
+
+    for (let c = 1; c <= 8; c++) {
+        const cell = gtRow.getCell(c);
+        cell.font = { name: 'Arial', size: 10, bold: true };
+        cell.border = thinBorder;
+        cell.fill = headerFill;
+        if (c === 1) cell.alignment = { vertical: 'middle', horizontal: 'left' };
+        else cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    }
+    curRow++;
+
+    curRow++; // blank row
+
+    const bannerRowIndex = curRow;
+    const bannerRow = ws.getRow(bannerRowIndex);
+    bannerRow.getCell(1).value = "Container Details :-";
+    ws.mergeCells(`A${bannerRowIndex}:G${bannerRowIndex}`);
+    for (let c = 1; c <= 7; c++) {
+        const cell = bannerRow.getCell(c);
+        cell.fill = headerFill;
+        cell.border = thinBorder;
+        cell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1F4E78' } };
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    }
+    curRow++;
+
+    const t2Headers = ["Consignee", "CONT_Nos.", "Size", "BL_No.", "TP_Submitting_Dt.", "RAILING_DATE", "Remarks"];
+    const t2HRow = ws.getRow(curRow);
+    t2Headers.forEach((h, idx) => {
+        const cell = t2HRow.getCell(idx + 1);
+        cell.value = h;
+        cell.fill = headerFill;
+        cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF000000' } };
+        cell.border = thinBorder;
+        if (idx === 0 || idx === 6) cell.alignment = { vertical: 'middle', horizontal: 'left' };
+        else cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    });
+    curRow++;
+
+    containerDetailsList.forEach(c => {
+        const row = ws.getRow(curRow);
+        row.getCell(1).value = c.consignee;
+        row.getCell(2).value = c.contNo;
+        row.getCell(3).value = isNaN(c.size) ? c.size : Number(c.size);
+        row.getCell(4).value = c.blNo;
+        row.getCell(5).value = c.tpDateDot;
+        row.getCell(6).value = c.railingDate;
+        row.getCell(7).value = c.remarks;
+
+        for (let col = 1; col <= 7; col++) {
+            const cell = row.getCell(col);
+            cell.font = { name: 'Arial', size: 9 };
+            cell.border = thinBorder;
+            if (col === 1 || col === 2 || col === 4 || col === 7) {
+                cell.alignment = { vertical: 'middle', horizontal: 'left' };
+            } else {
+                cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            }
+        }
+        curRow++;
+    });
+
+    ws.getColumn(1).width = 26;
+    ws.getColumn(2).width = 18;
+    ws.getColumn(3).width = 18;
+    ws.getColumn(4).width = 18;
+    ws.getColumn(5).width = 12;
+    ws.getColumn(6).width = 14;
+    ws.getColumn(7).width = 52;
+    ws.getColumn(8).width = 14;
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `Report_${String(tagName).replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    anchor.click();
+    window.URL.revokeObjectURL(url);
+}
+
+function initTagReportListeners() {
+    const tagReportBtn = document.getElementById('tagReportBtn');
+    if (tagReportBtn) {
+        tagReportBtn.addEventListener('click', openTagReportModal);
+    }
+    const tagReportMainBtn = document.getElementById('tagReportMainBtn');
+    if (tagReportMainBtn) {
+        tagReportMainBtn.addEventListener('click', openTagReportModal);
+    }
+
+    const genBtn = document.getElementById('generateTagReportBtn');
+    if (genBtn) {
+        genBtn.addEventListener('click', () => {
+            const sel = document.getElementById('tagReportSelect');
+            if (sel && sel.value) generateTagReport(sel.value);
+            else alert("Please select a Tag first.");
+        });
+    }
+
+    const tagSel = document.getElementById('tagReportSelect');
+    if (tagSel) {
+        tagSel.addEventListener('change', (e) => {
+            if (e.target.value) generateTagReport(e.target.value);
+        });
+    }
+
+    const dlTop = document.getElementById('downloadTagReportExcelTopBtn');
+    if (dlTop) dlTop.addEventListener('click', downloadTagReportExcel);
+
+    const dlBottom = document.getElementById('downloadTagReportExcelBottomBtn');
+    if (dlBottom) dlBottom.addEventListener('click', downloadTagReportExcel);
+
+    const closeBtn = document.getElementById('closeTagReportModalBtn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            document.getElementById('tagReportModal').classList.add('hidden');
+        });
+    }
+
+    const closeBottomBtn = document.getElementById('closeTagReportModalBottomBtn');
+    if (closeBottomBtn) {
+        closeBottomBtn.addEventListener('click', () => {
+            document.getElementById('tagReportModal').classList.add('hidden');
+        });
+    }
+}
+initTagReportListeners();
+
 initAuth();
     </script>
 <div id="runningTrainsModal" class="fixed inset-0 bg-slate-900/45 backdrop-blur-sm z-[99999] hidden flex items-center justify-center p-1.5">
@@ -13616,5 +14221,120 @@ initAuth();
         </div>
     </div>
 </div>
+<!-- TAG Wise Report Modal -->
+<div id="tagReportModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[99999] hidden flex items-center justify-center p-2 sm:p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-[98vw] h-[95vh] flex flex-col border border-slate-300 overflow-hidden">
+        <!-- Header -->
+        <div class="bg-emerald-800 p-3.5 flex justify-between items-center text-white shrink-0">
+            <div class="flex items-center gap-2.5">
+                <i data-lucide="file-spreadsheet" class="w-5 h-5"></i>
+                <h2 class="font-bold uppercase tracking-tight text-xs md:text-sm">TAG WISE REPORT GENERATOR</h2>
+            </div>
+            <div class="flex items-center gap-2.5">
+                <button id="downloadTagReportExcelTopBtn" type="button" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-1.5 rounded-lg font-bold text-[10px] uppercase flex items-center gap-1.5 shadow transition-all active:scale-95">
+                    <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> Download Excel
+                </button>
+                <button id="closeTagReportModalBtn" type="button" class="text-white hover:rotate-90 transition-all">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Controls / Filter Bar -->
+        <div class="p-3 bg-slate-100 border-b border-slate-300 flex items-center justify-between flex-wrap gap-3 shrink-0">
+            <div class="flex items-center gap-3">
+                <label for="tagReportSelect" class="text-xs font-black text-slate-700 uppercase tracking-wide">
+                    Select Tag:
+                </label>
+                <select id="tagReportSelect" class="bg-white border-2 border-emerald-600 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-400 min-w-[220px] shadow-sm">
+                    <option value="">-- Select Tag --</option>
+                </select>
+                <button id="generateTagReportBtn" type="button" class="bg-emerald-700 hover:bg-emerald-800 text-white px-5 py-1.5 rounded-lg font-bold text-xs uppercase flex items-center gap-2 shadow transition-all active:scale-95">
+                    <i data-lucide="play" class="w-3.5 h-3.5"></i> Generate
+                </button>
+            </div>
+            <div class="text-[10px] text-slate-500 font-bold uppercase italic">
+                *Tag source: Update &amp; View Source Data &gt; Shipper sheet (Column: TAG)
+            </div>
+        </div>
+
+        <!-- Report Content -->
+        <div class="flex-1 overflow-auto p-4 md:p-6 bg-slate-50 custom-scrollbar">
+            <div id="tagReportPlaceholder" class="flex flex-col items-center justify-center py-24 text-slate-400">
+                <i data-lucide="file-search" class="w-16 h-16 mb-3 text-slate-300"></i>
+                <p class="text-sm font-bold uppercase tracking-wider">Please select a Tag and click Generate to view report</p>
+            </div>
+            <div id="tagReportView" class="hidden max-w-6xl mx-auto bg-white p-6 rounded-lg shadow-sm border border-slate-300 font-sans">
+                <!-- Top Tag Label -->
+                <div class="mb-4">
+                    <h3 class="text-sm font-bold text-slate-900 tracking-wide" id="tagReportTitle">Tag : </h3>
+                </div>
+
+                <!-- Table 1: BL Summary Table -->
+                <div class="overflow-x-auto mb-6">
+                    <table class="w-full text-xs border-collapse border border-black" id="tagSummaryTable">
+                        <thead>
+                            <tr class="bg-[#BDD7EE] text-slate-900 font-bold border-b border-black">
+                                <th rowspan="2" class="border border-black px-2 py-1.5 text-left">Consignee</th>
+                                <th rowspan="2" class="border border-black px-2 py-1.5 text-center">BL_No.</th>
+                                <th rowspan="2" class="border border-black px-2 py-1.5 text-center whitespace-nowrap">TP_Submitting_Dt.</th>
+                                <th rowspan="2" class="border border-black px-2 py-1.5 text-center whitespace-nowrap">RAILING_DATE</th>
+                                <th rowspan="2" class="border border-black px-2 py-1.5 text-center whitespace-nowrap">TAT</th>
+                                <th colspan="3" class="border border-black px-2 py-1.5 text-center">Status</th>
+                            </tr>
+                            <tr class="bg-[#BDD7EE] text-slate-900 font-bold border-b border-black">
+                                <th class="border border-black px-2 py-1 text-center w-20">Railout</th>
+                                <th class="border border-black px-2 py-1 text-center w-20">Pending</th>
+                                <th class="border border-black px-2 py-1 text-center w-24">Grand Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tagSummaryTableBody">
+                        </tbody>
+                        <tfoot id="tagSummaryTableFoot">
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- Section Banner: Container Details :- -->
+                <div class="mb-2 bg-[#BDD7EE] border border-black py-1 px-3 text-center">
+                    <span class="font-bold text-[#1F4E78] text-xs uppercase tracking-wide">Container Details :-</span>
+                </div>
+
+                <!-- Table 2: Container Details Table -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs border-collapse border border-black" id="tagDetailsTable">
+                        <thead>
+                            <tr class="bg-[#BDD7EE] text-slate-900 font-bold border-b border-black">
+                                <th class="border border-black px-2 py-1.5 text-left">Consignee</th>
+                                <th class="border border-black px-2 py-1.5 text-center whitespace-nowrap">CONT_Nos.</th>
+                                <th class="border border-black px-2 py-1.5 text-center w-14">Size</th>
+                                <th class="border border-black px-2 py-1.5 text-center whitespace-nowrap">BL_No.</th>
+                                <th class="border border-black px-2 py-1.5 text-center whitespace-nowrap">TP_Submitting_Dt.</th>
+                                <th class="border border-black px-2 py-1.5 text-center whitespace-nowrap">RAILING_DATE</th>
+                                <th class="border border-black px-2 py-1.5 text-left">Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tagDetailsTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="p-3 bg-slate-100 border-t border-slate-300 flex items-center justify-between shrink-0">
+            <div id="tagReportStatsSummary" class="text-[11px] font-bold text-slate-700"></div>
+            <div class="flex items-center gap-3">
+                <button id="downloadTagReportExcelBottomBtn" type="button" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg font-bold text-xs uppercase flex items-center gap-2 shadow-md transition-all active:scale-95">
+                    <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Excel Download
+                </button>
+                <button id="closeTagReportModalBottomBtn" type="button" class="bg-slate-700 hover:bg-slate-800 text-white px-5 py-2 rounded-lg font-bold text-xs uppercase transition-all">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>
