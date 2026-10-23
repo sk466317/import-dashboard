@@ -4920,17 +4920,20 @@ function deduplicateSmtpSheet() {
     if (!Array.isArray(rawSheets.smtp) || rawSheets.smtp.length <= 1) return;
     const header = rawSheets.smtp[0];
     const sContIdx = 2; // CONT_Nos. (Column C)
+    const sBlIdx = 9;   // BL_No. (Column J)
     const seen = new Map();
     const uniqueRows = [header];
 
     rawSheets.smtp.slice(1).forEach(row => {
         const cont = String(row[sContIdx] || '').trim().toUpperCase();
+        const bl = String(row[sBlIdx] || '').trim().toUpperCase();
         if (!cont) return;
-        if (!seen.has(cont)) {
-            seen.set(cont, uniqueRows.length);
+        const key = `${cont}__${bl}`;
+        if (!seen.has(key)) {
+            seen.set(key, uniqueRows.length);
             uniqueRows.push(row);
         } else {
-            const existingRowIdx = seen.get(cont);
+            const existingRowIdx = seen.get(key);
             const existingRow = uniqueRows[existingRowIdx];
             for (let i = 0; i < Math.max(existingRow.length, row.length); i++) {
                 if ((existingRow[i] === undefined || existingRow[i] === '' || existingRow[i] === '-') && (row[i] !== undefined && row[i] !== '' && row[i] !== '-')) {
@@ -5028,6 +5031,29 @@ function normalizeRawSheets() {
             }
         });
     }
+
+    // Normalize RAILING_DATE in Website sheet to dd-mm-yyyy hh:mm format
+    if (Array.isArray(rawSheets.website) && rawSheets.website.length > 1) {
+        const webHeaders = rawSheets.website[0] || [];
+        const wRailIdx = typeof findHeaderIndex === 'function'
+            ? findHeaderIndex(webHeaders, [/RAILING/i, /RAIL.*DATE/i, /RAILOUT/i], 8)
+            : 8;
+        for (let i = 1; i < rawSheets.website.length; i++) {
+            const row = rawSheets.website[i];
+            if (!row) continue;
+            const rawRailVal = row[wRailIdx];
+            if (rawRailVal !== undefined && rawRailVal !== null && rawRailVal !== '') {
+                const sVal = String(rawRailVal).trim();
+                if (sVal && sVal.toUpperCase() !== 'PENDING') {
+                    const formatted = formatToDDMMYYYY_HHMM(rawRailVal);
+                    if (formatted && formatted.includes('-')) {
+                        row[wRailIdx] = formatted;
+                    }
+                }
+            }
+        }
+    }
+
     // Always keep window.rawSheets in sync so outer-scope functions (MSC tracking, etc.) can access it
     window.rawSheets = rawSheets;
 }
@@ -5249,12 +5275,12 @@ function getGroupVessel(g) {
             if (!isNaN(numVal) && isFinite(numVal) && numVal > 40000) {
                 // Accurate calculation: preserve fractional part for time
                 const utc_days = numVal - 25569;
-                const utc_value = utc_days * 86400 * 1000;
+                const utc_value = Math.round(utc_days * 86400) * 1000;
                 const tz_offset = new Date().getTimezoneOffset() * 60 * 1000;
                 date = new Date(utc_value + tz_offset);
             } else if (typeof val === 'number') {
                 const utc_days = val - 25569;
-                const utc_value = utc_days * 86400 * 1000;
+                const utc_value = Math.round(utc_days * 86400) * 1000;
                 const tz_offset = new Date().getTimezoneOffset() * 60 * 1000;
                 date = new Date(utc_value + tz_offset);
             } else {
@@ -5272,6 +5298,8 @@ function getGroupVessel(g) {
                         
                         let hh = parts.length > 3 ? parseInt(parts[3], 10) : 0;
                         let mm = parts.length > 4 ? parseInt(parts[4], 10) : 0;
+                        if (/pm/i.test(valStr) && hh < 12) hh += 12;
+                        if (/am/i.test(valStr) && hh === 12) hh = 0;
                         
                         date = new Date(year, month, day, hh, mm);
                     } else {
@@ -7582,6 +7610,16 @@ window.deleteHkrRow = async (index) => {
                 if (isHeader && sheetName === 'shipper' && colIndex === 4 && !content) {
                     content = 'TAG';
                 }
+                if (!isHeader && sheetName === 'website' && colIndex === 8 && content !== '') {
+                    const sContent = String(content).trim();
+                    if (sContent && sContent.toUpperCase() !== 'PENDING') {
+                        const formatted = formatToDDMMYYYY_HHMM(content);
+                        if (formatted && formatted.includes('-')) {
+                            content = formatted;
+                            row[colIndex] = formatted;
+                        }
+                    }
+                }
                 rowHtml += `<td class="px-2 py-1.5 border-r border-slate-200 truncate max-w-[200px] ${!isHeader ? 'editable-cell' : ''}"
                             ${!isHeader ? 'contenteditable="true"' : ''}
                             data-row="${rowIndex}" data-col="${colIndex}">${content}</td>`;
@@ -7728,7 +7766,14 @@ window.deleteHkrRow = async (index) => {
                     if (!rawSheets[currentSheetInView][r]) rawSheets[currentSheetInView][r] = [];
                     
                     const oldVal = rawSheets[currentSheetInView][r][c];
-                    const newVal = cell.innerText.trim();
+                    let newVal = cell.innerText.trim();
+                    if (currentSheetInView === 'website' && c === 8 && newVal && newVal.toUpperCase() !== 'PENDING') {
+                        const formatted = formatToDDMMYYYY_HHMM(newVal);
+                        if (formatted && formatted.includes('-')) {
+                            newVal = formatted;
+                            cell.innerText = formatted;
+                        }
+                    }
                     if (oldVal !== newVal) {
                         rawSheets[currentSheetInView][r][c] = newVal;
                         if (currentSheetInView === 'smtp') {
@@ -7789,10 +7834,13 @@ window.deleteHkrRow = async (index) => {
             let addedCount = 0;
             rawSheets.smtp.slice(1).forEach(sRow => {
                 const contNo = String(sRow[sContIdx] || '').trim();
+                const blNo = String(sRow[sBlIdx] || '').trim();
                 if (!contNo) return;
-                const alreadyExists = rawSheets.website.some(w => String(w[3] || '').trim() === contNo);
+                const alreadyExists = rawSheets.website.some(w => 
+                    String(w[3] || '').trim().toUpperCase() === contNo.toUpperCase() &&
+                    String(w[2] || '').trim().toUpperCase() === blNo.toUpperCase()
+                );
                 if (!alreadyExists) {
-                    const blNo = String(sRow[sBlIdx] || '').trim();
                     const tpDate = formatToDDMMYYYY(sRow[sTpIdx]);
                     rawSheets.website.push([103, rawSheets.website.length, blNo, contNo, "-", "Lower", "Mundra", "KILARAIPUR", "Pending", `CONTAINER HANDOVER TO HTPL ON ${tpDate}`]);
                     addedCount++;
@@ -7870,10 +7918,16 @@ window.deleteHkrRow = async (index) => {
             jsonData.slice(10).forEach(exRow => {
                 const contNo = String(exRow[2] || '').trim().toUpperCase(); 
                 const rawExcelDate = railDateVal || exRow[33]; 
-                const railDateFormatted = formatToDDMMYY_HHMM(rawExcelDate); 
+                const railDateFormatted = formatToDDMMYYYY_HHMM(rawExcelDate); 
                 
                 if (contNo && rawSheets.website) {
-                    const webMatchIndex = rawSheets.website.findIndex(w => String(w[3] || '').trim().toUpperCase() === contNo);
+                    let webMatchIndex = rawSheets.website.findIndex(w => 
+                        String(w[3] || '').trim().toUpperCase() === contNo &&
+                        String(w[8] || '').trim().toUpperCase() === 'PENDING'
+                    );
+                    if (webMatchIndex === -1) {
+                        webMatchIndex = rawSheets.website.findIndex(w => String(w[3] || '').trim().toUpperCase() === contNo);
+                    }
                     if (webMatchIndex !== -1) {
                         let dateObj = null;
                         const numVal = parseFloat(rawExcelDate);
@@ -7984,7 +8038,7 @@ window.deleteHkrRow = async (index) => {
                 return;
             }
 
-            const railingDate = manualDateTime.trim();
+            const railingDate = formatToDDMMYYYY_HHMM(manualDateTime.trim()) || manualDateTime.trim();
 
             const remarkFinal = buildWebsiteRailoutRemark(railingDate);
 
@@ -7995,9 +8049,15 @@ window.deleteHkrRow = async (index) => {
             let updateCount = 0;
             containers.forEach(item => {
                 const rakeNoFinal = `${trainNo}${item.stackVal}`;
-                const rowIndex = rawSheets.website.findIndex(row => 
-                    String(row[3] || '').trim().toUpperCase() === item.containerNo
+                let rowIndex = rawSheets.website.findIndex(row => 
+                    String(row[3] || '').trim().toUpperCase() === item.containerNo &&
+                    String(row[8] || '').trim().toUpperCase() === 'PENDING'
                 );
+                if (rowIndex === -1) {
+                    rowIndex = rawSheets.website.findIndex(row => 
+                        String(row[3] || '').trim().toUpperCase() === item.containerNo
+                    );
+                }
                 if (rowIndex !== -1) {
                     rawSheets.website[rowIndex][4] = rakeNoFinal;
                     rawSheets.website[rowIndex][8] = railingDate;
@@ -8100,9 +8160,15 @@ if (bulkWebsiteExcelInput) {
                         return;
                     }
 
-                    const rowIndex = rawSheets.website.findIndex(row =>
-                        String(row[3] || '').trim().toUpperCase() === contNo
+                    let rowIndex = rawSheets.website.findIndex(row =>
+                        String(row[3] || '').trim().toUpperCase() === contNo &&
+                        String(row[8] || '').trim().toUpperCase() === 'PENDING'
                     );
+                    if (rowIndex === -1) {
+                        rowIndex = rawSheets.website.findIndex(row =>
+                            String(row[3] || '').trim().toUpperCase() === contNo
+                        );
+                    }
 
                     if (rowIndex === -1) {
                         notFoundCount++;
@@ -8296,7 +8362,14 @@ if (websiteExcelInput) {
 
                     totalContainers.push(contNo);
 
-                    const rowIndex = rawSheets.website.findIndex(w => String(w[3] || '').trim().toUpperCase() === contNo);
+                    // Check for Pending row first so we update the active/pending shipment
+                    let rowIndex = rawSheets.website.findIndex(w => 
+                        String(w[3] || '').trim().toUpperCase() === contNo &&
+                        String(w[8] || '').trim().toUpperCase() === 'PENDING'
+                    );
+                    if (rowIndex === -1) {
+                        rowIndex = rawSheets.website.findIndex(w => String(w[3] || '').trim().toUpperCase() === contNo);
+                    }
                     
                     if (rowIndex !== -1) {
                         // Found in System -> Add to Update Queue
@@ -9084,6 +9157,7 @@ if (smtpExcelInput) {
 
             let addedCount = 0;
             let updatedCount = 0;
+            let skippedCount = 0;
             let transferCount = 0;
             let hkrMatchCount = 0;
             let updatedContainers = [];
@@ -9160,7 +9234,7 @@ if (smtpExcelInput) {
                 if (!hasRowValues(exRow)) return;
 
                 const contNo = String(exRow[mappedIndices[2]] || '').trim().toUpperCase();
-                const blNo = String(exRow[mappedIndices[9]] || '').trim();
+                const blNo = String(exRow[mappedIndices[9]] || '').trim().toUpperCase();
                 const cellLValue = String(exRow[mappedIndices[11]] || '').toUpperCase();
                 
                 const cleanLVal = cellLValue.replace(/\s+/g, '');
@@ -9173,8 +9247,6 @@ if (smtpExcelInput) {
                                      cellLValue.includes("KILA RAIPUR");
 
                 if (contNo && isMatchingDest) {
-                    updatedContainers.push(contNo);
-                    
                     let finalRemark = "HKR";
                     const lineVal = String(exRow[mappedIndices[23]] || '').trim().toUpperCase();
                     if (lineVal.includes("MSC")) finalRemark = "-";
@@ -9194,22 +9266,24 @@ if (smtpExcelInput) {
                         exRow[remarksUpIdx] = finalRemark;
                     }
 
-                    // Match container by Container Number in rawSheets.smtp (Column C / index 2)
-                    const existingSmtpIdx = rawSheets.smtp.findIndex((s, idx) =>
-                        idx > 0 && String(s[2] || '').trim().toUpperCase() === contNo
+                    // Check if container already exists in rawSheets.smtp with the EXACT SAME BL (Column C = contNo, Column J = blNo)
+                    const existingSameBlIdx = rawSheets.smtp.findIndex((s, idx) =>
+                        idx > 0 && 
+                        String(s[2] || '').trim().toUpperCase() === contNo &&
+                        String(s[9] || '').trim().toUpperCase() === blNo
                     );
-                    
-                    if (existingSmtpIdx !== -1) {
-                        // Update existing container record in SMTP instead of adding duplicate
-                        activeIndices.forEach(i => {
-                            const upIdx = mappedIndices[i];
-                            if (exRow[upIdx] !== undefined && exRow[upIdx] !== '') {
-                                rawSheets.smtp[existingSmtpIdx][i] = exRow[upIdx];
-                            }
-                        });
-                        updatedCount++;
+
+                    // Check if container already exists in rawSheets.smtp with ANY BL (to identify repeated containers)
+                    const existingAnyBlIdx = rawSheets.smtp.findIndex((s, idx) =>
+                        idx > 0 && 
+                        String(s[2] || '').trim().toUpperCase() === contNo
+                    );
+
+                    if (existingSameBlIdx !== -1) {
+                        // Container duplicate hai aur BL bhi SAME hai -> Skip
+                        skippedCount++;
                     } else {
-                        // Add new container record to SMTP
+                        // Container duplicate hai par BL alag hai (ya bilkul naya container hai) -> Add/Update to SMTP
                         let optimizedRow = new Array(27).fill(""); 
                         activeIndices.forEach(i => { 
                             const upIdx = mappedIndices[i];
@@ -9218,30 +9292,39 @@ if (smtpExcelInput) {
                         // Explicitly set calculated remark
                         optimizedRow[22] = finalRemark;
                         rawSheets.smtp.push(optimizedRow);
-                        addedCount++;
-                    }
 
-                    // Baaki ka transfer logic (Website check by container number)
-                    const alreadyInWebsite = rawSheets.website.some((w, idx) =>
-                        idx > 0 && String(w[3] || '').trim().toUpperCase() === contNo
-                    );
-                    if (!alreadyInWebsite) {
-                        const rawTpDate = exRow[mappedIndices[18]] || exRow[mappedIndices[17]];
-                        const tpDateFormatted = typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(rawTpDate) : rawTpDate;
-                        
-                        rawSheets.website.push([
-                            103, 
-                            rawSheets.website.length, 
-                            blNo, 
-                            contNo, 
-                            "-", 
-                            "Lower", 
-                            "Mundra", 
-                            "KILARAIPUR", 
-                            "Pending", 
-                            `CONTAINER HANDOVER TO HTPL ON ${tpDateFormatted}`
-                        ]);
-                        transferCount++;
+                        if (existingAnyBlIdx !== -1) {
+                            updatedCount++; // Reused container with new BL
+                        } else {
+                            addedCount++;   // Completely new container
+                        }
+
+                        updatedContainers.push(contNo);
+
+                        // Website transfer check by BOTH Container AND BL Number
+                        const alreadyInWebsite = rawSheets.website.some((w, idx) =>
+                            idx > 0 && 
+                            String(w[3] || '').trim().toUpperCase() === contNo &&
+                            String(w[2] || '').trim().toUpperCase() === blNo
+                        );
+                        if (!alreadyInWebsite) {
+                            const rawTpDate = exRow[mappedIndices[18]] || exRow[mappedIndices[17]];
+                            const tpDateFormatted = typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(rawTpDate) : rawTpDate;
+                            
+                            rawSheets.website.push([
+                                103, 
+                                rawSheets.website.length, 
+                                blNo, 
+                                contNo, 
+                                "-", 
+                                "Lower", 
+                                "Mundra", 
+                                "KILARAIPUR", 
+                                "Pending", 
+                                `CONTAINER HANDOVER TO HTPL ON ${tpDateFormatted}`
+                            ]);
+                            transferCount++;
+                        }
                     }
                 }
             });
@@ -9251,7 +9334,7 @@ if (smtpExcelInput) {
             saveToCloud(); 
             processCloudData();
             
-            alert(`✓ SMTP Processing Complete!\nAdded: ${addedCount}\nUpdated: ${updatedCount}\nSynced to Website: ${transferCount}`);
+            alert(`✓ SMTP Processing Complete!\nAdded: ${addedCount}\nUpdated (Repeated with New BL): ${updatedCount}\nSkipped (Same Container & BL): ${skippedCount}\nSynced to Website: ${transferCount}`);
             if (updatedContainers.length > 0) {
                 checkAndSendTelegramHandover(updatedContainers, smtpState);
             }
@@ -16330,60 +16413,163 @@ function getTagTatDays(tpDateStr, railingDateStr) {
     return `${diffDays} Days`;
 }
 
+function updateConsigneeHeaderStats(query = '') {
+    const qUpper = String(query || '').trim().toUpperCase();
+    const list = window._allSmtpConsignees || [];
+    const filtered = qUpper ? list.filter(c => c.toUpperCase().includes(qUpper)) : list;
+    const selectedSet = window._selectedConsignees || new Set();
+
+    const selectedFilteredCount = filtered.filter(c => selectedSet.has(c)).length;
+
+    const badge = document.getElementById('consigneeSelectedBadge');
+    if (badge) {
+        if (selectedSet.size > 0) {
+            badge.textContent = `${selectedSet.size}`;
+            badge.classList.remove('hidden');
+        } else {
+            badge.classList.add('hidden');
+        }
+    }
+
+    const matchCountEl = document.getElementById('consigneeMatchCount');
+    if (matchCountEl) {
+        matchCountEl.textContent = `${filtered.length} found | ${selectedFilteredCount} selected`;
+    }
+
+    const selectAllCb = document.getElementById('selectAllConsigneesCheckbox');
+    if (selectAllCb) {
+        const allFilteredChecked = filtered.length > 0 && selectedFilteredCount === filtered.length;
+        selectAllCb.checked = allFilteredChecked;
+    }
+}
+
+function renderConsigneeCheckboxes(filterText = '') {
+    const listEl = document.getElementById('consigneeCheckboxList');
+    if (!listEl) return;
+
+    const query = String(filterText || '').trim().toUpperCase();
+    const list = window._allSmtpConsignees || [];
+    const filtered = query ? list.filter(c => c.toUpperCase().includes(query)) : list;
+
+    // When typing a search query (e.g. Nahar), replace selection with ONLY the fresh matching entries
+    if (query.length > 0) {
+        window._selectedConsignees = new Set(filtered);
+    } else if (!window._selectedConsignees) {
+        window._selectedConsignees = new Set();
+    }
+
+    if (filtered.length === 0) {
+        listEl.innerHTML = `
+            <div class="py-6 px-3 text-center text-slate-400 text-xs font-bold uppercase">
+                No matching consignees found
+            </div>
+        `;
+    } else {
+        listEl.innerHTML = filtered.map(c => {
+            const isChecked = window._selectedConsignees.has(c);
+            return `
+                <label class="flex items-center gap-2 px-2.5 py-1.5 hover:bg-cyan-50 rounded cursor-pointer text-xs select-none transition-colors ${isChecked ? 'bg-cyan-50/70' : ''}">
+                    <input type="checkbox" data-consignee="${escapeHtml(c)}" ${isChecked ? 'checked' : ''} class="consignee-item-checkbox w-3.5 h-3.5 rounded text-cyan-600 focus:ring-cyan-500 cursor-pointer shrink-0">
+                    <span class="font-bold text-slate-800 text-[11px] leading-tight break-words">${escapeHtml(c)}</span>
+                </label>
+            `;
+        }).join('');
+    }
+
+    updateConsigneeHeaderStats(filterText);
+}
+
 function openTagReportModal() {
     const modal = document.getElementById('tagReportModal');
     if (!modal) return;
 
     const tagSelect = document.getElementById('tagReportSelect');
-    if (!tagSelect) return;
-
-    tagSelect.innerHTML = '<option value="">-- Select Tag --</option>';
 
     const rs = window.rawSheets || (typeof rawSheets !== 'undefined' ? rawSheets : {});
     const shipperRows = Array.isArray(rs.shipper) ? rs.shipper : [];
-    if (shipperRows.length <= 1) {
-        alert("Shipper sheet data is empty. Please upload or update Shipper data first.");
+    const smtpRows = Array.isArray(rs.smtp) ? rs.smtp : [];
+
+    if (shipperRows.length <= 1 && smtpRows.length <= 1) {
+        alert("Report data is empty. Please load or upload Shipper or SMTP data first.");
         return;
     }
 
-    const shipHeaders = shipperRows[0] || [];
-    const shipTagIdx = shipHeaders.findIndex(h => /TAG/i.test(String(h || '').trim())) !== -1 
-        ? shipHeaders.findIndex(h => /TAG/i.test(String(h || '').trim())) 
-        : 4;
+    // 1. Populate Tag dropdown from Shipper sheet
+    if (tagSelect) {
+        tagSelect.innerHTML = '<option value="">-- Select Tag --</option>';
+        if (shipperRows.length > 1) {
+            const shipHeaders = shipperRows[0] || [];
+            const shipTagIdx = shipHeaders.findIndex(h => /TAG/i.test(String(h || '').trim())) !== -1 
+                ? shipHeaders.findIndex(h => /TAG/i.test(String(h || '').trim())) 
+                : 4;
 
-    const uniqueTags = new Set();
-    shipperRows.slice(1).forEach(row => {
-        const tag = String(row[shipTagIdx] || '').trim();
-        if (tag && tag !== '-' && tag.toUpperCase() !== 'N/A') {
-            uniqueTags.add(tag);
+            const uniqueTags = new Set();
+            shipperRows.slice(1).forEach(row => {
+                const tag = String(row[shipTagIdx] || '').trim();
+                if (tag && tag !== '-' && tag.toUpperCase() !== 'N/A') {
+                    uniqueTags.add(tag);
+                }
+            });
+
+            if (uniqueTags.size === 0) {
+                const opt = document.createElement('option');
+                opt.value = "";
+                opt.textContent = "-- No Tags Found in Shipper Sheet --";
+                tagSelect.appendChild(opt);
+            } else {
+                Array.from(uniqueTags).sort().forEach(tag => {
+                    const opt = document.createElement('option');
+                    opt.value = tag;
+                    opt.textContent = tag;
+                    tagSelect.appendChild(opt);
+                });
+
+                const todayTag = Array.from(uniqueTags).find(t => t.toUpperCase() === 'TODAY');
+                if (todayTag) {
+                    tagSelect.value = todayTag;
+                } else if (uniqueTags.size > 0) {
+                    tagSelect.selectedIndex = 1;
+                }
+            }
         }
-    });
+    }
 
-    if (uniqueTags.size === 0) {
-        const opt = document.createElement('option');
-        opt.value = "";
-        opt.textContent = "-- No Tags Found in Shipper Sheet --";
-        tagSelect.appendChild(opt);
-    } else {
-        Array.from(uniqueTags).sort().forEach(tag => {
-            const opt = document.createElement('option');
-            opt.value = tag;
-            opt.textContent = tag;
-            tagSelect.appendChild(opt);
+    // 2. Populate Consignees from SMTP sheet ("Consignee" column)
+    window._allSmtpConsignees = [];
+    window._selectedConsignees = new Set();
+    const consigneeInput = document.getElementById('consigneeSearchInput');
+    if (consigneeInput) consigneeInput.value = '';
+
+    const dropdownPanel = document.getElementById('consigneeDropdownPanel');
+    if (dropdownPanel) dropdownPanel.classList.add('hidden');
+
+    if (smtpRows.length > 1) {
+        const smtpHeaders = smtpRows[0] || [];
+        const sConsIdx = typeof findHeaderIndex === 'function'
+            ? findHeaderIndex(smtpHeaders, [/CONSIGNEE/i, /SHIPPER/i], 24)
+            : (smtpHeaders.findIndex(h => /CONSIGNEE|SHIPPER/i.test(String(h || '').trim())) !== -1
+                ? smtpHeaders.findIndex(h => /CONSIGNEE|SHIPPER/i.test(String(h || '').trim()))
+                : 24);
+
+        const consMap = new Map();
+        smtpRows.slice(1).forEach(row => {
+            const c = String(row[sConsIdx] || '').trim();
+            if (c && c !== '-' && c.toUpperCase() !== 'N/A') {
+                const upper = c.toUpperCase();
+                if (!consMap.has(upper)) {
+                    consMap.set(upper, c);
+                }
+            }
         });
 
-        const todayTag = Array.from(uniqueTags).find(t => t.toUpperCase() === 'TODAY');
-        if (todayTag) {
-            tagSelect.value = todayTag;
-        } else if (uniqueTags.size > 0) {
-            tagSelect.selectedIndex = 1;
-        }
+        window._allSmtpConsignees = Array.from(consMap.values()).sort((a, b) => a.localeCompare(b));
+        renderConsigneeCheckboxes('');
     }
 
     modal.classList.remove('hidden');
     if (window.lucide) window.lucide.createIcons();
 
-    if (tagSelect.value) {
+    if (tagSelect && tagSelect.value) {
         generateTagReport(tagSelect.value);
     } else {
         document.getElementById('tagReportPlaceholder').classList.remove('hidden');
@@ -16635,7 +16821,261 @@ function generateTagReport(selectedTag) {
     });
 
     currentTagReportData = {
+        reportType: 'Tag',
         tagName: selectedTag,
+        summaryList,
+        containerDetailsList,
+        totalRailout,
+        totalPending,
+        totalGrand
+    };
+
+    renderTagReportHtml(currentTagReportData);
+}
+
+function generateConsigneeReport(selectedConsignees, searchQuery = '') {
+    const consigneeList = (Array.isArray(selectedConsignees) ? selectedConsignees : [selectedConsignees])
+        .map(c => String(c || '').trim())
+        .filter(c => c.length > 0);
+
+    if (consigneeList.length === 0) {
+        alert("Please search or select at least one Consignee first.");
+        return;
+    }
+
+    const rs = window.rawSheets || (typeof rawSheets !== 'undefined' ? rawSheets : {});
+    const smtpRows = Array.isArray(rs.smtp) ? rs.smtp : [];
+    const websiteRows = Array.isArray(rs.website) ? rs.website : [];
+
+    if (smtpRows.length <= 1) {
+        alert("SMTP data is empty. Please upload or update SMTP data first.");
+        return;
+    }
+
+    const smtpHeaders = smtpRows[0] || [];
+    const webHeaders = websiteRows[0] || [];
+
+    const sContIdx = typeof findHeaderIndex === 'function' ? findHeaderIndex(smtpHeaders, [/^CONT/i, /CONT/i], 2) : 2;
+    const sBlIdx = typeof findHeaderIndex === 'function' ? findHeaderIndex(smtpHeaders, [/^BL/i, /BL/i, /BILL/i], 9) : 9;
+    const sSizeIdx = typeof findHeaderIndex === 'function' ? findHeaderIndex(smtpHeaders, [/^SIZE/i, /SIZE/i], 3) : 3;
+    const sTpIdx = typeof findHeaderIndex === 'function' 
+        ? findHeaderIndex(smtpHeaders, [/TP.*SUBMITTING/i, /TP.*NOTING/i, /HANDOVER/i], 18) 
+        : (smtpHeaders.findIndex(h => /TP.*SUBMITTING|TP.*NOTING|HANDOVER/i.test(String(h || '').trim())) !== -1
+            ? smtpHeaders.findIndex(h => /TP.*SUBMITTING|TP.*NOTING|HANDOVER/i.test(String(h || '').trim()))
+            : 18);
+    const sConsIdx = typeof findHeaderIndex === 'function' ? findHeaderIndex(smtpHeaders, [/CONSIGNEE/i, /SHIPPER/i], 24) : 24;
+
+    const wBlIdx = typeof findHeaderIndex === 'function' ? findHeaderIndex(webHeaders, [/BILL/i, /^BL/i], 2) : 2;
+    const wContIdx = typeof findHeaderIndex === 'function' ? findHeaderIndex(webHeaders, [/CONTAINER/i, /^CONT/i], 3) : 3;
+    const wRailIdx = typeof findHeaderIndex === 'function' ? findHeaderIndex(webHeaders, [/RAILING/i, /RAIL.*DATE/i, /RAILOUT/i], 8) : 8;
+    const wRemarksIdx = typeof findHeaderIndex === 'function' ? findHeaderIndex(webHeaders, [/REMARK/i], 9) : 9;
+
+    const targetSet = new Set(consigneeList.map(c => c.toUpperCase()));
+    const matchedSmtpRows = smtpRows.slice(1).filter(r => targetSet.has(String(r[sConsIdx] || '').trim().toUpperCase()));
+
+    if (matchedSmtpRows.length === 0) {
+        alert("No records found in SMTP data for the selected Consignee(s).");
+        return;
+    }
+
+    const webByCont = new Map();
+    websiteRows.slice(1).forEach(row => {
+        const c = String(row[wContIdx] || '').trim().toUpperCase();
+        if (c && !webByCont.has(c)) webByCont.set(c, row);
+    });
+
+    function toDotDate(val) {
+        if (!val || val === '-') return '-';
+        const d = typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(val) : String(val);
+        if (!d) return '-';
+        return d.replace(/-/g, '.');
+    }
+
+    function toDashDate(val) {
+        if (!val || val === '-') return '-';
+        const d = typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(val) : String(val);
+        return d || '-';
+    }
+
+    const containerDetailsList = [];
+    const seenContainers = new Set();
+
+    matchedSmtpRows.forEach(smtpRow => {
+        const contNo = String(smtpRow[sContIdx] || '').trim().toUpperCase();
+        const blNo = String(smtpRow[sBlIdx] || '').trim().toUpperCase();
+        const consignee = String(smtpRow[sConsIdx] || '').trim().toUpperCase() || 'UNKNOWN';
+        let size = String(smtpRow[sSizeIdx] || '').trim();
+        if (!size) size = '40';
+
+        const contKey = `${contNo}_${blNo}`;
+        if (contNo && seenContainers.has(contKey)) return;
+        if (contNo) seenContainers.add(contKey);
+
+        let tpDateRaw = smtpRow[sTpIdx] || smtpRow[18] || smtpRow[17] || '';
+        let tpDateDot = toDotDate(tpDateRaw);
+        let tpDateDash = toDashDate(tpDateRaw);
+
+        const webRow = webByCont.get(contNo);
+        let railingDate = 'Pending';
+        let remarks = '';
+
+        if (webRow) {
+            const rawRail = String(webRow[wRailIdx] || '').trim();
+            const rawRemark = String(webRow[wRemarksIdx] || '').trim();
+            const isPending = !rawRail || ['-', 'NOT RAILOUT', 'PENDING', 'N/A'].includes(rawRail.toUpperCase());
+
+            if (isPending) {
+                railingDate = 'Pending';
+                remarks = rawRemark || (tpDateDash !== '-' ? `CONTAINER HANDOVER TO HTPL ON ${tpDateDash}` : 'CONTAINER HANDOVER TO HTPL');
+            } else {
+                railingDate = toDashDate(rawRail);
+                remarks = rawRemark;
+            }
+        } else {
+            railingDate = 'Pending';
+            remarks = (tpDateDash !== '-') ? `CONTAINER HANDOVER TO HTPL ON ${tpDateDash}` : 'CONTAINER HANDOVER TO HTPL';
+        }
+
+        // Extract Arrival Date from Website Remarks (e.g. "TRAIN ARRIVED ON 08-09-2026 02:35")
+        let arrivalDate = '-';
+        if (webRow) {
+            const rawRemark = String(webRow[wRemarksIdx] || '').trim();
+            if (/ARRIV/i.test(rawRemark)) {
+                const match = rawRemark.match(/ARRIV(?:ED)?(?:\s+ON)?\s+(\d{1,2}[-./]\d{1,2}[-./]\d{2,4})/i) ||
+                              rawRemark.match(/(\d{1,2}[-./]\d{1,2}[-./]\d{4})/);
+                if (match && match[1]) {
+                    const clean = match[1].replace(/[/.]/g, '-');
+                    arrivalDate = toDashDate(clean);
+                }
+            }
+        }
+        if (arrivalDate === '-' && railingDate !== 'Pending') {
+            arrivalDate = 'Pending';
+        }
+
+        containerDetailsList.push({
+            consignee: consignee || 'UNKNOWN',
+            contNo,
+            size,
+            blNo,
+            tpDateDot,
+            tpDateDash,
+            railingDate,
+            arrivalDate,
+            remarks
+        });
+    });
+
+    const blGroups = {};
+    containerDetailsList.forEach(item => {
+        const key = `${item.consignee}_${item.blNo || item.contNo}`;
+        if (!blGroups[key]) {
+            blGroups[key] = {
+                consignee: item.consignee,
+                blNo: item.blNo,
+                tpDateDot: item.tpDateDot,
+                tpDateDash: item.tpDateDash,
+                containers: []
+            };
+        }
+        blGroups[key].containers.push(item);
+        if (blGroups[key].tpDateDot === '-' && item.tpDateDot !== '-') {
+            blGroups[key].tpDateDot = item.tpDateDot;
+            blGroups[key].tpDateDash = item.tpDateDash;
+        }
+    });
+
+    const summaryList = Object.values(blGroups).map(group => {
+        let railoutCount = 0;
+        let pendingCount = 0;
+        const railedDates = new Set();
+
+        group.containers.forEach(c => {
+            if (c.railingDate === 'Pending' || c.railingDate === '-') {
+                pendingCount++;
+            } else {
+                railoutCount++;
+                railedDates.add(c.railingDate);
+            }
+        });
+
+        const grandTotal = railoutCount + pendingCount;
+        let railingDateDisplay = 'Pending';
+        let tatRailout = '-';
+
+        if (railoutCount > 0) {
+            railingDateDisplay = Array.from(railedDates).join(', ');
+            const firstRailedDate = Array.from(railedDates)[0];
+            tatRailout = getTagTatDays(group.tpDateDash, firstRailedDate);
+        }
+
+        const arrivedDates = new Set();
+        group.containers.forEach(c => {
+            if (c.arrivalDate && c.arrivalDate !== '-' && c.arrivalDate !== 'Pending') {
+                arrivedDates.add(c.arrivalDate);
+            }
+        });
+
+        let arrivalDateDisplay = 'Pending';
+        let tatArrival = '-';
+        if (arrivedDates.size > 0) {
+            arrivalDateDisplay = Array.from(arrivedDates).join(', ');
+            const firstArrivedDate = Array.from(arrivedDates)[0];
+            tatArrival = getTagTatDays(group.tpDateDash, firstArrivedDate);
+        } else if (railoutCount === 0) {
+            arrivalDateDisplay = 'Pending';
+            tatArrival = '-';
+        }
+
+        return {
+            consignee: group.consignee,
+            blNo: group.blNo,
+            tpDate: group.tpDateDot,
+            railingDate: railingDateDisplay,
+            arrivalDate: arrivalDateDisplay,
+            tatRailout: tatRailout,
+            tatArrival: tatArrival,
+            railout: railoutCount,
+            pending: pendingCount,
+            grandTotal: grandTotal,
+            containers: group.containers
+        };
+    });
+
+    summaryList.sort((a, b) => {
+        const cComp = a.consignee.localeCompare(b.consignee);
+        if (cComp !== 0) return cComp;
+        return a.blNo.localeCompare(b.blNo);
+    });
+
+    containerDetailsList.sort((a, b) => {
+        const cComp = a.consignee.localeCompare(b.consignee);
+        if (cComp !== 0) return cComp;
+        const bComp = a.blNo.localeCompare(b.blNo);
+        if (bComp !== 0) return bComp;
+        return a.contNo.localeCompare(b.contNo);
+    });
+
+    let totalRailout = 0;
+    let totalPending = 0;
+    let totalGrand = 0;
+    summaryList.forEach(s => {
+        totalRailout += s.railout;
+        totalPending += s.pending;
+        totalGrand += s.grandTotal;
+    });
+
+    let reportTitle = '';
+    if (searchQuery && searchQuery.trim()) {
+        const qUpper = searchQuery.trim().toUpperCase();
+        reportTitle = consigneeList.length > 1 ? `${qUpper} (${consigneeList.length} Consignees)` : consigneeList[0];
+    } else {
+        reportTitle = consigneeList.length === 1 ? consigneeList[0] : `${consigneeList[0]} (+${consigneeList.length - 1} more)`;
+    }
+
+    currentTagReportData = {
+        reportType: 'Consignee',
+        tagName: reportTitle,
         summaryList,
         containerDetailsList,
         totalRailout,
@@ -16651,7 +17091,8 @@ function renderTagReportHtml(data) {
     const view = document.getElementById('tagReportView');
     view.classList.remove('hidden');
 
-    document.getElementById('tagReportTitle').textContent = `Tag : ${data.tagName}`;
+    const labelPrefix = data.reportType === 'Consignee' ? 'Consignee' : 'Tag';
+    document.getElementById('tagReportTitle').textContent = `${labelPrefix} : ${data.tagName}`;
 
     const tbody1 = document.getElementById('tagSummaryTableBody');
     tbody1.innerHTML = data.summaryList.map(item => `
@@ -16717,13 +17158,15 @@ async function downloadTagReportExcel() {
         return;
     }
 
-    const { tagName, summaryList, containerDetailsList, totalRailout, totalPending, totalGrand } = currentTagReportData;
+    const { tagName, summaryList, containerDetailsList, totalRailout, totalPending, totalGrand, reportType } = currentTagReportData;
+    const isConsignee = reportType === 'Consignee';
+    const labelPrefix = isConsignee ? 'Consignee' : 'Tag';
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "Hind Terminals";
     workbook.created = new Date();
 
-    const cleanSheetName = `Tag_${String(tagName).replace(/[\\/*?:[\]]/g, '_').slice(0, 25)}`;
+    const cleanSheetName = `${labelPrefix}_${String(tagName).replace(/[\\/*?:[\]]/g, '_').slice(0, 20)}`;
     const ws = workbook.addWorksheet(cleanSheetName, {
         views: [{ showGridLines: true }]
     });
@@ -16741,9 +17184,9 @@ async function downloadTagReportExcel() {
         fgColor: { argb: 'FFBDD7EE' }
     };
 
-    // Row 2: Tag : <TagName>
+    // Row 2: Tag / Consignee : <Name>
     const tagRow = ws.getRow(2);
-    tagRow.getCell(1).value = `Tag : ${tagName}`;
+    tagRow.getCell(1).value = `${labelPrefix} : ${tagName}`;
     tagRow.getCell(1).font = { name: 'Arial', size: 11, bold: true };
 
     // Row 4 & 5: Table 1 Headers
@@ -16895,7 +17338,7 @@ async function downloadTagReportExcel() {
     const url = window.URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `Report_${String(tagName).replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    anchor.download = `${labelPrefix}_Report_${String(tagName).replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
     anchor.click();
     window.URL.revokeObjectURL(url);
 }
@@ -16918,6 +17361,133 @@ function initTagReportListeners() {
             else alert("Please select a Tag first.");
         });
     }
+
+    const genConsigneeBtn = document.getElementById('generateConsigneeReportBtn');
+    if (genConsigneeBtn) {
+        genConsigneeBtn.addEventListener('click', () => {
+            const searchInput = document.getElementById('consigneeSearchInput');
+            const query = searchInput ? searchInput.value.trim() : '';
+            const qUpper = query.toUpperCase();
+
+            let selectedList = [];
+            if (query && window._allSmtpConsignees) {
+                const matching = window._allSmtpConsignees.filter(c => c.toUpperCase().includes(qUpper));
+                if (window._selectedConsignees && window._selectedConsignees.size > 0) {
+                    const checkedMatching = matching.filter(c => window._selectedConsignees.has(c));
+                    selectedList = checkedMatching.length > 0 ? checkedMatching : matching;
+                } else {
+                    selectedList = matching;
+                }
+                window._selectedConsignees = new Set(selectedList);
+            } else if (window._selectedConsignees) {
+                selectedList = Array.from(window._selectedConsignees);
+            }
+
+            if (selectedList.length === 0) {
+                alert("Please enter or select at least one Consignee first.");
+                return;
+            }
+
+            const dropdownPanel = document.getElementById('consigneeDropdownPanel');
+            if (dropdownPanel) dropdownPanel.classList.add('hidden');
+
+            generateConsigneeReport(selectedList, query);
+        });
+    }
+
+    // Consignee search input typing & focus events
+    const consigneeInput = document.getElementById('consigneeSearchInput');
+    if (consigneeInput) {
+        consigneeInput.addEventListener('input', (e) => {
+            const query = e.target.value;
+            const dropdown = document.getElementById('consigneeDropdownPanel');
+            if (dropdown) dropdown.classList.remove('hidden');
+            renderConsigneeCheckboxes(query);
+        });
+
+        consigneeInput.addEventListener('focus', () => {
+            const dropdown = document.getElementById('consigneeDropdownPanel');
+            if (dropdown) dropdown.classList.remove('hidden');
+            renderConsigneeCheckboxes(consigneeInput.value);
+        });
+
+        consigneeInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const genBtn = document.getElementById('generateConsigneeReportBtn');
+                if (genBtn) genBtn.click();
+            }
+        });
+    }
+
+    // Toggle dropdown button
+    const toggleDropdownBtn = document.getElementById('toggleConsigneeDropdownBtn');
+    if (toggleDropdownBtn) {
+        toggleDropdownBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const dropdown = document.getElementById('consigneeDropdownPanel');
+            if (dropdown) {
+                const isHidden = dropdown.classList.contains('hidden');
+                if (isHidden) {
+                    dropdown.classList.remove('hidden');
+                    const q = consigneeInput ? consigneeInput.value : '';
+                    renderConsigneeCheckboxes(q);
+                } else {
+                    dropdown.classList.add('hidden');
+                }
+            }
+        });
+    }
+
+    // Select all matching checkbox
+    const selectAllCb = document.getElementById('selectAllConsigneesCheckbox');
+    if (selectAllCb) {
+        selectAllCb.addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+            const q = consigneeInput ? consigneeInput.value.trim().toUpperCase() : '';
+            const list = window._allSmtpConsignees || [];
+            const filtered = q ? list.filter(c => c.toUpperCase().includes(q)) : list;
+            
+            if (!window._selectedConsignees) window._selectedConsignees = new Set();
+            if (isChecked) {
+                filtered.forEach(c => window._selectedConsignees.add(c));
+            } else {
+                filtered.forEach(c => window._selectedConsignees.delete(c));
+            }
+            renderConsigneeCheckboxes(consigneeInput ? consigneeInput.value : '');
+        });
+    }
+
+    // Checkbox items click delegation
+    const checkboxListEl = document.getElementById('consigneeCheckboxList');
+    if (checkboxListEl) {
+        checkboxListEl.addEventListener('change', (e) => {
+            const target = e.target;
+            if (target && target.classList.contains('consignee-item-checkbox')) {
+                const consigneeVal = target.getAttribute('data-consignee');
+                if (consigneeVal) {
+                    if (!window._selectedConsignees) window._selectedConsignees = new Set();
+                    if (target.checked) {
+                        window._selectedConsignees.add(consigneeVal);
+                    } else {
+                        window._selectedConsignees.delete(consigneeVal);
+                    }
+                    updateConsigneeHeaderStats(consigneeInput ? consigneeInput.value : '');
+                }
+            }
+        });
+    }
+
+    // Click outside dropdown to close
+    document.addEventListener('click', (e) => {
+        const wrapper = document.getElementById('consigneeSearchContainer');
+        const dropdown = document.getElementById('consigneeDropdownPanel');
+        if (dropdown && !dropdown.classList.contains('hidden')) {
+            if (wrapper && !wrapper.contains(e.target)) {
+                dropdown.classList.add('hidden');
+            }
+        }
+    });
 
     const tagSel = document.getElementById('tagReportSelect');
     if (tagSel) {
@@ -17446,7 +18016,7 @@ initAuth();
         <div class="bg-emerald-800 p-3.5 flex justify-between items-center text-white shrink-0">
             <div class="flex items-center gap-2.5">
                 <i data-lucide="file-spreadsheet" class="w-5 h-5"></i>
-                <h2 class="font-bold uppercase tracking-tight text-xs md:text-sm">TAG WISE REPORT GENERATOR</h2>
+                <h2 class="font-bold uppercase tracking-tight text-xs md:text-sm">TAG &amp; CONSIGNEE REPORT GENERATOR</h2>
             </div>
             <div class="flex items-center gap-2.5">
                 <button id="downloadTagReportExcelTopBtn" type="button" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-1.5 rounded-lg font-bold text-[10px] uppercase flex items-center gap-1.5 shadow transition-all active:scale-95">
@@ -17460,19 +18030,63 @@ initAuth();
 
         <!-- Controls / Filter Bar -->
         <div class="p-3 bg-slate-100 border-b border-slate-300 flex items-center justify-between flex-wrap gap-3 shrink-0">
-            <div class="flex items-center gap-3">
-                <label for="tagReportSelect" class="text-xs font-black text-slate-700 uppercase tracking-wide">
-                    Select Tag:
-                </label>
-                <select id="tagReportSelect" class="bg-white border-2 border-emerald-600 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-400 min-w-[220px] shadow-sm">
-                    <option value="">-- Select Tag --</option>
-                </select>
-                <button id="generateTagReportBtn" type="button" class="bg-emerald-700 hover:bg-emerald-800 text-white px-5 py-1.5 rounded-lg font-bold text-xs uppercase flex items-center gap-2 shadow transition-all active:scale-95">
-                    <i data-lucide="play" class="w-3.5 h-3.5"></i> Generate
-                </button>
+            <div class="flex items-center flex-wrap gap-3">
+                <!-- Option 1: Select Tag -->
+                <div class="flex items-center gap-2">
+                    <label for="tagReportSelect" class="text-xs font-black text-slate-700 uppercase tracking-wide">
+                        Select Tag:
+                    </label>
+                    <select id="tagReportSelect" class="bg-white border-2 border-emerald-600 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-400 min-w-[170px] shadow-sm">
+                        <option value="">-- Select Tag --</option>
+                    </select>
+                    <button id="generateTagReportBtn" type="button" class="bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-1.5 rounded-lg font-bold text-xs uppercase flex items-center gap-1.5 shadow transition-all active:scale-95">
+                        <i data-lucide="play" class="w-3.5 h-3.5"></i> Generate
+                    </button>
+                </div>
+
+                <!-- Separator -->
+                <div class="h-6 w-px bg-slate-300 hidden md:block"></div>
+
+                <!-- Option 2: Select Consignee (Searchable & Grouping) -->
+                <div class="relative flex items-center gap-2" id="consigneeSearchWrapper">
+                    <label for="consigneeSearchInput" class="text-xs font-black text-slate-700 uppercase tracking-wide whitespace-nowrap">
+                        Select Consignee:
+                    </label>
+                    <div class="relative min-w-[280px] max-w-[420px]" id="consigneeSearchContainer">
+                        <div class="flex items-center bg-white border-2 border-cyan-700 rounded-lg px-2.5 py-1.5 shadow-sm focus-within:ring-2 focus-within:ring-cyan-500">
+                            <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 mr-1.5 shrink-0"></i>
+                            <input type="text" id="consigneeSearchInput" 
+                                placeholder="Search Consignee (e.g. NAHAR)..." 
+                                autocomplete="off"
+                                class="w-full bg-transparent text-xs font-bold text-slate-800 outline-none uppercase placeholder:normal-case placeholder:font-normal placeholder:text-slate-400">
+                            <span id="consigneeSelectedBadge" class="hidden ml-1.5 px-2 py-0.5 bg-cyan-700 text-white text-[10px] font-black rounded-full whitespace-nowrap shrink-0">0</span>
+                            <button type="button" id="toggleConsigneeDropdownBtn" class="ml-1 text-slate-500 hover:text-slate-800 p-0.5 cursor-pointer shrink-0" title="View all consignees">
+                                <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+
+                        <!-- Dropdown Multi-Select Panel -->
+                        <div id="consigneeDropdownPanel" class="hidden absolute top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-lg shadow-2xl z-[100010] flex flex-col overflow-hidden max-h-80">
+                            <div class="p-2 bg-slate-100 border-b border-slate-200 flex items-center justify-between text-[11px] font-bold text-slate-700 shrink-0">
+                                <label class="flex items-center gap-1.5 cursor-pointer select-none">
+                                    <input type="checkbox" id="selectAllConsigneesCheckbox" class="w-3.5 h-3.5 rounded text-cyan-600 focus:ring-cyan-500 cursor-pointer">
+                                    <span id="selectAllConsigneesLabel">Select All Matching</span>
+                                </label>
+                                <span id="consigneeMatchCount" class="text-[10px] text-cyan-800 font-bold">0</span>
+                            </div>
+                            <div id="consigneeCheckboxList" class="overflow-y-auto p-1.5 max-h-60 space-y-0.5 custom-scrollbar bg-white">
+                                <!-- Checkbox items dynamically rendered -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <button id="generateConsigneeReportBtn" type="button" class="bg-cyan-700 hover:bg-cyan-800 text-white px-4 py-1.5 rounded-lg font-bold text-xs uppercase flex items-center gap-1.5 shadow transition-all active:scale-95 cursor-pointer whitespace-nowrap">
+                        <i data-lucide="play" class="w-3.5 h-3.5"></i> Generate
+                    </button>
+                </div>
             </div>
             <div class="text-[10px] text-slate-500 font-bold uppercase italic">
-                *Tag source: Update &amp; View Source Data &gt; Shipper sheet (Column: TAG)
+                *Tag: Shipper Sheet | Consignee: SMTP Data
             </div>
         </div>
 
@@ -17480,7 +18094,7 @@ initAuth();
         <div class="flex-1 overflow-auto p-4 md:p-6 bg-slate-50 custom-scrollbar">
             <div id="tagReportPlaceholder" class="flex flex-col items-center justify-center py-24 text-slate-400">
                 <i data-lucide="file-search" class="w-16 h-16 mb-3 text-slate-300"></i>
-                <p class="text-sm font-bold uppercase tracking-wider">Please select a Tag and click Generate to view report</p>
+                <p class="text-sm font-bold uppercase tracking-wider">Please select a Tag or Consignee and click Generate to view report</p>
             </div>
             <div id="tagReportView" class="hidden max-w-6xl mx-auto bg-white p-6 rounded-lg shadow-sm border border-slate-300 font-sans">
                 <!-- Top Tag Label -->
