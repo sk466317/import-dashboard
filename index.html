@@ -2538,6 +2538,7 @@ window.executeSmtpBlSearch = function executeSmtpBlSearch() {
 
         // Get unique consignees with vessel and handover info
         const consigneeStats = new Map();
+        const globalSearchCodes = new Set();
         
         matches.forEach(match => {
             const row = match.row;
@@ -2576,6 +2577,53 @@ window.executeSmtpBlSearch = function executeSmtpBlSearch() {
                     isPending = (railDate === 'PENDING' || railDate === '' || railDate === '-');
                 }
             }
+
+            // Determine container size (20 or 40)
+            let sizeNum = 20;
+            const rawSize = smtpRow 
+                ? String(smtpRow[3] || '') 
+                : (hkrRow ? String(hkrRow.ctr_size || '') : (match.row && match.row[1] ? String(match.row[1]) : ''));
+            if (rawSize.includes('40')) {
+                sizeNum = 40;
+            } else {
+                sizeNum = 20;
+            }
+
+            // Determine Filed Code (HKR, HMR, HDL)
+            let containerCode = '';
+            if (smtpRow && smtpRow[22]) {
+                const rem = String(smtpRow[22]).trim().toUpperCase();
+                if (['HKR', 'HMR', 'HDL'].includes(rem)) {
+                    containerCode = rem;
+                }
+            }
+            if (!containerCode && smtpRow && smtpRow[11]) {
+                const dest = String(smtpRow[11]).trim().toUpperCase().replace(/\s+/g, '');
+                if (dest.includes('KILARAIPUR') || dest.includes('KILA RAIPUR') || dest.includes('KLR')) {
+                    containerCode = 'HMR';
+                } else if (dest.includes('RANGIAN') || dest.includes('HKR')) {
+                    containerCode = 'HKR';
+                } else if (dest.includes('LUDHIANA') || dest.includes('LUDHIYANA') || dest.includes('LDH')) {
+                    containerCode = 'HDL';
+                }
+            }
+            if (!containerCode && rawSheets.hkrHmrFiltered && rawSheets.hkrHmrFiltered.length > 0) {
+                const hkrMatch = rawSheets.hkrHmrFiltered.find(h => String(h.ctr_no || '').trim().toUpperCase() === contNo);
+                if (hkrMatch) {
+                    const ar = String(hkrMatch.assigned_remark || '').trim().toUpperCase();
+                    if (['HKR', 'HMR', 'HDL'].includes(ar)) {
+                        containerCode = ar;
+                    } else if (hkrMatch.destination_name) {
+                        const dn = String(hkrMatch.destination_name).trim().toUpperCase().replace(/\s+/g, '');
+                        if (dn.includes('KILARAIPUR') || dn.includes('KLR')) containerCode = 'HMR';
+                        else if (dn.includes('RANGIAN') || dn.includes('HKR')) containerCode = 'HKR';
+                        else if (dn.includes('LUDHIANA') || dn.includes('LDH')) containerCode = 'HDL';
+                    }
+                }
+            }
+            if (containerCode && containerCode !== 'OTHER') {
+                globalSearchCodes.add(containerCode);
+            }
             
             // Create unique key combining consignee + vessel + handover
             const uniqueKey = `${consignee}||${vesselName}||${handoverDate}`;
@@ -2586,19 +2634,33 @@ window.executeSmtpBlSearch = function executeSmtpBlSearch() {
                     vessel: vesselName || 'UNKNOWN VESSEL',
                     handover: handoverDate || 'N/A',
                     sampleBL: blNo,
+                    blSet: new Set(),
                     consIndex: match.consIndex,
                     total: 0,
+                    total20: 0,
+                    total40: 0,
                     pending: 0,
+                    pending20: 0,
+                    pending40: 0,
                     railed: 0,
-                    hasPending: false
+                    hasPending: false,
+                    codes: new Set()
                 });
             }
             
             const stats = consigneeStats.get(uniqueKey);
             stats.total++;
+            if (sizeNum === 40) stats.total40++; else stats.total20++;
+            if (blNo && blNo !== '-') stats.blSet.add(blNo);
+
+            if (containerCode && containerCode !== 'OTHER') {
+                stats.codes.add(containerCode);
+            }
+
             if (isPending) {
                 stats.pending++;
                 stats.hasPending = true;
+                if (sizeNum === 40) stats.pending40++; else stats.pending20++;
             } else {
                 stats.railed++;
             }
@@ -2609,15 +2671,21 @@ window.executeSmtpBlSearch = function executeSmtpBlSearch() {
             resultBox.style.maxHeight = '';
             resultBox.style.overflowY = '';
             resultBox.classList.remove('border-2', 'border-blue-600', 'border-orange-500');
+            
             const queryBadge = document.getElementById('smtpSearchQueryBadge');
-            if (queryBadge) queryBadge.innerText = searchVal ? `Query: "${searchVal}" (${consigneeStats.size} Results)` : '';
+            const primaryCodeStr = Array.from(globalSearchCodes).join(' / ');
+            if (queryBadge) {
+                queryBadge.innerHTML = `
+                    <div class="font-black text-[10.5px] text-amber-300">Query: "${escapeHtml(searchVal)}" (${consigneeStats.size} Results)</div>
+                    ${primaryCodeStr ? `<div class="font-black text-[9.5px] text-white mt-0.5 uppercase tracking-wide">Code : <span class="bg-pink-600 text-white px-2 py-0.2 rounded">${primaryCodeStr}</span></div>` : ''}
+                `;
+            }
 
             // Convert to array and sort: 
             // 1. By handover date (newest first)
             // 2. Pending first within same date
             // 3. Then by vessel name
             const sortedConsignees = Array.from(consigneeStats.values()).sort((a, b) => {
-                // Parse dates for comparison
                 const parseDate = (dateStr) => {
                     if (!dateStr || dateStr === 'N/A') return 0;
                     const parts = dateStr.split('-');
@@ -2630,48 +2698,388 @@ window.executeSmtpBlSearch = function executeSmtpBlSearch() {
                 const dateA = parseDate(a.handover);
                 const dateB = parseDate(b.handover);
                 
-                // Sort by date (newest first)
                 if (dateB !== dateA) return dateB - dateA;
-                
-                // Then pending first
                 if (a.hasPending && !b.hasPending) return -1;
                 if (!a.hasPending && b.hasPending) return 1;
-                
-                // Then by vessel name
                 return a.vessel.localeCompare(b.vessel);
             });
+
+            // Helper to get BL stats across all shipments for a specific BL
+            const getBlStats = (targetBl) => {
+                let b20 = 0, b40 = 0, bRailed = 0, bPending = 0;
+                const cleanBl = String(targetBl || '').trim().toUpperCase();
+
+                if (rawSheets.smtp && rawSheets.smtp.length > 1) {
+                    rawSheets.smtp.slice(1).forEach(r => {
+                        if (String(r[9] || '').trim().toUpperCase() === cleanBl) {
+                            const c = String(r[2] || '').trim().toUpperCase();
+                            const sz = String(r[3] || '');
+                            if (sz.includes('40')) b40++; else b20++;
+
+                            let isR = false;
+                            if (rawSheets.website && rawSheets.website.length > 1) {
+                                const w = rawSheets.website.find(wRow => String(wRow[3] || '').trim().toUpperCase() === c);
+                                if (w && w[8] && !['', 'PENDING', '-'].includes(String(w[8]).trim().toUpperCase())) {
+                                    isR = true;
+                                }
+                            }
+                            if (isR) bRailed++; else bPending++;
+                        }
+                    });
+                }
+
+                if (b20 === 0 && b40 === 0 && rawSheets.shipper && rawSheets.shipper.length > 1) {
+                    rawSheets.shipper.slice(1).forEach(r => {
+                        if (String(r[2] || '').trim().toUpperCase() === cleanBl) {
+                            const c = String(r[0] || '').trim().toUpperCase();
+                            const sz = String(r[1] || '');
+                            if (sz.includes('40')) b40++; else b20++;
+
+                            let isR = false;
+                            if (rawSheets.website && rawSheets.website.length > 1) {
+                                const w = rawSheets.website.find(wRow => String(wRow[3] || '').trim().toUpperCase() === c);
+                                if (w && w[8] && !['', 'PENDING', '-'].includes(String(w[8]).trim().toUpperCase())) {
+                                    isR = true;
+                                }
+                            }
+                            if (isR) bRailed++; else bPending++;
+                        }
+                    });
+                }
+
+                const totalB = b20 + b40;
+                let sizeS = '';
+                if (b20 > 0 && b40 > 0) sizeS = `${totalB} (${b20}x20 & ${b40}x40)`;
+                else if (b40 > 0) sizeS = `${totalB}x40`;
+                else if (b20 > 0) sizeS = `${totalB}x20`;
+                else sizeS = `${totalB}`;
+
+                return { total: totalB, b20, b40, sizeStr: sizeS, railed: bRailed, pending: bPending };
+            };
+
+            // Helper to get scanning remarks for all containers of a BL
+            const getBlScanningRemarks = (targetBl) => {
+                const cleanBl = String(targetBl || '').trim().toUpperCase();
+                if (!cleanBl) return [];
+
+                const contSet = new Set();
+                if (rawSheets.smtp && rawSheets.smtp.length > 1) {
+                    rawSheets.smtp.slice(1).forEach(r => {
+                        if (String(r[9] || '').trim().toUpperCase() === cleanBl) {
+                            const c = String(r[2] || '').trim().toUpperCase();
+                            if (c && c !== '-' && c !== 'N/A') contSet.add(c);
+                        }
+                    });
+                }
+                if (rawSheets.website && rawSheets.website.length > 1) {
+                    rawSheets.website.slice(1).forEach(r => {
+                        if (String(r[2] || '').trim().toUpperCase() === cleanBl) {
+                            const c = String(r[3] || '').trim().toUpperCase();
+                            if (c && c !== '-' && c !== 'N/A') contSet.add(c);
+                        }
+                    });
+                }
+                if (rawSheets.shipper && rawSheets.shipper.length > 1) {
+                    rawSheets.shipper.slice(1).forEach(r => {
+                        if (String(r[2] || '').trim().toUpperCase() === cleanBl) {
+                            const c = String(r[0] || '').trim().toUpperCase();
+                            if (c && c !== '-' && c !== 'N/A') contSet.add(c);
+                        }
+                    });
+                }
+
+                const remarks = [];
+                contSet.forEach(c => {
+                    let sStatus = '';
+                    if (rawSheets.smtp && rawSheets.smtp.length > 1) {
+                        for (let i = 1; i < rawSheets.smtp.length; i++) {
+                            const r = rawSheets.smtp[i];
+                            if (String(r[2] || '').trim().toUpperCase() === c && String(r[9] || '').trim().toUpperCase() === cleanBl) {
+                                sStatus = String(r[1] || '').trim();
+                                if (sStatus) break;
+                            }
+                        }
+                    }
+
+                    let wStatus = '';
+                    if (rawSheets.website && rawSheets.website.length > 1) {
+                        for (let i = 1; i < rawSheets.website.length; i++) {
+                            const r = rawSheets.website[i];
+                            if (String(r[3] || '').trim().toUpperCase() === c && String(r[2] || '').trim().toUpperCase() === cleanBl) {
+                                wStatus = String(r[9] || '').trim();
+                                if (wStatus) break;
+                            }
+                        }
+                    }
+
+                    const combined = (sStatus + ' ' + wStatus).trim();
+                    if (!combined) return;
+
+                    let remarkText = '';
+                    if (/UNDER\s+SCANNING|CONTAINER\s+IS\s+UNDER\s+SCANNING|CONTAINER\s+UNDER\s+SCANNING/i.test(combined)) {
+                        remarkText = 'Under Scanning Done';
+                    } else {
+                        const doneDateMatch = combined.match(/SCANNING\s+DONE\s+([0-9]{2}[-.\/][0-9]{2}[-.\/][0-9]{2,4})/i);
+                        if (doneDateMatch) {
+                            remarkText = 'Scanning Done ' + doneDateMatch[1].replace(/[\/-]/g, '.');
+                        } else if (/SCANNING\s+DONE/i.test(combined)) {
+                            remarkText = 'Scanning Done';
+                        }
+                    }
+
+                    if (remarkText) {
+                        remarks.push(`${c} : ${remarkText}`);
+                    }
+                });
+
+                // If a container was searched, put it first
+                remarks.sort((a, b) => {
+                    if (searchVal && a.startsWith(searchVal)) return -1;
+                    if (searchVal && b.startsWith(searchVal)) return 1;
+                    return a.localeCompare(b);
+                });
+
+                return remarks;
+            };
+
+            // Helper to build the "Pendency Before" table for a given vessel and handover date
+            const getVesselPendencyBeforeTableHtml = (searchedVsl, searchedDate, searchedCode) => {
+                const parseDateToTime = (dStr) => {
+                    if (!dStr || dStr === '-' || dStr === 'N/A') return 0;
+                    const clean = String(dStr).trim().split(/[\s:]+/)[0];
+                    const parts = clean.split(/[-.\/]/);
+                    if (parts.length >= 3) {
+                        let d = parseInt(parts[0], 10);
+                        let m = parseInt(parts[1], 10) - 1;
+                        let y = parseInt(parts[2], 10);
+                        if (y < 100) y += 2000;
+                        return new Date(y, m, d).getTime();
+                    }
+                    return 0;
+                };
+
+                const formatDisplayDate = (dStr) => {
+                    if (!dStr || dStr === '-' || dStr === 'N/A') return '-';
+                    const clean = String(dStr).trim().split(/[\s:]+/)[0];
+                    const parts = clean.split(/[-.\/]/);
+                    if (parts.length >= 3) {
+                        let d = String(parts[0]).padStart(2, '0');
+                        let m = String(parts[1]).padStart(2, '0');
+                        let y = parts[2];
+                        if (y.length === 2) y = '20' + y;
+                        return `${d}-${m}-${y}`;
+                    }
+                    return String(dStr);
+                };
+
+                const normTargetVsl = String(searchedVsl || '').trim().toUpperCase();
+                const normTargetDate = formatDisplayDate(searchedDate);
+                const targetTime = parseDateToTime(searchedDate);
+                const targetCode = String(searchedCode || 'HMR').trim().toUpperCase() || 'HMR';
+
+                // 1. Pending containers in website
+                const pendingContSet = new Set();
+                if (rawSheets.website && rawSheets.website.length > 1) {
+                    rawSheets.website.slice(1).forEach(w => {
+                        const c = String(w[3] || '').trim().toUpperCase();
+                        const rDate = String(w[8] || '').trim().toUpperCase();
+                        if (c && (!rDate || ['PENDING', '', '-'].includes(rDate))) {
+                            pendingContSet.add(c);
+                        }
+                    });
+                }
+
+                // 2. Group all pending containers by code + vessel + date
+                const vslDateGroups = {};
+
+                if (rawSheets.smtp && rawSheets.smtp.length > 1) {
+                    rawSheets.smtp.slice(1).forEach(r => {
+                        const c = String(r[2] || '').trim().toUpperCase();
+                        if (!pendingContSet.has(c)) return;
+
+                        const rVsl = String(r[5] || 'UNKNOWN').trim().toUpperCase();
+                        const rRawTp = r[18] || r[17] || '';
+                        const rDt = formatDisplayDate(rRawTp);
+                        const rTime = parseDateToTime(rRawTp);
+                        const sz = String(r[3] || '');
+                        const is40 = sz.includes('40');
+                        const rCode = String(r[22] || 'HMR').trim().toUpperCase() || 'HMR';
+
+                        const gKey = `${rCode}||${rVsl}||${rDt}`;
+                        if (!vslDateGroups[gKey]) {
+                            vslDateGroups[gKey] = {
+                                code: rCode,
+                                vsl: rVsl,
+                                dt: rDt,
+                                time: rTime,
+                                c20: 0,
+                                c40: 0
+                            };
+                        }
+                        if (is40) vslDateGroups[gKey].c40++; else vslDateGroups[gKey].c20++;
+                    });
+                }
+
+                // 3. Filter for targetCode AND time <= targetTime (Before & up to searched vessel date)
+                const relevantBatches = Object.values(vslDateGroups).filter(g => {
+                    const isMatchingCode = (!targetCode || targetCode === 'OTHER') ? true : (g.code === targetCode);
+                    const isBeforeOrEqual = (targetTime > 0) ? (g.time <= targetTime) : true;
+                    return isMatchingCode && isBeforeOrEqual;
+                });
+
+                // Sort chronologically: oldest date first
+                relevantBatches.sort((a, b) => {
+                    if (a.time !== b.time) return a.time - b.time;
+                    return a.vsl.localeCompare(b.vsl);
+                });
+
+                if (relevantBatches.length === 0) {
+                    return `
+                        <div class="mt-2 text-[9px] font-bold text-slate-500 italic p-1.5 bg-slate-50 border border-slate-200 rounded text-center">
+                            No older pending vessels found before this date.
+                        </div>
+                    `;
+                }
+
+                let tot20 = 0, tot40 = 0, totTeus = 0;
+                const rowsHtml = relevantBatches.map(b => {
+                    const teus = b.c20 + (b.c40 * 2);
+                    tot20 += b.c20;
+                    tot40 += b.c40;
+                    totTeus += teus;
+                    const isTarget = (b.vsl === normTargetVsl && b.dt === normTargetDate);
+                    const rowStyle = isTarget 
+                        ? 'background-color: #fef08a !important; font-weight: 900; color: #000000;' 
+                        : 'background-color: #ffffff;';
+                    return `
+                        <tr style="${rowStyle} border-bottom: 1px solid #cbd5e1;">
+                            <td style="padding: 3.5px 7px; border: 1px solid #94a3b8; text-align: left; font-size: 9.5px;">${b.vsl}, ${b.dt}</td>
+                            <td style="padding: 3.5px 7px; border: 1px solid #94a3b8; text-align: center; font-size: 9.5px;">${b.c20 || '-'}</td>
+                            <td style="padding: 3.5px 7px; border: 1px solid #94a3b8; text-align: center; font-size: 9.5px;">${b.c40 || '-'}</td>
+                            <td style="padding: 3.5px 7px; border: 1px solid #94a3b8; text-align: center; font-weight: 900; font-size: 9.5px;">${teus}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                return `
+                    <div style="margin-top: 8px; border: 1px solid #78350f; border-radius: 4px; overflow: hidden; background: #ffffff;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 9.5px; font-family: Arial, sans-serif;">
+                            <thead>
+                                <tr style="background-color: #fdebd0; color: #78350f; font-weight: 900; border-bottom: 1.5px solid #78350f;">
+                                    <th style="padding: 5px 8px; border: 1px solid #78350f; text-align: left;">${targetCode} , Pendency Before : ${searchedVsl}</th>
+                                    <th style="padding: 5px 8px; border: 1px solid #78350f; text-align: center; width: 45px;">20</th>
+                                    <th style="padding: 5px 8px; border: 1px solid #78350f; text-align: center; width: 45px;">40</th>
+                                    <th style="padding: 5px 8px; border: 1px solid #78350f; text-align: center; width: 50px;">TEUs</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rowsHtml}
+                            </tbody>
+                            <tfoot>
+                                <tr style="background-color: #fdebd0; color: #78350f; font-weight: 900; border-top: 1.5px solid #78350f;">
+                                    <td style="padding: 5px 8px; border: 1px solid #78350f; text-align: left;">Total Pending, Before ${normTargetDate}</td>
+                                    <td style="padding: 5px 8px; border: 1px solid #78350f; text-align: center;">${tot20}</td>
+                                    <td style="padding: 5px 8px; border: 1px solid #78350f; text-align: center;">${tot40}</td>
+                                    <td style="padding: 5px 8px; border: 1px solid #78350f; text-align: center; font-weight: 900;">${totTeus}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                `;
+            };
 
             // Build suggestions with vessel/handover grouping
             let suggestionsHtml = '';
             sortedConsignees.forEach(data => {
-                const hasPending = data.pending > 0;
-                const isHandover = data.vessel && !data.vessel.includes('NOT HANDOVER');
-                
+                // 1. Code Badge(s) - HKR / HMR / HDL
+                const codeArr = Array.from(data.codes);
+                const primaryCode = codeArr.length > 0 ? codeArr[0] : 'HMR';
+                let codeBadgesHtml = '';
+                if (codeArr.length > 0) {
+                    codeBadgesHtml = codeArr.map(code => {
+                        let cClass = 'bg-slate-100 text-slate-700 border-slate-300';
+                        if (code === 'HMR') cClass = 'bg-pink-100 text-pink-800 border-pink-300';
+                        else if (code === 'HKR') cClass = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+                        else if (code === 'HDL') cClass = 'bg-blue-100 text-blue-800 border-blue-300';
+                        return `<span class="${cClass} px-2 py-0.5 rounded border font-black uppercase text-[9px] shadow-2xs">${code}</span>`;
+                    }).join(' ');
+                } else {
+                    codeBadgesHtml = `<span class="bg-slate-100 text-slate-500 px-2 py-0.5 rounded border border-slate-200 text-[8.5px] font-bold uppercase">-</span>`;
+                }
+
+                // 2. BL Status Line(s)
+                const bls = Array.from(data.blSet);
+                if (bls.length === 0 && data.sampleBL) bls.push(data.sampleBL);
+
+                let blBoxesHtml = bls.map(bNo => {
+                    const blInfo = getBlStats(bNo);
+                    const scanRemarks = getBlScanningRemarks(bNo);
+                    let remarksHtml = '';
+                    if (scanRemarks.length > 0) {
+                        remarksHtml = `
+                            <div class="mt-1 pt-1 border-t border-slate-200 text-[10px] flex items-center gap-1.5 flex-wrap">
+                                <span class="font-black text-rose-700 uppercase">Remarks :</span>
+                                <span class="text-rose-600 font-bold">${escapeHtml(scanRemarks.join(', '))}</span>
+                            </div>
+                        `;
+                    }
+                    return `
+                        <div>
+                            <div class="flex items-center justify-between gap-2 flex-wrap text-[10.5px]">
+                                <div class="font-mono font-black text-slate-900">
+                                    B/L: <span class="text-blue-700 font-bold">${escapeHtml(bNo)}</span> 
+                                    <span class="text-slate-600 font-sans font-bold text-[10px]">(Total :: ${blInfo.sizeStr})</span>,
+                                </div>
+                                <div class="flex items-center gap-3 text-[10px] font-black">
+                                    <span class="text-emerald-700">Railout : <span class="text-[11px] font-black">${blInfo.railed}</span></span>,
+                                    <span class="${blInfo.pending > 0 ? 'text-rose-600 font-black' : 'text-slate-500'}">Pending : <span class="text-[11px] font-black">${blInfo.pending}</span></span>
+                                </div>
+                            </div>
+                            ${remarksHtml}
+                        </div>
+                    `;
+                }).join('<div class="my-1.5 border-t border-slate-200"></div>');
+
+                // 3. Vessel Pendency Before Table
+                const vslTableHtml = getVesselPendencyBeforeTableHtml(data.vessel, data.handover, primaryCode);
+
                 suggestionsHtml += `
-                    <div class="suggestion-item p-3 mb-2 bg-white hover:bg-blue-50/80 border border-slate-200 hover:border-blue-400 rounded-xl cursor-pointer transition-all shadow-xs group" 
+                    <div class="suggestion-item p-3.5 mb-3 bg-white hover:bg-slate-50 border-2 border-slate-300 hover:border-blue-500 rounded-xl cursor-pointer transition-all shadow-sm group" 
                          data-consignee="${data.name.replace(/'/g, "\\'")}"
                          data-vessel="${data.vessel}"
                          data-handover="${data.handover}"
                          data-cons-index="${data.consIndex}">
                         
-                        <!-- Consignee Name & Select Action -->
-                        <div class="flex items-center justify-between gap-2">
-                            <div class="font-black text-[11px] text-slate-800 uppercase group-hover:text-blue-700 tracking-tight leading-tight">${data.name}</div>
-                            <span class="text-[8.5px] font-black text-blue-600 bg-blue-50 group-hover:bg-blue-600 group-hover:text-white px-2 py-0.5 rounded-md uppercase transition-colors shrink-0">Select &rarr;</span>
+                        <!-- Top Header: Consignee & Select Action -->
+                        <div class="flex items-center justify-between gap-2 border-b border-slate-200 pb-2 mb-2">
+                            <div class="font-black text-[12px] text-slate-900 uppercase group-hover:text-blue-700 tracking-tight leading-tight">
+                                ${data.name}
+                            </div>
+                            <span class="text-[9px] font-black text-blue-700 bg-blue-100 group-hover:bg-blue-600 group-hover:text-white px-2.5 py-1 rounded uppercase transition-colors shrink-0 shadow-2xs">
+                                Select &rarr;
+                            </span>
                         </div>
                         
-                        <!-- Vessel & Handover Date -->
-                        <div class="text-[9.5px] text-slate-700 mt-1.5 font-bold flex items-center gap-2 flex-wrap">
-                            <span class="bg-slate-100 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">🚢 ${data.vessel}</span>
-                            <span class="bg-slate-100 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">📅 ${data.handover}</span>
+                        <!-- Section 1: B/L Status Box -->
+                        <div class="p-2.5 bg-slate-50 border border-slate-300 rounded-lg mb-2 text-slate-800">
+                            ${blBoxesHtml}
                         </div>
-                        
-                        <!-- Stats: Total & Pending -->
-                        <div class="flex items-center gap-2 mt-2 pt-1.5 border-t border-slate-100 text-[8.5px] font-black">
-                            <span class="bg-slate-200 text-slate-700 px-2 py-0.5 rounded">Total: ${data.total}</span>
-                            <span class="${hasPending ? 'bg-red-500 text-white' : 'bg-emerald-600 text-white'} px-2 py-0.5 rounded">Pending: ${data.pending}</span>
-                            <span class="text-slate-400 font-bold ml-auto text-[8px] italic">B/L: ${data.sampleBL || '-'}</span>
+
+                        <!-- Section 2: Vessel Header -->
+                        <div class="mb-1 text-[10.5px] font-black text-slate-900 flex items-center justify-between gap-2 flex-wrap">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-slate-500 font-bold uppercase text-[9.5px]">Vessel Name :-</span>
+                                <span class="font-black text-blue-900">🚢 ${data.vessel}</span>
+                                <span class="text-slate-400 font-bold">,</span>
+                                <span class="text-slate-800 font-bold">📅 ${data.handover}</span>
+                                <span class="text-slate-400 font-bold">::</span>
+                                ${codeBadgesHtml}
+                            </div>
                         </div>
+
+                        <!-- Section 3: Pendency Before Vessel Table -->
+                        ${vslTableHtml}
+
                     </div>
                 `;
             });
@@ -18361,7 +18769,7 @@ initAuth();
 
 <!-- Search Results Popup Modal -->
 <div id="smtpConsigneeBox" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100005] hidden flex items-center justify-center p-3 sm:p-4" onclick="if(event.target===this) window.closeSmtpSearchModal();">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-slate-300 overflow-hidden flex flex-col max-h-[88vh]" onclick="event.stopPropagation()">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl border border-slate-300 overflow-hidden flex flex-col max-h-[90vh]" onclick="event.stopPropagation()">
         <!-- Header -->
         <div class="bg-blue-700 p-3.5 flex justify-between items-center text-white shrink-0">
             <div class="flex items-center gap-2.5">
@@ -18392,5 +18800,6 @@ initAuth();
         </div>
     </div>
 </div>
+
 </body>
 </html>
