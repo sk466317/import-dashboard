@@ -2384,6 +2384,10 @@ window.closeSmtpSearchModal = function() {
         box.style.overflowY = '';
         box.classList.remove('border-2', 'border-blue-600', 'border-orange-500');
     }
+    const modalHeader = document.getElementById('smtpSearchModalHeader');
+    if (modalHeader) modalHeader.className = 'bg-blue-700 p-3.5 flex justify-between items-center text-white shrink-0 transition-colors';
+    const iconWrap = document.getElementById('smtpSearchHeaderIcon');
+    if (iconWrap) iconWrap.className = 'p-1.5 bg-blue-800 rounded-lg';
 };
 
 document.addEventListener('keydown', (e) => {
@@ -2841,6 +2845,93 @@ window.executeSmtpBlSearch = function executeSmtpBlSearch() {
 
                 return remarks;
             };
+            // Helper to get all container numbers for a BL
+            const getBlContainers = (targetBl) => {
+                const cleanBl = String(targetBl || '').trim().toUpperCase();
+                if (!cleanBl) return [];
+                const contSet = new Set();
+                if (rawSheets.smtp && rawSheets.smtp.length > 1) {
+                    rawSheets.smtp.slice(1).forEach(r => {
+                        if (String(r[9] || '').trim().toUpperCase() === cleanBl) {
+                            const c = String(r[2] || '').trim().toUpperCase();
+                            if (c && c !== '-' && c !== 'N/A') contSet.add(c);
+                        }
+                    });
+                }
+                if (rawSheets.website && rawSheets.website.length > 1) {
+                    rawSheets.website.slice(1).forEach(r => {
+                        if (String(r[2] || '').trim().toUpperCase() === cleanBl) {
+                            const c = String(r[3] || '').trim().toUpperCase();
+                            if (c && c !== '-' && c !== 'N/A') contSet.add(c);
+                        }
+                    });
+                }
+                if (rawSheets.shipper && rawSheets.shipper.length > 1) {
+                    rawSheets.shipper.slice(1).forEach(r => {
+                        if (String(r[2] || '').trim().toUpperCase() === cleanBl) {
+                            const c = String(r[0] || '').trim().toUpperCase();
+                            if (c && c !== '-' && c !== 'N/A') contSet.add(c);
+                        }
+                    });
+                }
+                return Array.from(contSet);
+            };
+
+            // Helper to get container arrival details
+
+            const getContainerArrivalInfo = (contNo) => {
+
+                const cleanC = String(contNo || '').trim().toUpperCase();
+
+                if (!cleanC) return null;
+
+                const w = (rawSheets.website || []).slice(1).find(r => String(r[3] || '').trim().toUpperCase() === cleanC);
+
+                if (!w) return null;
+
+                const rDate = String(w[8] || '').trim();
+
+                const remark = String(w[9] || '').trim();
+
+
+
+                if (!rDate || ['', 'PENDING', '-'].includes(rDate.toUpperCase())) {
+
+                    return null;
+
+                }
+
+
+
+                // Intermediate railway tracking means still In Transit (e.g. ETA, Bal Kms, DEPARTED, CURRENT LOCATION, ARRIVED AT intermediate station)
+
+                const isTransitIntermediate = /ETA:|Bal\s+Kms|DEPARTED|CURRENT\s+LOCATION|ARRIVED\s+AT/i.test(remark);
+
+
+
+                // Final destination arrival (TRAIN ARRIVED ON, UNLOADING DONE)
+
+                const isArrived = !isTransitIntermediate && (/TRAIN\s+ARRIVED\s+ON|UNLOADING\s+DONE/i.test(remark) || (/ARRIVED\s+ON/i.test(remark) && !/ARRIVED\s+AT/i.test(remark)));
+
+
+
+                if (isArrived) {
+
+                    const arrMatch = remark.match(/((?:TRAIN\s+)?ARRIVED\s+ON\s+[0-9]{2}[-.\/][0-9]{2}[-.\/][0-9]{2,4}(?:\s+[0-9]{2}:[0-9]{2})?)/i);
+
+                    const status = arrMatch ? arrMatch[1].trim() : (remark.includes('UNLOADING DONE') ? 'ARRIVED & UNLOADED' : 'ARRIVED');
+
+                    return { isArrived: true, isInTransit: false, contNo: cleanC, statusText: status, fullText: `${cleanC}  ${status}` };
+
+                } else {
+
+                    return { isArrived: false, isInTransit: true, contNo: cleanC, statusText: `RAILED OUT ON ${rDate}`, fullText: `${cleanC}  RAILED OUT ON ${rDate}` };
+
+                }
+
+            };
+
+
 
             // Helper to build the "Pendency Before" table for a given vessel and handover date
             const getVesselPendencyBeforeTableHtml = (searchedVsl, searchedDate, searchedCode) => {
@@ -3007,85 +3098,380 @@ window.executeSmtpBlSearch = function executeSmtpBlSearch() {
                     codeBadgesHtml = `<span class="bg-slate-100 text-slate-500 px-2 py-0.5 rounded border border-slate-200 text-[8.5px] font-bold uppercase">-</span>`;
                 }
 
-                // 2. BL Status Line(s)
+                // 2. BL Status Line(s) & Total Counts
+
                 const bls = Array.from(data.blSet);
+
                 if (bls.length === 0 && data.sampleBL) bls.push(data.sampleBL);
 
-                let blBoxesHtml = bls.map(bNo => {
+
+
+                let totalCardRailed = 0;
+
+                let totalCardPending = 0;
+
+
+
+                bls.forEach(bNo => {
+
                     const blInfo = getBlStats(bNo);
+
+                    totalCardRailed += blInfo.railed;
+
+                    totalCardPending += blInfo.pending;
+
+                });
+
+
+
+                let blBoxesHtml = bls.map(bNo => {
+
+                    const blInfo = getBlStats(bNo);
+
                     const scanRemarks = getBlScanningRemarks(bNo);
+
                     let remarksHtml = '';
+
                     if (scanRemarks.length > 0) {
+
                         remarksHtml = `
+
                             <div class="mt-1 pt-1 border-t border-slate-200 text-[10px] flex items-center gap-1.5 flex-wrap">
+
                                 <span class="font-black text-rose-700 uppercase">Remarks :</span>
+
                                 <span class="text-rose-600 font-bold">${escapeHtml(scanRemarks.join(', '))}</span>
+
                             </div>
+
                         `;
+
                     }
+
                     return `
+
                         <div>
-                            <div class="flex items-center justify-between gap-2 flex-wrap text-[10.5px]">
-                                <div class="font-mono font-black text-slate-900">
-                                    B/L: <span class="text-blue-700 font-bold">${escapeHtml(bNo)}</span> 
-                                    <span class="text-slate-600 font-sans font-bold text-[10px]">(Total :: ${blInfo.sizeStr})</span>,
-                                </div>
-                                <div class="flex items-center gap-3 text-[10px] font-black">
-                                    <span class="text-emerald-700">Railout : <span class="text-[11px] font-black">${blInfo.railed}</span></span>,
-                                    <span class="${blInfo.pending > 0 ? 'text-rose-600 font-black' : 'text-slate-500'}">Pending : <span class="text-[11px] font-black">${blInfo.pending}</span></span>
+
+                            <div class="flex items-center justify-between gap-2 flex-wrap">
+                                <div class="font-mono font-black text-slate-900 text-[12.5px]">
+                                    B/L: <span class="text-blue-700 font-black">${escapeHtml(bNo)}</span> 
+                                    <span class="text-slate-700 font-sans font-bold text-[12px]">(Total :: ${blInfo.sizeStr})</span>
                                 </div>
                             </div>
                             ${remarksHtml}
+
                         </div>
+
                     `;
+
                 }).join('<div class="my-1.5 border-t border-slate-200"></div>');
 
-                // 3. Vessel Pendency Before Table
-                const vslTableHtml = getVesselPendencyBeforeTableHtml(data.vessel, data.handover, primaryCode);
+
+
+                // 3. Section 3: Arrival/Transit Banner (if all railed / 0 pending) OR Vessel Pendency Before Table
+
+                let section3Html = '';
+
+                let cardRailedContainers = [];
+
+
+
+                // A. Check if the searched container specifically is railed out / arrived
+
+                if (searchVal && searchVal.length >= 7) {
+
+                    const sArr = getContainerArrivalInfo(searchVal);
+
+                    if (sArr) {
+
+                        cardRailedContainers.push(sArr);
+
+                    }
+
+                }
+
+
+
+                // B. If not found from searchVal directly, but this shipment has 0 pending
+
+                if (cardRailedContainers.length === 0 && totalCardPending === 0) {
+
+                    bls.forEach(bNo => {
+
+                        const cList = getBlContainers(bNo);
+
+                        cList.forEach(c => {
+
+                            const aInfo = getContainerArrivalInfo(c);
+
+                            if (aInfo) {
+
+                                cardRailedContainers.push(aInfo);
+
+                            } else {
+
+                                cardRailedContainers.push({
+
+                                    isArrived: false,
+
+                                    isInTransit: true,
+
+                                    contNo: c,
+
+                                    statusText: 'RAILED OUT / IN TRANSIT',
+
+                                    fullText: `${c}  RAILED OUT / IN TRANSIT`
+
+                                });
+
+                            }
+
+                        });
+
+                    });
+
+                }
+
+
+
+                if (cardRailedContainers.length > 0 && totalCardPending === 0) {
+
+                    // Sort so In Transit containers appear first at the top
+
+                    cardRailedContainers.sort((a, b) => {
+
+                        if (a.isInTransit && !b.isInTransit) return -1;
+
+                        if (!a.isInTransit && b.isInTransit) return 1;
+
+                        return a.contNo.localeCompare(b.contNo);
+
+                    });
+
+
+
+                    const arrivedCount = cardRailedContainers.filter(x => x.isArrived).length;
+
+                    const inTransitCount = cardRailedContainers.filter(x => x.isInTransit).length;
+
+
+
+                    let titleText = '';
+
+                    if (inTransitCount > 0 && arrivedCount === 0) {
+
+                        titleText = `Arrived 0  In Transit ${inTransitCount}`;
+
+                    } else if (inTransitCount > 0 && arrivedCount > 0) {
+
+                        titleText = `${arrivedCount} Arrived  ${inTransitCount} In Transit`;
+
+                    } else {
+
+                        titleText = cardRailedContainers.length === 1 ? 'Container Arrived' : 'All Container Arrived';
+
+                    }
+
+
+
+                    const rowsHtml = cardRailedContainers.map(a => {
+
+                        if (a.isInTransit) {
+
+                            return `
+
+                                <div class="flex items-center justify-between bg-yellow-200 border-2 border-yellow-400 px-3 py-1.5 rounded-lg text-slate-900 shadow-2xs font-bold">
+
+                                    <span class="font-mono font-black text-slate-950 tracking-wide text-[11.5px] flex items-center gap-1.5">
+
+                                        <span class="text-amber-800 text-xs">🚆</span>
+
+                                        <span>${escapeHtml(a.contNo)}</span>
+
+                                    </span>
+
+                                    <span class="font-sans font-black text-amber-950 text-[11px]">${escapeHtml(a.statusText)}</span>
+
+                                </div>
+
+                            `;
+
+                        } else {
+
+                            return `
+
+                                <div class="flex items-center justify-between bg-white px-3 py-1.5 rounded-lg border border-emerald-200 text-emerald-950 shadow-2xs">
+
+                                    <span class="font-mono font-black text-slate-900 tracking-wide text-[11.5px]">${escapeHtml(a.contNo)}</span>
+
+                                    <span class="font-sans font-bold text-emerald-800 text-[11px]">${escapeHtml(a.statusText)}</span>
+
+                                </div>
+
+                            `;
+
+                        }
+
+                    }).join('');
+
+
+
+                    const titleIcon = (arrivedCount === 0 && inTransitCount > 0) ? '🚆' : '✅';
+
+                    const titleColorClass = (arrivedCount === 0 && inTransitCount > 0) ? 'text-amber-900' : 'text-emerald-900';
+
+
+
+                    section3Html = `
+
+                        <div class="mt-2.5 p-3.5 bg-emerald-50 border-2 border-emerald-500 rounded-xl shadow-xs">
+
+                            <div class="flex items-center justify-center gap-1.5 pb-2 mb-2 border-b border-emerald-200 ${titleColorClass} font-black text-[12.5px] uppercase tracking-wide">
+
+                                <span class="text-base">${titleIcon}</span>
+
+                                <span>${escapeHtml(titleText)}</span>
+
+                            </div>
+
+                            <div class="space-y-1.5">
+
+                                ${rowsHtml}
+
+                            </div>
+
+                        </div>
+
+                    `;
+
+                } else {
+
+                    section3Html = getVesselPendencyBeforeTableHtml(data.vessel, data.handover, primaryCode);
+
+                }
+
+
 
                 suggestionsHtml += `
+
                     <div class="suggestion-item p-3.5 mb-3 bg-white hover:bg-slate-50 border-2 border-slate-300 hover:border-blue-500 rounded-xl cursor-pointer transition-all shadow-sm group" 
-                         data-consignee="${data.name.replace(/'/g, "\\'")}"
+
+                         data-consignee="${data.name.replace(/'/g, "\'")}"
+
                          data-vessel="${data.vessel}"
+
                          data-handover="${data.handover}"
+
                          data-cons-index="${data.consIndex}">
+
                         
-                        <!-- Top Header: Consignee & Select Action -->
-                        <div class="flex items-center justify-between gap-2 border-b border-slate-200 pb-2 mb-2">
-                            <div class="font-black text-[12px] text-slate-900 uppercase group-hover:text-blue-700 tracking-tight leading-tight">
-                                ${data.name}
+
+                        <!-- Top Header: Consignee & Counts & Select Action -->
+
+                        <div class="flex items-center justify-between gap-2 border-b border-slate-200 pb-2 mb-2 flex-wrap">
+
+                            <div class="flex items-center gap-2 flex-wrap">
+
+                                <span class="font-black text-[12.5px] text-slate-900 uppercase group-hover:text-blue-700 tracking-tight leading-tight">
+
+                                    ${data.name}
+
+                                </span>
+
+                                <span class="font-black text-[12px] tracking-tight">
+
+                                    (<span class="text-emerald-700">Railout : <span class="font-black">${totalCardRailed}</span></span>, <span class="${totalCardPending > 0 ? 'text-rose-600' : 'text-slate-500'}">Pending : <span class="font-black">${totalCardPending}</span></span>)
+
+                                </span>
+
                             </div>
+
                             <span class="text-[9px] font-black text-blue-700 bg-blue-100 group-hover:bg-blue-600 group-hover:text-white px-2.5 py-1 rounded uppercase transition-colors shrink-0 shadow-2xs">
+
                                 Select &rarr;
+
                             </span>
+
                         </div>
+
                         
+
                         <!-- Section 1: B/L Status Box -->
+
                         <div class="p-2.5 bg-slate-50 border border-slate-300 rounded-lg mb-2 text-slate-800">
+
                             ${blBoxesHtml}
+
                         </div>
+
+
 
                         <!-- Section 2: Vessel Header -->
+
                         <div class="mb-1 text-[10.5px] font-black text-slate-900 flex items-center justify-between gap-2 flex-wrap">
+
                             <div class="flex items-center gap-1.5 flex-wrap">
+
                                 <span class="text-slate-500 font-bold uppercase text-[9.5px]">Vessel Name :-</span>
+
                                 <span class="font-black text-blue-900">🚢 ${data.vessel}</span>
+
                                 <span class="text-slate-400 font-bold">,</span>
+
                                 <span class="text-slate-800 font-bold">📅 ${data.handover}</span>
+
                                 <span class="text-slate-400 font-bold">::</span>
+
                                 ${codeBadgesHtml}
+
                             </div>
+
                         </div>
 
-                        <!-- Section 3: Pendency Before Vessel Table -->
-                        ${vslTableHtml}
+
+
+                        <!-- Section 3: Arrival Banner or Pendency Before Vessel Table -->
+
+                        ${section3Html}
+
+
 
                     </div>
+
                 `;
+
             });
+
+
 
             nameDisplay.innerHTML = suggestionsHtml;
             if (window.lucide) { try { lucide.createIcons(); } catch(e) {} }
+            // Dynamic Modal Header Color: Green if arrived / 0 pending, Blue otherwise
+            let isArrivedView = false;
+            if (searchVal && searchVal.length >= 7) {
+                const sArr = getContainerArrivalInfo(searchVal);
+                if (sArr && sArr.isArrived) isArrivedView = true;
+            }
+            if (!isArrivedView && sortedConsignees.length > 0) {
+                const anyPending = sortedConsignees.some(d => {
+                    let pend = 0;
+                    const bls = Array.from(d.blSet);
+                    if (bls.length === 0 && d.sampleBL) bls.push(d.sampleBL);
+                    bls.forEach(b => { pend += getBlStats(b).pending; });
+                    return pend > 0;
+                });
+                if (!anyPending) isArrivedView = true;
+            }
+
+            const modalHeader = document.getElementById('smtpSearchModalHeader');
+            const iconWrap = document.getElementById('smtpSearchHeaderIcon');
+            if (isArrivedView) {
+                if (modalHeader) modalHeader.className = 'bg-emerald-700 p-3.5 flex justify-between items-center text-white shrink-0 transition-colors';
+                if (iconWrap) iconWrap.className = 'p-1.5 bg-emerald-800 rounded-lg';
+            } else {
+                if (modalHeader) modalHeader.className = 'bg-blue-700 p-3.5 flex justify-between items-center text-white shrink-0 transition-colors';
+                if (iconWrap) iconWrap.className = 'p-1.5 bg-blue-800 rounded-lg';
+            }
 
             // Click handlers - UPDATED to filter by selected vessel
             document.querySelectorAll('.suggestion-item').forEach(item => {
@@ -3980,6 +4366,164 @@ function generateLotPlainTextTable(currentShipper, selectedGroup) {
     };
 }
 
+function generateUrgentPlainTextTable(currentShipper, selectedGroup) {
+    const shipHeaders = rawSheets.shipper[0] || [];
+    const shipContIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONT')) : 0;
+    const shipBlIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('BL')) : 2;
+    const shipConsIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('CONSIGNEE') || String(h).toUpperCase().includes('SHIPPER')) : 3;
+    const shipSizeIdx = shipHeaders.findIndex(h => String(h).toUpperCase().includes('SIZE')) !== -1 ? shipHeaders.findIndex(h => String(h).toUpperCase().includes('SIZE')) : -1;
+    const shipCommIdx = shipHeaders.findIndex(h => /COMMODITY|COMODITY/i.test(String(h))) !== -1 ? shipHeaders.findIndex(h => /COMMODITY|COMODITY/i.test(String(h))) : -1;
+
+    const smtpHeaders = (rawSheets.smtp && rawSheets.smtp[0]) || [];
+    const findHeaderIndex = (headers, regexes, fallback) => {
+        for (const regex of regexes) {
+            const idx = headers.findIndex(h => regex.test(String(h)));
+            if (idx !== -1) return idx;
+        }
+        return fallback;
+    };
+    const sTermIdx = findHeaderIndex(smtpHeaders, [/TERMINAL/i], 1);
+    const sContIdx = findHeaderIndex(smtpHeaders, [/CONT.*NO/i, /CONTAINER/i, /CONT/i], 2);
+    const sSizeIdx = findHeaderIndex(smtpHeaders, [/SIZE/i], 3);
+    const sTeusIdx = findHeaderIndex(smtpHeaders, [/TEU/i], 4);
+    const sVslIdx = findHeaderIndex(smtpHeaders, [/DISCH.*VSL/i, /VESSEL/i, /VSL/i], 5);
+    const sDischDtIdx = findHeaderIndex(smtpHeaders, [/DISCH.*DT/i, /DISCH.*DATE/i], 7);
+    const sStsIdx = findHeaderIndex(smtpHeaders, [/^STS$/i, /STATUS/i], 8);
+    const sBlIdx = findHeaderIndex(smtpHeaders, [/BL.*NO/i, /B\/L/i, /BL/i], 9);
+    const sDestIdx = findHeaderIndex(smtpHeaders, [/DEST/i, /ICD/i], 11);
+    const smtpNoIdx = findHeaderIndex(smtpHeaders, [/SMTP.*NO/i, /SMTP/i], 13);
+    const sTpIdx = findHeaderIndex(smtpHeaders, [/TP.*SUBMITTING/i, /HANDOVER/i], 18);
+    const sCommodityIdx = findHeaderIndex(smtpHeaders, [/COMODITY/i, /COMMODITY/i], 19);
+    const sLineIdx = findHeaderIndex(smtpHeaders, [/^LINE$/i, /LINE/i], 23);
+    const sConsIdx = findHeaderIndex(smtpHeaders, [/CONSIGNEE/i, /IMPORTER/i, /SHIPPER/i], 24);
+
+    const hasShipperRows = rawSheets.shipper.slice(1).some(row => String(row[shipConsIdx] || '').trim().toUpperCase() === currentShipper.toUpperCase());
+
+    const dataSource = hasShipperRows ? rawSheets.shipper : rawSheets.smtp;
+    const contIdx = hasShipperRows ? shipContIdx : sContIdx;
+    const blIdx = hasShipperRows ? shipBlIdx : sBlIdx;
+    const consIdx = hasShipperRows ? shipConsIdx : sConsIdx;
+    const sizeIdx = hasShipperRows ? shipSizeIdx : sSizeIdx;
+
+    const allGroupContainers = [];
+    dataSource.slice(1).forEach(row => {
+        const consigneeVal = String(row[consIdx] || '').trim();
+        const blVal = String(row[blIdx] || '').trim();
+        if (consigneeVal.toUpperCase() === currentShipper.toUpperCase() && blVal.toUpperCase() === selectedGroup.blNo.toUpperCase()) {
+            const contNo = String(row[contIdx] || '').trim().toUpperCase();
+            if (contNo && contNo !== '-' && contNo !== 'N/A' && !allGroupContainers.some(x => x.contNo === contNo)) {
+                const webRow = rawSheets.website.slice(1).find(w => String(w[3] || '').trim().toUpperCase() === contNo);
+                let isRailed = false;
+                if (webRow) {
+                    const railDateRaw = webRow[8];
+                    const railDateStr = String(railDateRaw || '').trim();
+                    isRailed = railDateStr && !['-', 'NOT RAILOUT', 'PENDING', '', 'N/A'].includes(railDateStr.toUpperCase());
+                }
+                allGroupContainers.push({ contNo, isRailed });
+            }
+        }
+    });
+
+    const pendingOnly = allGroupContainers.filter(x => !x.isRailed);
+    const targetConts = pendingOnly.length > 0 ? pendingOnly : allGroupContainers;
+
+    let htmlRows = '';
+    const plainRows = [];
+
+    targetConts.forEach((item, idx) => {
+        const contNo = item.contNo;
+        const smtpRow = rawSheets.smtp.slice(1).find(s => String(s[sContIdx] || '').trim().toUpperCase() === contNo);
+        const shRow = rawSheets.shipper.slice(1).find(r => String(r[shipContIdx] || '').trim().toUpperCase() === contNo);
+
+        const terminal = smtpRow && String(smtpRow[sTermIdx] || '').trim() ? String(smtpRow[sTermIdx]).trim() : 'CT3';
+        
+        let rawSize = '20';
+        if (smtpRow && String(smtpRow[sSizeIdx] || '').trim()) rawSize = String(smtpRow[sSizeIdx]).trim();
+        else if (shRow && sizeIdx !== -1 && String(shRow[sizeIdx] || '').trim()) rawSize = String(shRow[sizeIdx]).trim();
+        const size = rawSize.includes('40') ? '40' : '20';
+
+        let teus = size === '40' ? '2' : '1';
+        if (smtpRow && String(smtpRow[sTeusIdx] || '').trim()) {
+            teus = String(smtpRow[sTeusIdx]).trim();
+        }
+
+        const vsl = smtpRow && String(smtpRow[sVslIdx] || '').trim() ? String(smtpRow[sVslIdx]).trim() : (selectedGroup.vessel || '-');
+        
+        let dischDt = '-';
+        if (smtpRow && smtpRow[sDischDtIdx]) {
+            dischDt = typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(smtpRow[sDischDtIdx]) : String(smtpRow[sDischDtIdx]);
+        } else if (smtpRow && smtpRow[sTpIdx]) {
+            dischDt = typeof formatToDDMMYYYY === 'function' ? formatToDDMMYYYY(smtpRow[sTpIdx]) : String(smtpRow[sTpIdx]);
+        } else if (selectedGroup.handoverDt) {
+            dischDt = selectedGroup.handoverDt;
+        }
+
+        const sts = smtpRow && String(smtpRow[sStsIdx] || '').trim() ? String(smtpRow[sStsIdx]).trim() : 'F';
+        const blNo = smtpRow && String(smtpRow[sBlIdx] || '').trim() ? String(smtpRow[sBlIdx]).trim() : selectedGroup.blNo;
+        const dest = smtpRow && String(smtpRow[sDestIdx] || '').trim() ? String(smtpRow[sDestIdx]).trim() : 'ICD KILARAIPUR';
+        const smtpNo = smtpRow && String(smtpRow[smtpNoIdx] || '').trim() ? String(smtpRow[smtpNoIdx]).trim() : '-';
+        
+        let commodity = '-';
+        if (smtpRow && String(smtpRow[sCommodityIdx] || '').trim()) commodity = String(smtpRow[sCommodityIdx]).trim();
+        else if (shRow && shipCommIdx !== -1 && String(shRow[shipCommIdx] || '').trim()) commodity = String(shRow[shipCommIdx]).trim();
+
+        const line = smtpRow && String(smtpRow[sLineIdx] || '').trim() ? String(smtpRow[sLineIdx]).trim() : (selectedGroup.line || '-');
+        const consignee = smtpRow && String(smtpRow[sConsIdx] || '').trim() ? String(smtpRow[sConsIdx]).trim() : currentShipper;
+
+        const bgColor = (idx % 2 === 0) ? '#fff2cc' : '#ffffff';
+
+        htmlRows += `<tr style="background-color: ${bgColor}; color: #000000; text-align: center;">
+            <td style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">${terminal}</td>
+            <td style="border: 1px solid #000000; padding: 4px 8px; font-weight: bold; white-space: nowrap;">${contNo}</td>
+            <td style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">${size}</td>
+            <td style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">${teus}</td>
+            <td style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">${vsl}</td>
+            <td style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">${dischDt}</td>
+            <td style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">${sts}</td>
+            <td style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">${blNo}</td>
+            <td style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">${dest}</td>
+            <td style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">${smtpNo}</td>
+            <td style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">${line}</td>
+            <td style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">${consignee}</td>
+        </tr>`;
+
+        plainRows.push(`${terminal} | ${contNo} | ${size} | ${teus} | ${vsl} | ${dischDt} | ${sts} | ${blNo} | ${dest} | ${smtpNo} | ${line} | ${consignee}`);
+    });
+
+    const htmlTable = `<table cellpadding="4" cellspacing="0" style="border-collapse: collapse; font-family: Calibri, Arial, sans-serif; font-size: 10pt; width: auto; table-layout: auto; border: 1px solid #000000; margin-top: 6px; margin-bottom: 6px;">
+        <thead>
+            <tr style="background-color: #f4b084; color: #000000; font-weight: bold; text-align: center;">
+                <th style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">TERMINALS</th>
+                <th style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">CONT_Nos.</th>
+                <th style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">Size</th>
+                <th style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">Teus</th>
+                <th style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">Disch_Vsl_Name</th>
+                <th style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">Disch_Dt</th>
+                <th style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">Sts</th>
+                <th style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">BL_No.</th>
+                <th style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">ICD Destination</th>
+                <th style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">smtp no</th>
+                <th style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">LINE</th>
+                <th style="border: 1px solid #000000; padding: 4px 8px; white-space: nowrap;">Consignee</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${htmlRows}
+        </tbody>
+    </table>`;
+
+    const plainHeader = `TERMINALS | CONT_Nos. | Size | Teus | Disch_Vsl_Name | Disch_Dt | Sts | BL_No. | ICD Destination | smtp no | LINE | Consignee`;
+    const tableText = `${plainHeader}\n${plainRows.join('\n')}`;
+
+    return {
+        count: targetConts.length,
+        htmlTable,
+        tableText
+    };
+}
+window.generateUrgentPlainTextTable = generateUrgentPlainTextTable;
+
+
 function showEmailChoiceModal(onSelect) {
     const modalId = 'emailChoiceModal';
     const existing = document.getElementById(modalId);
@@ -4007,6 +4551,9 @@ function showEmailChoiceModal(onSelect) {
                 </button>
                 <button id="chooseLotBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded text-[9px] uppercase tracking-wide transition-all shadow active:scale-98 flex items-center justify-center gap-1.5">
                     <i data-lucide="split" class="w-3.5 h-3.5"></i> LOT Break Request Email
+                </button>
+                <button id="chooseUrgentBtn" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-2 rounded text-[9px] uppercase tracking-wide transition-all shadow active:scale-98 flex items-center justify-center gap-1.5">
+                    <i data-lucide="flame" class="w-3.5 h-3.5"></i> Urgent Request Email
                 </button>
                 <button id="cancelEmailChoiceModalBtn" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2 rounded text-[9px] uppercase tracking-wide transition-all border border-slate-300 active:scale-98">
                     Cancel
@@ -4037,6 +4584,14 @@ function showEmailChoiceModal(onSelect) {
         modalEl.remove();
         onSelect('LOT');
     });
+
+    const chooseUrgentBtn = document.getElementById('chooseUrgentBtn');
+    if (chooseUrgentBtn) {
+        chooseUrgentBtn.addEventListener('click', () => {
+            modalEl.remove();
+            onSelect('URGENT');
+        });
+    }
 }
 
 const mailSsrRequestBtn = document.getElementById('mailSsrRequestBtn');
@@ -4155,6 +4710,36 @@ if (mailSsrRequestBtn) {
                            `Customer Service Desk<br>` +
                            `Hind Terminals Pvt Ltd<br>` +
                            `ICD Kilaraipur</div>`;
+            } else if (choice === 'URGENT') {
+                const urgentBlocks = [];
+                const urgentHtmlBlocks = [];
+                let totalUrgentCount = 0;
+
+                selectedGroups.forEach(g => {
+                    const uData = generateUrgentPlainTextTable(currentShipper, g);
+                    totalUrgentCount += uData.count;
+
+                    urgentBlocks.push(`B/L No : ${g.blNo} | S/Line : ${g.line || '-'}\n\n${uData.tableText}`);
+
+                    urgentHtmlBlocks.push(`<b>B/L No : ${g.blNo} | S/Line : ${g.line || '-'}</b><br><br>${uData.htmlTable}`);
+                });
+
+                const contText = totalUrgentCount === 1 ? '1 Container' : `${totalUrgentCount} Containers`;
+                subject = `Urgent Loading Request ${currentShipper} / ${blListStr} (${lineListStr}) (${contText})`;
+
+                plainText = `Dear Satyam Sir,\n\nKindly arrange to move the below containers urgently and include them in the backload plan of the current train.\nThese are very urgent shipments, and the customer has been giving us full volume support on the import side. Therefore, we need to prioritize this shipment.\n\nCustomer Name : ${currentShipper}\n\n` +
+                            urgentBlocks.join("\n\n") +
+                            `\n\nKindly confirm the planning at the earliest so that we can update the customer accordingly.\n\nRegards,\nHind Terminals Pvt Ltd`;
+
+                htmlText = `<div style="font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #000000; line-height: 1.4;">` +
+                           `Dear Satyam Sir,<br><br>` +
+                           `Kindly arrange to move the below containers urgently and include them in the backload plan of the current train.<br>` +
+                           `These are very urgent shipments, and the customer has been giving us full volume support on the import side. Therefore, we need to prioritize this shipment.<br><br>` +
+                           `<b>Customer Name :</b> <span style="color:#0070c0; font-weight:bold; text-decoration:underline;">${currentShipper}</span><br><br>` +
+                           urgentHtmlBlocks.join("<br><br>") + `<br><br>` +
+                           `Kindly confirm the planning at the earliest so that we can update the customer accordingly.<br><br>` +
+                           `Regards,<br>` +
+                           `<b>Hind Terminals Pvt Ltd</b></div>`;
             }
 
             // Generate .eml content with X-Unsent header so Outlook opens it as an editable draft
@@ -17927,7 +18512,7 @@ function initTagReportListeners() {
 initTagReportListeners();
 
 initAuth();
-    </script>
+</script>
 <div id="runningTrainsModal" class="fixed inset-0 bg-slate-900/45 backdrop-blur-sm z-[99999] hidden flex items-center justify-center p-1.5">
     <div class="bg-[#e5e7eb] rounded-none shadow-2xl w-full h-full flex flex-col border border-slate-500 overflow-hidden">
         <div class="bg-[#5b6472] px-2.5 py-1.5 flex flex-col xl:flex-row justify-between gap-1.5 xl:items-center shrink-0 border-b border-slate-600">
@@ -18771,9 +19356,9 @@ initAuth();
 <div id="smtpConsigneeBox" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100005] hidden flex items-center justify-center p-3 sm:p-4" onclick="if(event.target===this) window.closeSmtpSearchModal();">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl border border-slate-300 overflow-hidden flex flex-col max-h-[90vh]" onclick="event.stopPropagation()">
         <!-- Header -->
-        <div class="bg-blue-700 p-3.5 flex justify-between items-center text-white shrink-0">
+        <div id="smtpSearchModalHeader" class="bg-blue-700 p-3.5 flex justify-between items-center text-white shrink-0 transition-colors">
             <div class="flex items-center gap-2.5">
-                <div class="p-1.5 bg-blue-800 rounded-lg">
+                <div id="smtpSearchHeaderIcon" class="p-1.5 bg-blue-800 rounded-lg">
                     <i data-lucide="search" class="w-4 h-4 text-blue-200"></i>
                 </div>
                 <div>
